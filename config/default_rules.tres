@@ -1,0 +1,50 @@
+[gd_resource type="Resource" script_class="GameRulesConfig" load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/rules/game_rules_config.gd" id="1_config"]
+[ext_resource type="Script" path="res://scripts/rules/shape_definition.gd" id="2_shape"]
+
+[sub_resource type="Resource" id="ShapeDefinition_line3"]
+script = ExtResource("2_shape")
+shape_id = "line3"
+cells = Array[Vector2i]([Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0)])
+
+[sub_resource type="Resource" id="ShapeDefinition_step3"]
+script = ExtResource("2_shape")
+shape_id = "step3"
+cells = Array[Vector2i]([Vector2i(0, 0), Vector2i(0, 1), Vector2i(1, 1)])
+
+[sub_resource type="Resource" id="ShapeDefinition_square4"]
+script = ExtResource("2_shape")
+shape_id = "square4"
+cells = Array[Vector2i]([Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1)])
+
+[sub_resource type="Resource" id="ShapeDefinition_tee4"]
+script = ExtResource("2_shape")
+shape_id = "tee4"
+cells = Array[Vector2i]([Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0), Vector2i(1, 1)])
+
+[sub_resource type="Resource" id="ShapeDefinition_corner5"]
+script = ExtResource("2_shape")
+shape_id = "corner5"
+cells = Array[Vector2i]([Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2), Vector2i(1, 2), Vector2i(2, 2)])
+
+[resource]
+script = ExtResource("1_config")
+board_size = 8
+tray_count = 3
+min_piece_cells = 3
+max_piece_cells = 5
+base_points_per_cell = 10
+multiline_bonus_step = 0.5
+generation_attempts = 100
+shape_pool = Array[Resource]([SubResource("ShapeDefinition_line3"), SubResource("ShapeDefinition_step3"), SubResource("ShapeDefinition_square4"), SubResource("ShapeDefinition_tee4"), SubResource("ShapeDefinition_corner5")])
+palette = PackedColorArray(0.937255, 0.254902, 0.435294, 1, 0.023529, 0.839216, 0.627451, 1, 0.066667, 0.541176, 0.698039, 1, 1, 0.819608, 0.4, 1, 0.513725, 0.219608, 0.92549, 1)
+background_color = Color(0.992157, 0.94902, 0.976471, 1)
+board_color = Color(1, 1, 1, 1)
+empty_cell_color = Color(0.988235, 0.905882, 0.960784, 1)
+primary_color = Color(0.92549, 0.286275, 0.6, 1)
+secondary_color = Color(0.545098, 0.321569, 0.964706, 1)
+text_color = Color(0.058824, 0.090196, 0.164706, 1)
+placement_duration = 0.12
+clear_duration = 0.22
+rebound_duration = 0.2

@@ -1,0 +1,15 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+/work/
+__pycache__/
+.codegraph/
+build/
+dist/
+*.log
+*.tmp
+.env
+.env.*
+!.env.example
+export_credentials.cfg
+
