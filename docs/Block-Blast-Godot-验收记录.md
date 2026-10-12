@@ -18,6 +18,17 @@
 | 最高分与结算 | 超过最高分时及时保存、HUD 实时显示最高分，Game Over 展示新纪录、本局分、累计消线和回合 |
 | 原生游戏控件 | HUD、暂停、Game Over 按钮与遮罩，hover/pressed/focus/disabled 状态及 Tab/Enter/Space 操作 |
 
+## 计分规则修订（2026-10-12，待用户验收）
+
+根据用户反馈，当前计分目标已从“只按清除格数计分”修订为“合法放置先得分，清除再额外得分”：
+
+- 放置分为 `本次放置格数 × 10`，每次合法放置都计入；无清除的 3 格落子应得 30 分。
+- 清除分为 `清除格数量 × 10 × 清除线数倍率`，默认 `L` 条线倍率为 `1 + 0.5 × (L - 1)`；多线倍率只作用于清除分。
+- 单次结算总得分为放置分与清除分相加；3 格方块补满一条 8 格行时，预期 `30 + 80 = 110` 分。
+- 非法释放不加分；无清除的合法落子仍按既有规则重置连击。
+
+本节记录的是本轮代码修改后的验收口径，尚未取得用户对新计分行为的 Godot 运行验收。本轮只做代码修改与必要编译检查，不运行 GUI、自动验收或测试套件。
+
 本轮验证范围仅为必要编译与静态检查：未执行新的 GUI、游戏场景自动验收或自动测试套件。下文历史日志不能代替本轮检查或用户验收。
 
 集成交付提供的最新检查证据：
@@ -26,6 +37,7 @@
 |---|---|
 | `scripts/main.gd`、`scripts/ui/gameplay_controls.gd`、`tests/run_ui_action_tests.gd` 的 Godot headless `--check-only` | 三项退出码均为 0，无 `SCRIPT ERROR`、`Parse Error` 或 `Compile Error`；日志位于 `work/verification/*-final-syntax.log`。测试脚本仅解析，没有执行其中测试用例。 |
 | 本轮规则层相关脚本与 `scripts/ui/move_feedback.gd` 的单文件 `--check-only` | 退出码均为 0；不构成运行时规则、动画或性能验收。 |
+| 本轮计分与 HUD 明细的 Godot headless `--check-only` | `scripts/rules/scoring.gd`、`scripts/rules/game_state.gd`、`scripts/ui/gameplay_controls.gd`、`scripts/main.gd`、`tests/run_rules_tests.gd` 均退出码 0，无 `SCRIPT ERROR`、`Parse Error` 或 `Compile Error`；日志位于 `work/verification/*-score-detail-syntax.log`。测试脚本仅解析，没有执行其中测试用例。 |
 | 独立 `integration_review` 静态审查 | 未发现阻断或重要问题；实际布局、输入、声音与生成响应仍待用户运行 Godot 验收。 |
 
 待用户验收项、Windows 导出打包及 P1 范围见 [剩余逻辑开发与用户验收清单](Block-Blast-Godot-剩余逻辑开发.md)。运行方式与配置入口见 [README](../README.md)。
@@ -75,8 +87,8 @@
 ## 逻辑开发增量（2026-10-12）
 
 - `GameState.place_piece()` 现在返回本次落子获得的 `gained` 分数，和清除结果、总分、连击、状态一起交给 UI。
-- 游戏 HUD 显示总分、最高分和连击；落子提示显示清除行列数、本次得分和连击值。
-- 规则测试新增完整落子结算：预填 5 格后用三格方块补齐整行，验证清除 8 格、获得 80 分、总分 80、连击 1。
+- 游戏 HUD 显示总分、最高分和连击；落子提示显示本次放置分、清除分、合计分、清除行列数和连击值。
+- 规则测试新增完整落子结算：预填 5 格后用三格方块补齐整行，旧规则历史结果为清除 8 格、获得 80 分、总分 80、连击 1；该条记录早于本次计分修订，不能作为当前计分验收基线。当前同一场景的目标结果为放置分 30 + 清除分 80 = 总计 110 分。
 - Godot 4.7.2 headless 规则测试：`RULE TESTS PASSED`，退出码 0。
 
 ## Game Over 闭环增量（2026-10-12）

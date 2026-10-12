@@ -184,7 +184,13 @@ func _handle_release(position: Vector2) -> void:
 		last_gain = int(result.get("gained", 0))
 		var cleared_lines := int(result["clear"]["rows"]) + int(result["clear"]["columns"])
 		_play_feedback("clear" if cleared_lines > 0 else "place")
-		status_text = "清除 %d 行/列   +%d 分   连击 x%d" % [cleared_lines, last_gain, int(result.get("combo", 0))]
+		status_text = "放置 +%d   清除 +%d   合计 +%d   清除 %d 行/列   连击 x%d" % [
+			int(result.get("placement_points", 0)),
+			int(result.get("clear_points", 0)),
+			last_gain,
+			cleared_lines,
+			int(result.get("combo", 0)),
+		]
 		if game.scoring.score > int(save_data.get("high_score", 0)):
 			new_record = true
 			_save_high_score()
@@ -562,7 +568,18 @@ func _refresh_controls() -> void:
 				mode = "paused" if paused else "playing"
 		var stats: Dictionary = {}
 		if game != null:
-			stats = {"score": game.scoring.score, "high_score": _display_high_score(), "combo": game.scoring.combo, "total_cleared_lines": game.total_cleared_lines, "round_index": game.round_index, "new_record": new_record, "input_locked": input_locked}
+			stats = {
+				"score": game.scoring.score,
+				"high_score": _display_high_score(),
+				"combo": game.scoring.combo,
+				"total_cleared_lines": game.total_cleared_lines,
+				"round_index": game.round_index,
+				"placement_points": game.last_placement_points,
+				"clear_points": game.last_clear_points,
+				"clear_lines": game.last_clear_lines,
+				"new_record": new_record,
+				"input_locked": input_locked,
+			}
 		gameplay_ui.set_mode(mode, stats)
 	var preview_button: Button = settings_controls.get_node("PreviewSoundButton")
 	preview_button.disabled = not bool(save_data.get("sound_enabled", false))

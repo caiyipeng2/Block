@@ -32,6 +32,7 @@ var _surface := Color("#ffffff")
 var _playing_root: Control
 var _title_label: Label
 var _stats_label: Label
+var _detail_label: Label
 var _playing_buttons: HBoxContainer
 var _pause_button: Button
 var _playing_restart_button: Button
@@ -72,7 +73,8 @@ func configure(primary: Color, secondary: Color, text: Color, surface: Color) ->
 
 ## Switch the presentation state and refresh all statistic labels.
 ## `stats` accepts score, high_score, combo, total_cleared_lines,
-## round_index, new_record, and input_locked.
+## round_index, placement_points, clear_points, clear_lines, new_record,
+## and input_locked.
 func set_mode(mode: String, stats: Dictionary = {}) -> void:
 	var next_mode := mode if mode in [MODE_HIDDEN, MODE_PLAYING, MODE_PAUSED, MODE_GAME_OVER] else MODE_HIDDEN
 	var mode_changed := next_mode != _mode
@@ -115,6 +117,13 @@ func _build_controls() -> void:
 	_stats_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_stats_label.add_theme_font_size_override("font_size", 18)
 	_playing_root.add_child(_stats_label)
+
+	_detail_label = Label.new()
+	_detail_label.name = "MoveDetail"
+	_detail_label.clip_text = true
+	_detail_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_detail_label.add_theme_font_size_override("font_size", 15)
+	_playing_root.add_child(_detail_label)
 
 	_playing_buttons = HBoxContainer.new()
 	_playing_buttons.name = "Actions"
@@ -208,6 +217,7 @@ func _apply_theme() -> void:
 		return
 	_title_label.add_theme_color_override("font_color", _text)
 	_stats_label.add_theme_color_override("font_color", _text.lightened(0.12))
+	_detail_label.add_theme_color_override("font_color", _text.lightened(0.28))
 	_overlay_title.add_theme_color_override("font_color", _text)
 	_overlay_stats.add_theme_color_override("font_color", _text.lightened(0.12))
 	_new_record_label.add_theme_color_override("font_color", _primary.darkened(0.08))
@@ -299,13 +309,17 @@ func _update_texts() -> void:
 	var combo := int(_stats.get("combo", 0))
 	var total_cleared := int(_stats.get("total_cleared_lines", 0))
 	var round_index := int(_stats.get("round_index", 0))
+	var placement_points := int(_stats.get("placement_points", 0))
+	var clear_points := int(_stats.get("clear_points", 0))
+	var clear_lines := int(_stats.get("clear_lines", 0))
 	_stats_label.text = "分数 %d   最高 %d   连击 x%d" % [score, high_score, combo]
+	_detail_label.text = "本次放置 +%d   清除 +%d   清除线 %d" % [placement_points, clear_points, clear_lines]
 	_overlay_title.text = "已暂停" if _mode == MODE_PAUSED else "游戏结束"
 	if _mode == MODE_PAUSED:
-		_overlay_stats.text = "当前分数：%d\n最高分：%d\n连击：x%d" % [score, high_score, combo]
+		_overlay_stats.text = "当前分数：%d\n最高分：%d\n连击：x%d\n最近：放置 +%d · 清除 +%d · 线 %d" % [score, high_score, combo, placement_points, clear_points, clear_lines]
 		_new_record_label.text = ""
 	else:
-		_overlay_stats.text = "本局得分：%d\n最高分：%d\n总消线：%d\n回合：%d" % [score, high_score, total_cleared, round_index + 1]
+		_overlay_stats.text = "本局得分：%d\n最高分：%d\n总消线：%d\n回合：%d\n最近：放置 +%d · 清除 +%d · 线 %d" % [score, high_score, total_cleared, round_index + 1, placement_points, clear_points, clear_lines]
 		_new_record_label.text = "新纪录！" if bool(_stats.get("new_record", false)) else "继续挑战更高分"
 
 func _layout_controls() -> void:
@@ -327,14 +341,18 @@ func _layout_wide_playing() -> void:
 	_playing_buttons.position = Vector2(maxf(24.0, size.x - 360.0), 10.0)
 	_playing_buttons.size = Vector2(minf(336.0, maxf(size.x - 48.0, 240.0)), MIN_BUTTON_HEIGHT)
 	_stats_label.position = Vector2(24.0, 68.0)
-	_stats_label.size = Vector2(maxf(size.x - 48.0, 1.0), 34.0)
+	_stats_label.size = Vector2(maxf(size.x - 48.0, 1.0), 25.0)
+	_detail_label.position = Vector2(24.0, 91.0)
+	_detail_label.size = Vector2(maxf(size.x - 48.0, 1.0), 22.0)
 
 func _layout_narrow_playing() -> void:
 	_title_label.position = Vector2(20.0, 8.0)
 	_title_label.size = Vector2(maxf(size.x - 40.0, 1.0), 34.0)
 	_stats_label.position = Vector2(20.0, 45.0)
-	_stats_label.size = Vector2(maxf(size.x - 40.0, 1.0), 34.0)
-	_playing_buttons.position = Vector2(20.0, 92.0)
+	_stats_label.size = Vector2(maxf(size.x - 40.0, 1.0), 28.0)
+	_detail_label.position = Vector2(20.0, 73.0)
+	_detail_label.size = Vector2(maxf(size.x - 40.0, 1.0), 28.0)
+	_playing_buttons.position = Vector2(20.0, 112.0)
 	_playing_buttons.size = Vector2(maxf(size.x - 40.0, 1.0), MIN_BUTTON_HEIGHT)
 
 func _layout_overlay() -> void:
