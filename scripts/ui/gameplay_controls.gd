@@ -360,7 +360,9 @@ func _layout_overlay() -> void:
 	var card_height := 302.0 if _mode == MODE_PAUSED else 410.0
 	_card.size = Vector2(card_width, card_height)
 	_card.position = Vector2((size.x - card_width) * 0.5, maxf((size.y - card_height) * 0.5, 12.0))
-	_overlay_box.size = _card.size
+	# PanelContainer lays out its child inside the panel content area. Do not
+	# assign the child the panel's own size: that feeds the size back into the
+	# panel minimum-size calculation and can push the overlay content offscreen.
 	_overlay_title.custom_minimum_size = Vector2(0.0, 42.0)
 	_overlay_stats.custom_minimum_size = Vector2(0.0, 86.0 if _mode == MODE_GAME_OVER else 74.0)
 	_new_record_label.custom_minimum_size = Vector2(0.0, 30.0)
