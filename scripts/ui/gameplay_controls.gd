@@ -174,6 +174,9 @@ func _build_controls() -> void:
 	_overlay_stats.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_overlay_stats.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_overlay_stats.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	# Wrapping at an initial zero width must not dictate the card's minimum height.
+	_overlay_stats.clip_text = true
+	_overlay_stats.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_overlay_stats.add_theme_font_size_override("font_size", 18)
 	_overlay_box.add_child(_overlay_stats)
 
@@ -356,17 +359,15 @@ func _layout_narrow_playing() -> void:
 	_playing_buttons.size = Vector2(maxf(size.x - 40.0, 1.0), MIN_BUTTON_HEIGHT)
 
 func _layout_overlay() -> void:
+	_overlay_title.custom_minimum_size = Vector2(0.0, 42.0)
+	_overlay_stats.custom_minimum_size = Vector2(0.0, 130.0 if _mode == MODE_PAUSED else 180.0)
+	_new_record_label.custom_minimum_size = Vector2(0.0, 30.0)
+	_overlay_buttons.custom_minimum_size = Vector2(0.0, MIN_BUTTON_HEIGHT)
 	var card_width := minf(560.0, maxf(size.x - 24.0, 280.0))
 	var card_height := 302.0 if _mode == MODE_PAUSED else 410.0
 	_card.size = Vector2(card_width, card_height)
 	_card.position = Vector2((size.x - card_width) * 0.5, maxf((size.y - card_height) * 0.5, 12.0))
-	# PanelContainer lays out its child inside the panel content area. Do not
-	# assign the child the panel's own size: that feeds the size back into the
-	# panel minimum-size calculation and can push the overlay content offscreen.
-	_overlay_title.custom_minimum_size = Vector2(0.0, 42.0)
-	_overlay_stats.custom_minimum_size = Vector2(0.0, 86.0 if _mode == MODE_GAME_OVER else 74.0)
-	_new_record_label.custom_minimum_size = Vector2(0.0, 30.0)
-	_overlay_buttons.custom_minimum_size = Vector2(0.0, MIN_BUTTON_HEIGHT)
+	# PanelContainer owns the VBox content rectangle and its panel margins.
 
 func _grab_first_focus() -> void:
 	if not _configured or _mode == MODE_HIDDEN or _focus_mode == _mode:

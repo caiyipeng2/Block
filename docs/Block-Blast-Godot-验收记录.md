@@ -1,12 +1,14 @@
 # Block Blast Godot MVP 验收记录
 
-首次验证：2026-10-10；最近更新：2026-10-12  
+首次验证：2026-10-10；最近更新：2026-10-13
 引擎：Godot 4.7.2 stable  
 平台目标：Windows 桌面，鼠标输入
 
 ## Game Over 面板空白修复（2026-10-13，待用户验收）
 
-根因是 `PanelContainer` 的 `VBoxContainer` 子级被错误设置成与卡片同尺寸，子级尺寸回写到最小尺寸后撑大卡片，标题、统计和按钮被布局到窗口可视区域之外。现已移除该递归尺寸赋值，改由 `PanelContainer` 自动把内容布局到卡片内。
+根据截图和 Godot 4.7 官方实现，统计 Label 在初始窄宽度下自动换行会产生很大的最小高度；VBox 将其计入内容高度，PanelContainer 再叠加内边距，使卡片超出预设尺寸。原有手动设置 VBox 尺寸也与父容器自动布局冲突。本次在统计 Label 开启裁切以阻止文本最小高度撑大卡片，暂停/结束统计区域预留 130/180 像素，并让统计区使用剩余空间；内容最小尺寸先于卡片尺寸设置。VBox 的尺寸统一交由 PanelContainer 管理。
+
+静态依据：[Godot Label 最小尺寸计算](https://github.com/godotengine/godot/blob/4.7/scene/gui/label.cpp#L922)、[PanelContainer 最小尺寸与子项布局](https://github.com/godotengine/godot/blob/4.7/scene/gui/panel_container.cpp#L32)。该分析尚未通过本机运行复现；最终界面由用户验收。
 
 本次 `scripts/ui/gameplay_controls.gd` 与 `scripts/main.gd` 的 Godot headless `--check-only` 均退出码 0，无脚本、解析或编译错误；未运行 GUI。请重点验收 Game Over 标题、分数明细和“重新开始/返回菜单”按钮是否可见可用。
 
