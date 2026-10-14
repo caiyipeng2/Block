@@ -10,7 +10,7 @@ Godot 4.7 的桌面方块消除游戏：拖动方块、填满行或列并消除�
 2. 打开项目后按 **F5**，进入主菜单；点击“开始游戏”。
 3. 从下方托盘按住一块方块，拖到棋盘合法位置后释放。
 
-默认面向 Windows 桌面鼠标输入，渲染配置为 Forward Plus / D3D12。Windows 导出包仍属于后续交付项。
+默认面向 Windows 桌面鼠标输入，渲染配置为 Forward Plus / D3D12。
 
 ## 玩法与操作
 
@@ -27,30 +27,33 @@ Godot 4.7 的桌面方块消除游戏：拖动方块、填满行或列并消除�
 
 默认规则资源为 [`config/default_rules.tres`](config/default_rules.tres)，类型定义在 [`scripts/rules/game_rules_config.gd`](scripts/rules/game_rules_config.gd)。可在 Godot Inspector 中编辑棋盘尺寸、托盘数量、形状池及方向、计分、生成重试次数、色板/主题和动画时长；默认落子 0.12 秒、清除 0.22 秒、非法回弹 0.20 秒。
 
-默认配置对应已确认的 MVP。调整参数后需按目标玩法重新验收，不能沿用默认配置的结论。计分修订后的“放置分 + 清除分”仍待用户在 Godot 中验收。
+默认配置对应已确认的 MVP。调整参数后需按目标玩法重新验收，不能沿用默认配置的结论。
 
 规则层位于 `scripts/rules/`。生成器最近一轮的 `last_solution` 记录完整放置顺序，每步包含原始 `piece_index` 与棋盘 `origin`；`last_diagnostics` 记录 `seed`、`round`、`attempts`、`fallback_used`、`reason`、`nodes_elapsed`、`duplicate_candidates` 与 `elapsed_ms`，用于复现生成问题和调参。
 
-## 当前交付状态（2026-10-12）
+## Windows 导出与打包
 
-用户已确认上一轮的音量/试听、重开与返回菜单确认框、暂停/失焦保护、释放位置重新校验通过。
+安装 **Python 3.10 或更新版本**及与当前 Godot **4.7.2 stable** 匹配的导出模板后，在项目根目录运行（将引擎路径换为本机实际路径）：
 
-本轮五项 MVP 增量已完成代码实现，**待用户在 Godot 中验收**：
+```powershell
+python tools/export_windows.py --godot "E:\Tools\Godot\Godot_v4.7.2-stable_win64.exe" --configuration release
+```
 
-| 项目 | 已实现内容 |
-|---|---|
-| 拖放与视觉反馈 | 真实抓取锚点、拖动浮层、非法回弹、落子/清除动画、得分浮字、重复输入锁定、减少动画路径 |
-| 规则 Resource | 棋盘、形状、计分、生成参数、色板与时长集中到默认 `.tres` |
-| 生成路径与诊断 | 任意顺序完整可行路径、原始方块索引与落点、生成诊断、构造式保底 |
-| 最高分与结算 | 超过最高分时及时保存；HUD 实时最高分；Game Over 展示新纪录及本局统计 |
-| 原生游戏控件 | 常驻 HUD、暂停与 Game Over 控件、可见焦点与 Tab/Enter/Space 操作 |
+加 `--check` 仅预检、不导出；`--configuration debug` 生成调试包。版本号来自 `project.godot`，当前为 `0.1.0`。发布包输出到 `dist/Block-0.1.0-windows-x86_64-release.zip`，须完整解压后按 `START-HERE.txt` 运行，保留 `.pck` 和所有随附文件；若导出生成 DLL 或 `x86_64` 子目录，也须完整保留。包内 `build-info.json` 含文件 SHA256，ZIP 旁 `.sha256` 用于核对压缩包。
 
-本轮验证只采用必要编译与静态检查；没有运行新的 GUI 或自动测试。用户自行运行 Godot 验收界面、操作和声音。
+本轮 release/debug 均已实际导出并打包完成，文件 SHA256、ZIP CRC 与压缩包校验值均匹配；尚未启动导出的游戏。当前本机使用已校验的 `work/release-templates/4.7.2.stable` 模板，重新打包时追加 `--templates-dir "work/release-templates/4.7.2.stable"`。模板安装、包结构和用户验收步骤见 [Windows 发布说明](docs/Block-Blast-Godot-Windows发布.md)，检查证据见 [验收记录](docs/Block-Blast-Godot-验收记录.md)。
+
+## 当前开发状态（2026-10-14）
+
+MVP 逻辑、放置与清除分别计分、HUD 明细及 Game Over 布局修复已实现。用户最新确认 Game Over 面板修复验收通过；Windows 发布配置、预检和打包工具已交付，本机 `0.1.0` release/debug 包已生成，待用户运行独立 EXE 与跨机验收。
+
+按用户约定，只进行必要的轻量编译与静态检查；实际界面、输入、声音和导出包启动由用户验收，不自动控制桌面或运行完整自动验收。
 
 ## 文档入口
 
 - [需求文档](docs/Block-Blast-Godot-需求文档.md)：已确认的 MVP 规则、验收标准与保留扩展。
 - [验收记录](docs/Block-Blast-Godot-验收记录.md)：历史真实检查、用户反馈和本轮证据边界。
 - [剩余逻辑开发与用户验收清单](docs/Block-Blast-Godot-剩余逻辑开发.md)：当前待验收项、Windows 发布工作与 P1 范围。
+- [Windows 发布说明](docs/Block-Blast-Godot-Windows发布.md)：模板、release/debug 导出、打包及无编辑器运行验收。
 
-后续工作为用户验收反馈修复、Windows 导出打包与无编辑器机器验证；触控、旋转/翻转、断点续局、特殊方块和线上功能保留到 P1 及以后。
+后续工作为 Windows 导出包与目标机器验收、按反馈修复；触控、旋转/翻转、断点续局、特殊方块和线上功能保留到 P1 及以后。

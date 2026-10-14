@@ -1,16 +1,41 @@
 # Block Blast Godot MVP 验收记录
 
-首次验证：2026-10-10；最近更新：2026-10-13
+首次验证：2026-10-10；最近更新：2026-10-14
 引擎：Godot 4.7.2 stable  
 平台目标：Windows 桌面，鼠标输入
 
-## Game Over 面板空白修复（2026-10-13，待用户验收）
+## 最新用户确认与 Windows 发布增量（2026-10-14）
+
+用户最新明确反馈“确认 验收完毕 继续后续开发”，对应上轮 Game Over 面板空白修复。该修复现记录为**用户验收通过**；下文保留修复当天的定位和编译证据，历史“待验收”不再代表当前状态。
+
+本轮继续开发 Windows 发布工具链：项目版本 `0.1.0`、`Windows Desktop` x86_64 导出预设、release/debug 打包脚本、仅预检入口、导出文件 SHA256 清单与压缩包，以及 [Windows 发布说明](Block-Blast-Godot-Windows发布.md)。生成物位于本地 `build/`、`dist/`，不提交缓存、个人存档或凭据。
+
+本轮下载的官方 Godot 4.7.2 导出模板包为 1,281,349,702 字节，SHA512 与官方清单匹配；Windows 模板及随附数据提取到本地 `work/release-templates/4.7.2.stable`，未修改全局模板安装。指定该目录的 `--check` 预检退出码 0，识别引擎 4.7.2、项目 0.1.0，当前运行库为 Windows 系统 D3D12。官方模板包不含独立 DLL；DLL 为可选依赖，若导出生成 DLL 或 `x86_64` 目录，打包时须完整保留。
+
+本轮 Windows 发布配置与工具已代码交付，本机 release/debug 均完成实际导出和打包；没有启动导出的游戏、运行 GUI 或完整自动验收。检查证据如下：
+
+| 检查 | 结果与证据 |
+|---|---|
+| Python 语法编译与 CLI 帮助 | 通过；未运行游戏测试 |
+| `scripts/main.gd` headless `--check-only` | 退出码 0，无脚本错误 |
+| 默认模板预检 | 默认目录缺少匹配模板时按预期报错；指定 `work/release-templates/4.7.2.stable` 时通过、退出码 0 |
+| release 导出 | 退出码 0；日志 `work/windows-export/0.1.0-release.log`；ZIP `dist/Block-0.1.0-windows-x86_64-release.zip` 为 42,205,896 字节 |
+| debug 导出 | 退出码 0；日志 `work/windows-export/0.1.0-debug.log`；ZIP `dist/Block-0.1.0-windows-x86_64-debug.zip` 为 38,531,861 字节 |
+| 包完整性 | 两包 ZIP CRC、`build-info.json` 中全部文件 SHA256（release 5 项、debug 6 项）和 ZIP 旁 `.sha256` 均校验匹配 |
+
+release 包实际包含 `Block.exe`、`Block.pck`、`build-info.json`、`START-HERE.txt`、`licenses/GODOT-LICENSE.txt`、`licenses/GODOT-COPYRIGHT.txt`；debug 包另含 `Block.console.exe`。实际两包均没有独立 DLL/`x86_64` 目录，保持系统 D3D12；不是切换渲染器后的产物。包中包含 Godot 许可与第三方版权文本，尚未配置 Windows 代码签名。
+
+脚本实现、编译/预检结果、导出打包成功和用户运行通过是四种不同证据；本轮前三类已取得证据，用户运行验收仍待完成。
+
+发布包仍待用户在无 Godot 编辑器的 Windows 机器验收：完整解压、启动主菜单、放置/清除、暂停与 Game Over、退出重启后设置和最高分保持。基础渲染继续使用 Forward Plus / D3D12，其他硬件与 Compatibility 不视为本轮已验证。
+
+## Game Over 面板空白修复（2026-10-13；2026-10-14 用户验收通过）
 
 根据截图和 Godot 4.7 官方实现，统计 Label 在初始窄宽度下自动换行会产生很大的最小高度；VBox 将其计入内容高度，PanelContainer 再叠加内边距，使卡片超出预设尺寸。原有手动设置 VBox 尺寸也与父容器自动布局冲突。本次在统计 Label 开启裁切以阻止文本最小高度撑大卡片，暂停/结束统计区域预留 130/180 像素，并让统计区使用剩余空间；内容最小尺寸先于卡片尺寸设置。VBox 的尺寸统一交由 PanelContainer 管理。
 
-静态依据：[Godot Label 最小尺寸计算](https://github.com/godotengine/godot/blob/4.7/scene/gui/label.cpp#L922)、[PanelContainer 最小尺寸与子项布局](https://github.com/godotengine/godot/blob/4.7/scene/gui/panel_container.cpp#L32)。该分析尚未通过本机运行复现；最终界面由用户验收。
+静态依据：[Godot Label 最小尺寸计算](https://github.com/godotengine/godot/blob/4.7/scene/gui/label.cpp#L922)、[PanelContainer 最小尺寸与子项布局](https://github.com/godotengine/godot/blob/4.7/scene/gui/panel_container.cpp#L32)。代理未在本机运行复现；用户随后于 2026-10-14 确认修复验收通过。
 
-本次 `scripts/ui/gameplay_controls.gd` 与 `scripts/main.gd` 的 Godot headless `--check-only` 均退出码 0，无脚本、解析或编译错误；未运行 GUI。请重点验收 Game Over 标题、分数明细和“重新开始/返回菜单”按钮是否可见可用。
+本次 `scripts/ui/gameplay_controls.gd` 与 `scripts/main.gd` 的 Godot headless `--check-only` 均退出码 0，无脚本、解析或编译错误；未运行 GUI。修复交付时要求重点验收 Game Over 标题、分数明细和“重新开始/返回菜单”按钮；当前用户已确认通过。
 
 ## 当前状态与本轮验收边界（2026-10-12）
 
