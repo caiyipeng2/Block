@@ -36,6 +36,9 @@ var _context: Dictionary = {}
 var _cell_colors: Dictionary = {}
 var _placed_cells: Dictionary = {}
 var _clear_cells: Dictionary = {}
+var _clear_colors: Dictionary = {}
+var _clear_row_colors: Dictionary = {}
+var _clear_column_colors: Dictionary = {}
 var _clear_rows: Array[int] = []
 var _clear_columns: Array[int] = []
 var _placed_scale := 1.0
@@ -94,6 +97,9 @@ func play_move(
 	_cell_size = _board_rect.size.x / float(_board_size)
 	_palette = palette
 	_context = context.duplicate()
+	_clear_colors = context.get("clear_colors", {}).duplicate()
+	_clear_row_colors = context.get("clear_row_colors", {}).duplicate()
+	_clear_column_colors = context.get("clear_column_colors", {}).duplicate()
 	_gained = gained
 	_overlay_visible = true
 	_board_overlay_active = true
@@ -183,6 +189,9 @@ func reset() -> void:
 	_cell_colors.clear()
 	_placed_cells.clear()
 	_clear_cells.clear()
+	_clear_colors.clear()
+	_clear_row_colors.clear()
+	_clear_column_colors.clear()
 	_clear_rows.clear()
 	_clear_columns.clear()
 	_context.clear()
@@ -379,7 +388,7 @@ func _spawn_particles() -> void:
 	var budget := 144
 	for key in _clear_cells:
 		var cell: Vector2i = key
-		var color := _color_for_id(int(_cell_colors.get(cell, 0)))
+		var color := _color_for_id(_resolved_cell_color_id(cell))
 		for i in range(3):
 			if _particles.size() >= budget:
 				return
@@ -410,7 +419,7 @@ func _draw() -> void:
 						block_scale = lerpf(1.0, 0.32, _clear_progress)
 				elif _placed_cells.has(coordinate):
 					block_scale = _placed_scale
-				_draw_board_cell(coordinate, _color_for_id(int(_cell_colors[key])), block_scale, alpha, highlight)
+				_draw_board_cell(coordinate, _color_for_id(_resolved_cell_color_id(coordinate)), block_scale, alpha, highlight)
 			_draw_clear_lines()
 	_draw_particles()
 
@@ -425,13 +434,17 @@ func _draw_clear_lines() -> void:
 	if not _clear_started or _dispersing:
 		return
 	for row in _clear_rows:
-		_draw_clear_line(Rect2(_board_rect.position + _board_offset + Vector2(0.0, row * _cell_size), Vector2(_board_rect.size.x, _cell_size)), true)
+		var color := _color_for_id(int(_clear_row_colors[row])) if _clear_row_colors.has(row) else CYAN
+		_draw_clear_line(Rect2(_board_rect.position + _board_offset + Vector2(0.0, row * _cell_size), Vector2(_board_rect.size.x, _cell_size)), true, color)
 	for column in _clear_columns:
-		_draw_clear_line(Rect2(_board_rect.position + _board_offset + Vector2(column * _cell_size, 0.0), Vector2(_cell_size, _board_rect.size.y)), false)
+		var color := _color_for_id(int(_clear_column_colors[column])) if _clear_column_colors.has(column) else CYAN
+		_draw_clear_line(Rect2(_board_rect.position + _board_offset + Vector2(column * _cell_size, 0.0), Vector2(_cell_size, _board_rect.size.y)), false, color)
 
-func _draw_clear_line(line_rect: Rect2, horizontal: bool) -> void:
+func _draw_clear_line(line_rect: Rect2, horizontal: bool, color: Color) -> void:
 	var flash_alpha := (1.0 - _flash_progress) * 0.62 if not _sweep_started else 0.18
-	draw_rect(line_rect, Color(0.85, 0.98, 1.0, flash_alpha))
+	var flash_color := color.lightened(0.62)
+	flash_color.a = flash_alpha
+	draw_rect(line_rect, flash_color)
 	if not _sweep_started:
 		return
 	var center := line_rect.position + (Vector2(line_rect.size.x * _sweep_progress, line_rect.size.y * 0.5) if horizontal else Vector2(line_rect.size.x * 0.5, line_rect.size.y * _sweep_progress))
@@ -439,7 +452,9 @@ func _draw_clear_line(line_rect: Rect2, horizontal: bool) -> void:
 	draw_rect(Rect2(center - beam_size * 0.5, beam_size), Color(1.0, 1.0, 1.0, 0.92))
 	var start := Vector2(line_rect.position.x, line_rect.get_center().y) if horizontal else Vector2(line_rect.get_center().x, line_rect.position.y)
 	var end := Vector2(line_rect.end.x, line_rect.get_center().y) if horizontal else Vector2(line_rect.get_center().x, line_rect.end.y)
-	draw_line(start, end, Color(0.40, 0.94, 1.0, 0.36), 8.0, true)
+	var glow_color := color.lightened(0.24)
+	glow_color.a = 0.36
+	draw_line(start, end, glow_color, 8.0, true)
 	draw_line(start, end, Color(1.0, 1.0, 1.0, 0.88), 2.0, true)
 
 func _draw_particles() -> void:
@@ -473,6 +488,12 @@ func _draw_rebound() -> void:
 
 func _cell_center(coordinate: Vector2i) -> Vector2:
 	return _board_rect.position + (Vector2(coordinate) + Vector2.ONE * 0.5) * _cell_size
+
+func _resolved_cell_color_id(coordinate: Vector2i) -> int:
+	var original := int(_cell_colors.get(coordinate, 0))
+	if _clear_cells.has(coordinate):
+		return int(_clear_colors.get(coordinate, original))
+	return original
 
 func _color_for_id(color_id: int) -> Color:
 	if _palette.is_empty():

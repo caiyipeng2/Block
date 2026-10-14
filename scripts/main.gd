@@ -2,6 +2,7 @@ extends Control
 
 const BOARD_MARGIN := 28.0
 const Art := preload("res://scripts/ui/block_art.gd")
+const ClearColorResolver := preload("res://scripts/ui/clear_color_resolver.gd")
 const FeedbackAudioScript := preload("res://scripts/audio/feedback_audio.gd")
 const MoveFeedbackScript := preload("res://scripts/ui/move_feedback.gd")
 const GameplayControlsScript := preload("res://scripts/ui/gameplay_controls.gd")
@@ -47,7 +48,9 @@ var shake_elapsed := 0.0
 var shake_duration := 0.0
 var shake_strength := 0.0
 var last_notice_round := -1
-var preview_clear_cells: Array[Vector2i] = []
+var preview_clear_colors: Dictionary = {}
+var board_placement_orders: Dictionary = {}
+var placement_sequence := 0
 
 func _ready() -> void:
 	set_process_input(true)
@@ -201,6 +204,16 @@ func _handle_release(position: Vector2) -> void:
 	input_locked = true
 	var result: Dictionary = game.place_piece(index, origin, _piece_color_id(piece))
 	if bool(result.get("ok", false)):
+		var next_order := placement_sequence + 1
+		var placed_cells: Array[Vector2i] = result["placed_cells"]
+		var next_orders := _orders_with_placement(placed_cells, next_order)
+		var resolved_board := before_board.duplicate_board()
+		resolved_board.place(piece, origin, int(result["placed_color"]))
+		var clear_appearance := ClearColorResolver.resolve(resolved_board, next_orders)
+		placement_sequence = next_order
+		board_placement_orders = next_orders
+		for coordinate in result["clear"]["cells"]:
+			board_placement_orders.erase(coordinate)
 		pending_move = result
 		last_gain = int(result.get("gained", 0))
 		var cleared_lines := int(result["clear"]["rows"]) + int(result["clear"]["columns"])
@@ -228,6 +241,9 @@ func _handle_release(position: Vector2) -> void:
 			"clear_points": int(result.get("clear_points", 0)),
 			"score_target": gameplay_ui.score_target(),
 			"shake_enabled": bool(save_data.get("screen_shake", true)),
+			"clear_colors": clear_appearance["cell_colors"],
+			"clear_row_colors": clear_appearance["row_colors"],
+			"clear_column_colors": clear_appearance["column_colors"],
 		})
 	else:
 		_reset_visual_feedback()
@@ -240,6 +256,8 @@ func _start_game() -> void:
 	_reset_visual_feedback()
 	_save_high_score()
 	game = GameState.new(Time.get_ticks_msec(), rules_config.board_size, rules_config)
+	board_placement_orders.clear()
+	placement_sequence = 0
 	piece_colors.clear()
 	_sync_piece_colors()
 	new_record = false
@@ -343,7 +361,7 @@ func _cancel_drag() -> void:
 	drag_valid = false
 	drag_origin = Vector2i(-99, -99)
 	drag_grab_offset = Vector2.ZERO
-	preview_clear_cells.clear()
+	preview_clear_colors.clear()
 	queue_redraw()
 
 func _toggle_pause() -> void:
@@ -480,6 +498,8 @@ func _return_to_menu() -> void:
 	_reset_visual_feedback()
 	_save_high_score()
 	game = null
+	board_placement_orders.clear()
+	placement_sequence = 0
 	screen = "menu"
 	paused = false
 	_cancel_drag()
@@ -544,9 +564,19 @@ func _piece_color_id(piece: PieceData) -> int:
 	return int(piece_colors.get(piece.get_instance_id(), 0))
 
 func _piece_color(piece: PieceData) -> Color:
+	return _block_color(_piece_color_id(piece))
+
+func _block_color(color_id: int) -> Color:
 	if rules_config.palette.is_empty():
 		return rules_config.primary_color
-	return rules_config.palette[posmod(_piece_color_id(piece), rules_config.palette.size())]
+	return rules_config.palette[posmod(color_id, rules_config.palette.size())]
+
+func _orders_with_placement(placed_cells: Array[Vector2i], order: int) -> Dictionary:
+	# Preview works on a copy; only a successful release commits these timestamps.
+	var orders := board_placement_orders.duplicate()
+	for coordinate in placed_cells:
+		orders[coordinate] = order
+	return orders
 
 func _save_high_score() -> void:
 	if game == null:
@@ -821,11 +851,15 @@ func _update_drag_preview() -> void:
 	var piece: PieceData = game.remaining_pieces[dragging_index]
 	drag_origin = _board_origin_from_mouse(drag_mouse, piece)
 	drag_valid = _board_rect().has_point(drag_mouse) and game.board.can_place(piece, drag_origin)
-	preview_clear_cells.clear()
+	preview_clear_colors.clear()
 	if drag_valid:
 		var preview_board := game.board.duplicate_board()
 		preview_board.place(piece, drag_origin, _piece_color_id(piece))
-		preview_clear_cells.assign(preview_board.clear_full_lines()["cells"])
+		var placed_cells: Array[Vector2i] = []
+		for local_cell in piece.cells:
+			placed_cells.append(drag_origin + local_cell)
+		var appearance := ClearColorResolver.resolve(preview_board, _orders_with_placement(placed_cells, placement_sequence + 1))
+		preview_clear_colors = appearance["cell_colors"]
 	queue_redraw()
 
 func _draw() -> void:
@@ -891,12 +925,12 @@ func _draw_board() -> void:
 			var value := -1 if hide_final_board else game.board.get_cell(x, y)
 			var color := rules_config.empty_cell_color
 			if value >= 0:
-				color = rules_config.primary_color if rules_config.palette.is_empty() else rules_config.palette[posmod(value, rules_config.palette.size())]
+				color = _block_color(int(preview_clear_colors.get(Vector2i(x, y), value)))
 			var cell_rect := Rect2(rect.position + Vector2(x, y) * cell + Vector2.ONE, Vector2.ONE * (cell - 2.0))
 			if value < 0:
 				Art.draw_empty_cell(self, cell_rect, color)
 			else:
-				Art.draw_block(self, cell_rect, color, 1.0, 0.6 if preview_clear_cells.has(Vector2i(x, y)) else 0.0)
+				Art.draw_block(self, cell_rect, color, 1.0, 0.20 if preview_clear_colors.has(Vector2i(x, y)) else 0.0)
 	if dragging_index >= 0 and game != null:
 		var piece: PieceData = game.remaining_pieces[dragging_index]
 		var preview_color := _piece_color(piece) if drag_valid else Color("#ff7575")
@@ -904,11 +938,11 @@ func _draw_board() -> void:
 			var target := drag_origin + local_cell
 			if target.x >= 0 and target.x < _board_size() and target.y >= 0 and target.y < _board_size():
 				var preview_rect := Rect2(rect.position + Vector2(target.x, target.y) * cell + Vector2.ONE, Vector2.ONE * (cell - 2.0))
-				Art.draw_block(self, preview_rect, preview_color, 0.72 if drag_valid else 0.40, 0.55 if preview_clear_cells.has(target) else 0.2)
-				draw_rect(preview_rect.grow(-1.0), Color("#b3fff1") if drag_valid else Color("#ffb3a9"), false, 1.5)
-		for clear_cell in preview_clear_cells:
-			var clear_rect := Rect2(rect.position + Vector2(clear_cell) * cell + Vector2.ONE, Vector2.ONE * (cell - 2.0))
-			draw_rect(clear_rect, Color(1, 0.93, 0.55, 0.18))
+				if preview_clear_colors.has(target):
+					Art.draw_block(self, preview_rect, _block_color(int(preview_clear_colors[target])), 1.0, 0.20)
+				else:
+					Art.draw_block(self, preview_rect, preview_color, 0.72 if drag_valid else 0.40, 0.2)
+					draw_rect(preview_rect.grow(-1.0), Color("#b3fff1") if drag_valid else Color("#ffb3a9"), false, 1.5)
 
 func _draw_tray() -> void:
 	var pieces := _visible_tray()
@@ -933,7 +967,11 @@ func _draw_drag_layer() -> void:
 	var unit := _cell_size()
 	for cell in piece.cells:
 		var rect := Rect2(origin + Vector2(cell) * unit + Vector2.ONE, Vector2.ONE * (unit - 2))
-		Art.draw_block(self, rect, _piece_color(piece), 0.96, 0.16)
+		var target: Vector2i = drag_origin + cell
+		if drag_valid and preview_clear_colors.has(target):
+			Art.draw_block(self, rect, _block_color(int(preview_clear_colors[target])), 1.0, 0.20)
+		else:
+			Art.draw_block(self, rect, _piece_color(piece), 0.96, 0.16)
 
 func _box(color: Color, radius: float) -> StyleBoxFlat:
 	var box := StyleBoxFlat.new()
