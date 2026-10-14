@@ -1,6 +1,6 @@
 # Block
 
-Godot 4.7 的桌面方块消除游戏：拖动方块、填满行或列并消除，无时间限制。
+Godot 4.7 的桌面方块消除游戏：拖动方块、填满行或列并消除，无时间限制。当前源码进入 `0.2.0` 美术阶段，采用蓝色背景、凹槽棋盘和立体斜面方块。
 
 项目仓库：[caiyipeng2/Block](https://github.com/caiyipeng2/Block)。本地交付、提交和推送状态以本次交付记录为准。
 
@@ -21,11 +21,21 @@ Godot 4.7 的桌面方块消除游戏：拖动方块、填满行或列并消除�
 - 玩家可自由选择托盘中的方块；新的一组三块至少有一种放置顺序与落点组合，逐步落子、清线后能全部放完。玩家操作后，所有剩余方块均无合法落点时结束本局。
 - **Esc** 暂停/继续；**R** 请求重新开始。进行中的重开和返回菜单需要确认，Game Over 后可直接选择下一步。
 - HUD、暂停和 Game Over 使用原生按钮，支持 **Tab** 切换焦点、**Enter/Space** 激活。动画期间阻止重复落子，暂停和继续仍可用。
-- 设置提供音效、音乐、减少动画和试听音效；最高分与设置保存到 `user://savegame.json`，本版不保存进行中的棋局。
+- 设置提供音效、音乐、画面震动、减少动画和试听音效；最高分与设置保存到 `user://savegame.json`，本版不保存进行中的棋局。游戏中点击齿轮会暂停并打开设置，返回时保留本局。
+
+## 第二阶段美术与反馈
+
+- 深蓝渐变背景、藏蓝凹槽棋盘，蓝/橙/绿/紫/黄/青六色方块使用统一斜面材质；棋盘、托盘、拖动浮层和反馈层保持一致。
+- 游戏区居中，大号青色当前分、金色皇冠最高分和原生图标按钮；托盘方块独立排列，菜单、设置、暂停和结束面板使用深蓝/金色主题。
+- 拖动预览高亮即将填满的行列；暂时不能放置的方块变暗并提示。补充三块和刷新最高分使用非阻塞提醒。
+- 消除反馈包含闪光、行列扫光、粒子和轻微棋盘震动；加分浮字飞向分数区域，多线清除或连击时显示相应提示。
+- “画面震动”仅控制视觉上的棋盘轻震，不是 Windows 鼠标或手柄硬件震动；“减少动画”关闭粒子、分数飞行与震动。
+
+本阶段保持第一阶段的形状、计分、可解生成和游戏结束规则。参考图中的 `+1` 不替换本项目每格 ×10 的计分基线。最后提供的 WebP 是单帧静态图，当前动效节奏为可调实现，尚无完整参考视频时序可核对。详见 [美术优化说明](docs/Block-Blast-Godot-美术优化.md)。
 
 ## 配置入口
 
-默认规则资源为 [`config/default_rules.tres`](config/default_rules.tres)，类型定义在 [`scripts/rules/game_rules_config.gd`](scripts/rules/game_rules_config.gd)。可在 Godot Inspector 中编辑棋盘尺寸、托盘数量、形状池及方向、计分、生成重试次数、色板/主题和动画时长；默认落子 0.12 秒、清除 0.22 秒、非法回弹 0.20 秒。
+默认规则资源为 [`config/default_rules.tres`](config/default_rules.tres)，类型定义在 [`scripts/rules/game_rules_config.gd`](scripts/rules/game_rules_config.gd)。可在 Godot Inspector 中编辑棋盘尺寸、托盘数量、形状池及方向、计分、生成重试次数、色板/主题和动画时长。统一美术绘制入口为 [`scripts/ui/block_art.gd`](scripts/ui/block_art.gd)，本轮调优只涉及视觉与反馈。
 
 默认配置对应已确认的 MVP。调整参数后需按目标玩法重新验收，不能沿用默认配置的结论。
 
@@ -39,13 +49,13 @@ Godot 4.7 的桌面方块消除游戏：拖动方块、填满行或列并消除�
 python tools/export_windows.py --godot "E:\Tools\Godot\Godot_v4.7.2-stable_win64.exe" --configuration release
 ```
 
-加 `--check` 仅预检、不导出；`--configuration debug` 生成调试包。版本号来自 `project.godot`，当前为 `0.1.0`。发布包输出到 `dist/Block-0.1.0-windows-x86_64-release.zip`，须完整解压后按 `START-HERE.txt` 运行，保留 `.pck` 和所有随附文件；若导出生成 DLL 或 `x86_64` 子目录，也须完整保留。包内 `build-info.json` 含文件 SHA256，ZIP 旁 `.sha256` 用于核对压缩包。
+加 `--check` 仅预检、不导出；`--configuration debug` 生成调试包。版本号来自 `project.godot`，当前源码为 `0.2.0`，后续发布输出遵循 `dist/Block-<版本>-windows-x86_64-release.zip`。须完整解压后按 `START-HERE.txt` 运行，保留 `.pck` 和所有随附文件；若导出生成 DLL 或 `x86_64` 子目录，也须完整保留。包内 `build-info.json` 含文件 SHA256，ZIP 旁 `.sha256` 用于核对压缩包。
 
-本轮 release/debug 均已实际导出并打包完成，文件 SHA256、ZIP CRC 与压缩包校验值均匹配；尚未启动导出的游戏。当前本机使用已校验的 `work/release-templates/4.7.2.stable` 模板，重新打包时追加 `--templates-dir "work/release-templates/4.7.2.stable"`。模板安装、包结构和用户验收步骤见 [Windows 发布说明](docs/Block-Blast-Godot-Windows发布.md)，检查证据见 [验收记录](docs/Block-Blast-Godot-验收记录.md)。
+前一阶段的 `0.1.0` release/debug 包已导出，文件 SHA256、ZIP CRC 与压缩包校验值均匹配，独立 EXE 尚待用户验收。本地已有 `build/`、`dist/` 中的 `0.1.0` 包仍是粉色逻辑基线，**不含本轮新美术**；本轮不重新打包 `0.2.0`，先按 F5 验收源码。当前本机使用已校验的 `work/release-templates/4.7.2.stable` 模板，将来重新打包时追加 `--templates-dir "work/release-templates/4.7.2.stable"`。模板安装、包结构和用户验收步骤见 [Windows 发布说明](docs/Block-Blast-Godot-Windows发布.md)，历史检查证据见 [验收记录](docs/Block-Blast-Godot-验收记录.md)。
 
 ## 当前开发状态（2026-10-14）
 
-MVP 逻辑、放置与清除分别计分、HUD 明细及 Game Over 布局修复已实现。用户最新确认 Game Over 面板修复验收通过；Windows 发布配置、预检和打包工具已交付，本机 `0.1.0` release/debug 包已生成，待用户运行独立 EXE 与跨机验收。
+第一阶段逻辑开发按用户要求停止，现有规则作为冻结基线。用户已确认 Game Over 空白修复通过；Windows 发布工具和历史 `0.1.0` 包保留。本轮 `0.2.0` 交付集中于 UI、布局、方块材质、消除反馈、加分效果、视觉震动与提醒，实际观感等待用户在 Godot 中验收。
 
 按用户约定，只进行必要的轻量编译与静态检查；实际界面、输入、声音和导出包启动由用户验收，不自动控制桌面或运行完整自动验收。
 
@@ -54,6 +64,7 @@ MVP 逻辑、放置与清除分别计分、HUD 明细及 Game Over 布局修复�
 - [需求文档](docs/Block-Blast-Godot-需求文档.md)：已确认的 MVP 规则、验收标准与保留扩展。
 - [验收记录](docs/Block-Blast-Godot-验收记录.md)：历史真实检查、用户反馈和本轮证据边界。
 - [剩余逻辑开发与用户验收清单](docs/Block-Blast-Godot-剩余逻辑开发.md)：当前待验收项、Windows 发布工作与 P1 范围。
+- [美术优化说明](docs/Block-Blast-Godot-美术优化.md)：第二阶段视觉方向、反馈边界与用户验收步骤。
 - [Windows 发布说明](docs/Block-Blast-Godot-Windows发布.md)：模板、release/debug 导出、打包及无编辑器运行验收。
 
-后续工作为 Windows 导出包与目标机器验收、按反馈修复；触控、旋转/翻转、断点续局、特殊方块和线上功能保留到 P1 及以后。
+下一步为 `0.2.0` 美术源码验收与调整；通过后再导出新包。触控、硬件震动、旋转/翻转、断点续局、特殊方块和线上功能保留到 P1 及以后。

@@ -43,7 +43,7 @@ func _run_tests() -> void:
 		main._set_setting("sound_enabled", false)
 		_check(preview_button.disabled, "音效关闭时试听按钮禁用")
 		main._set_setting("sound_enabled", true)
-	for key in ["sound_enabled", "music_enabled", "reduced_motion"]:
+	for key in ["sound_enabled", "music_enabled", "reduced_motion", "screen_shake"]:
 		var toggle: CheckButton = main.setting_controls[key]
 		_equal(toggle.get_theme_color("font_focus_color"), main.rules_config.text_color, "键盘聚焦时开关文字保持可读")
 		var previous: bool = main.save_data[key]

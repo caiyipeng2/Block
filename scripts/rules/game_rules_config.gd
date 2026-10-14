@@ -11,21 +11,22 @@ extends Resource
 @export var shape_pool: Array = []
 
 @export var palette: PackedColorArray = PackedColorArray([
-	Color("#ef476f"),
-	Color("#06d6a0"),
-	Color("#118ab2"),
-	Color("#ffd166"),
-	Color("#8338ec")
+	Color("#ff8b26"),
+	Color("#a85ce8"),
+	Color("#4477f3"),
+	Color("#53d63d"),
+	Color("#ffd14d"),
+	Color("#29c4e8")
 ])
-@export var background_color: Color = Color("#fdf2f8")
-@export var board_color: Color = Color("#ffffff")
-@export var empty_cell_color: Color = Color("#fce7f3")
-@export var primary_color: Color = Color("#ec4899")
-@export var secondary_color: Color = Color("#8b5cf6")
-@export var text_color: Color = Color("#0f172a")
+@export var background_color: Color = Color("#38558f")
+@export var board_color: Color = Color("#182443")
+@export var empty_cell_color: Color = Color("#202b49")
+@export var primary_color: Color = Color("#ffc94a")
+@export var secondary_color: Color = Color("#4477f3")
+@export var text_color: Color = Color("#edf7ff")
 
 @export var placement_duration: float = 0.12
-@export var clear_duration: float = 0.22
+@export var clear_duration: float = 0.32
 @export var rebound_duration: float = 0.20
 
 func _init() -> void:

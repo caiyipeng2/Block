@@ -11,6 +11,7 @@ static func defaults() -> Dictionary:
 		"sound_enabled": true,
 		"music_enabled": true,
 		"reduced_motion": false,
+		"screen_shake": true,
 	}
 
 static func load_data(path: String = SAVE_PATH) -> Dictionary:
@@ -64,7 +65,7 @@ static func _normalized_data(data: Dictionary) -> Dictionary:
 		# JSON decodes whole numbers as floats; reject values outside int64.
 		if score >= 0.0 and score < 9223372036854775808.0:
 			payload["high_score"] = int(score)
-	for key: String in ["sound_enabled", "music_enabled", "reduced_motion"]:
+	for key: String in ["sound_enabled", "music_enabled", "reduced_motion", "screen_shake"]:
 		var value: Variant = data.get(key)
 		if value is bool:
 			payload[key] = value

@@ -55,7 +55,8 @@ func _test_defaults() -> void:
 		"sound_enabled": true,
 		"music_enabled": true,
 		"reduced_motion": false,
-	}, "defaults contain the score and all three settings")
+		"screen_shake": true,
+	}, "defaults contain the score and all four settings")
 
 func _test_path_contract() -> void:
 	_expect(_supports_isolated_paths(), "load_data and save_data accept an optional isolated path")
@@ -107,7 +108,7 @@ func _test_invalid_score_types() -> void:
 		_expect_equal(_load(_json_fixture("invalid-score.json", payload)), expected, "invalid score type %s uses zero without losing valid settings" % [value])
 
 func _test_invalid_boolean_types() -> void:
-	for field: String in ["sound_enabled", "music_enabled", "reduced_motion"]:
+	for field: String in ["sound_enabled", "music_enabled", "reduced_motion", "screen_shake"]:
 		for value: Variant in ["false", 0, 1, null, [], {}]:
 			var payload := _changed_settings()
 			payload[field] = value
@@ -126,12 +127,12 @@ func _test_negative_score() -> void:
 func _test_round_trip_changed_settings() -> void:
 	var path := _path("round-trip-changed.json")
 	_expect(_save(_changed_settings(), path), "write changed settings")
-	_expect_equal(_load(path), _changed_settings(), "score and three changed boolean settings round trip")
+	_expect_equal(_load(path), _changed_settings(), "score and four changed boolean settings round trip")
 
 func _test_round_trip_default_settings() -> void:
 	var path := _path("round-trip-default.json")
 	_expect(_save(Repository.defaults(), path), "write default settings")
-	_expect_equal(_load(path), Repository.defaults(), "zero score and three default boolean settings round trip")
+	_expect_equal(_load(path), Repository.defaults(), "zero score and four default boolean settings round trip")
 
 func _test_save_normalizes_invalid_fields() -> void:
 	var path := _path("invalid-save.json")
@@ -185,7 +186,7 @@ func _test_success_removes_temp() -> void:
 	_expect(not FileAccess.file_exists(path + ".tmp"), "successful replacement leaves no temporary file")
 
 func _changed_settings() -> Dictionary:
-	return {"version": 1, "high_score": 2468, "sound_enabled": false, "music_enabled": false, "reduced_motion": true}
+	return {"version": 1, "high_score": 2468, "sound_enabled": false, "music_enabled": false, "reduced_motion": true, "screen_shake": false}
 
 func _path(name: String) -> String:
 	return _directory.path_join(name)
