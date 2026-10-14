@@ -325,9 +325,16 @@ func _style_button(button: Button, accent: Color, foreground: Color) -> void:
 	button.add_theme_stylebox_override("normal", _button_box(accent))
 	button.add_theme_stylebox_override("hover", _button_box(accent.lightened(0.12)))
 	button.add_theme_stylebox_override("pressed", _button_box(accent.darkened(0.10)))
-	var focus := _button_box(Color.TRANSPARENT)
+	# Focus overlays the normal/hover style; it must not add a tinted shadow.
+	var focus := StyleBoxFlat.new()
+	focus.bg_color = Color.TRANSPARENT
+	focus.draw_center = false
 	focus.border_color = AQUA
-	focus.set_border_width_all(3)
+	focus.set_border_width_all(2)
+	focus.set_corner_radius_all(16)
+	focus.set_expand_margin_all(3.0)
+	focus.shadow_color = Color.TRANSPARENT
+	focus.shadow_size = 0
 	button.add_theme_stylebox_override("focus", focus)
 	button.add_theme_stylebox_override("disabled", _button_box(Color(accent, 0.35)))
 
@@ -490,9 +497,9 @@ func _layout_controls() -> void:
 	_stats_label.position = Vector2(stage_left, score_y)
 	_stats_label.size = Vector2(stage_width, score_height)
 	_stats_label.pivot_offset = _stats_label.size * 0.5
-	var detail_y := header_height() - 12.0
+	var detail_y := field.position.y - 52.0
 	_detail_label.position = Vector2(stage_left, detail_y)
-	_detail_label.size = Vector2(stage_width, 20.0)
+	_detail_label.size = Vector2(stage_width, 24.0)
 	_detail_label.add_theme_font_size_override("font_size", 12 if narrow else (clampi(int(stage_width * 0.018), 14, 22) if portrait else 14))
 	_layout_overlay()
 	_layout_notice()
@@ -502,15 +509,15 @@ func _effective_playfield() -> Rect2:
 	if _playfield.size.x > 0.0:
 		return _playfield
 	var side := minf(maxf(size.x - 48.0, 1.0), 520.0)
-	return Rect2(Vector2((size.x - side) * 0.5, header_height() + 12.0), Vector2(side, side))
+	return Rect2(Vector2((size.x - side) * 0.5, header_height() + 48.0), Vector2(side, side))
 
 func _layout_notice() -> void:
 	if not is_instance_valid(_notice):
 		return
 	var field := _effective_playfield()
 	var width := minf(field.size.x, 460.0)
-	_notice.size = Vector2(maxf(width, 1.0), 36.0)
-	_notice.position = Vector2(field.get_center().x - width * 0.5, minf(field.end.y + 8.0, size.y - 54.0))
+	_notice.size = Vector2(maxf(width, 1.0), 40.0)
+	_notice.position = Vector2(field.get_center().x - width * 0.5, field.end.y + 28.0)
 
 func _layout_overlay() -> void:
 	_overlay_title.custom_minimum_size = Vector2(0.0, 32.0)

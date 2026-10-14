@@ -48,7 +48,6 @@ var shake_duration := 0.0
 var shake_strength := 0.0
 var last_notice_round := -1
 var preview_clear_cells: Array[Vector2i] = []
-var tray_availability: Dictionary = {}
 
 func _ready() -> void:
 	set_process_input(true)
@@ -167,8 +166,6 @@ func _handle_press(position: Vector2) -> void:
 			dragging_index = index
 			drag_mouse = position
 			var piece: PieceData = game.remaining_pieces[index]
-			if game.board.get_legal_origins(piece).is_empty():
-				gameplay_ui.show_notice("这块暂时放不下，先试试其他方块", "info", _reduced_motion())
 			drag_grab_offset = (position - _tray_piece_origin(index, piece)) / _tray_unit(index, piece)
 			_update_drag_preview()
 
@@ -537,12 +534,10 @@ func _stop_board_shake() -> void:
 
 func _sync_piece_colors() -> void:
 	var active: Dictionary = {}
-	tray_availability.clear()
 	if game != null:
 		for index in range(game.remaining_pieces.size()):
 			var identifier := game.remaining_pieces[index].get_instance_id()
 			active[identifier] = piece_colors.get(identifier, (index + game.round_index * rules_config.tray_count) % maxi(1, rules_config.palette.size()))
-			tray_availability[identifier] = not game.board.get_legal_origins(game.remaining_pieces[index]).is_empty()
 	piece_colors = active
 
 func _piece_color_id(piece: PieceData) -> int:
@@ -734,7 +729,7 @@ func _tray_slot_rect(index: int) -> Rect2:
 	var count := maxi(1, rules_config.tray_count)
 	var tray_width := minf(size.x - BOARD_MARGIN * 2.0, maxf(_board_rect().size.x, 440.0))
 	var slot_width := (tray_width - float(count - 1) * 16.0) / float(count)
-	var tray_top := _board_rect().end.y + 42.0
+	var tray_top := _board_rect().end.y + 84.0
 	return Rect2(Vector2((size.x - tray_width) * 0.5 + float(index) * (slot_width + 16.0), tray_top), Vector2(slot_width, _tray_height() - 32.0))
 
 func _piece_bounds(piece: PieceData) -> Rect2i:
@@ -801,8 +796,9 @@ func _menu_button_rect() -> Rect2:
 	return gameplay_ui.get_menu_rect() if gameplay_ui != null else Rect2()
 
 func _board_rect() -> Rect2:
-	var top := _header_height() + 12.0
-	var available_height := size.y - _tray_height() - top - 40.0
+	var top := _header_height() + 48.0
+	# Keep distinct bands for the notice, tray and bottom instruction.
+	var available_height := size.y - _tray_height() - top - 84.0
 	var width_limit := size.x * 0.90 if size.y > size.x else 660.0
 	var board_side := maxf(48.0, minf(width_limit, minf(size.x - BOARD_MARGIN * 2.0, available_height)))
 	return Rect2(Vector2((size.x - board_side) * 0.5, top), Vector2(board_side, board_side))
@@ -924,16 +920,10 @@ func _draw_tray() -> void:
 			continue
 		var origin := _tray_piece_origin(index, piece)
 		var cell := _tray_unit(index, piece)
-		var available := bool(tray_availability.get(piece.get_instance_id(), true))
 		for local_cell in piece.cells:
 			var p := origin + Vector2(local_cell.x, local_cell.y) * cell
 			var r := Rect2(p + Vector2.ONE, Vector2.ONE * (cell - 2.0))
-			Art.draw_block(self, r, _piece_color(piece), 1.0 if available else 0.46)
-		if not available and not input_locked:
-			var slot := _tray_slot_rect(index)
-			var caption := "暂不能放"
-			var width := ThemeDB.fallback_font.get_string_size(caption, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
-			draw_string(ThemeDB.fallback_font, Vector2(slot.get_center().x - width * 0.5, slot.end.y + 2.0), caption, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("#adc0db"))
+			Art.draw_block(self, r, _piece_color(piece))
 
 func _draw_drag_layer() -> void:
 	if game == null or dragging_index >= game.remaining_pieces.size():
