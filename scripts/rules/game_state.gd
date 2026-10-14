@@ -1,7 +1,7 @@
 class_name GameState
 extends RefCounted
 
-enum Status { PLAYING, GAME_OVER }
+enum Status { PLAYING, GAME_OVER, LEVEL_COMPLETE }
 
 var rules_config: GameRulesConfig
 var board: BoardRules
@@ -19,8 +19,11 @@ var generation_diagnostics: Dictionary = {}
 var last_placement_points: int = 0
 var last_clear_points: int = 0
 var last_clear_lines: int = 0
+var mode := "free"
+var level_id := 0
+var target_score := 0
 
-func _init(initial_seed: int = 0, board_size: int = 8, config: GameRulesConfig = null) -> void:
+func _init(initial_seed: int = 0, board_size: int = 8, config: GameRulesConfig = null, setup: Dictionary = {}) -> void:
 	rules_config = config if config != null else GameRulesConfig.new()
 	var effective_size := board_size
 	if config != null:
@@ -30,10 +33,48 @@ func _init(initial_seed: int = 0, board_size: int = 8, config: GameRulesConfig =
 	board = BoardRules.new(effective_size)
 	scoring = Scoring.new(rules_config)
 	generator = RoundGenerator.new(initial_seed, rules_config)
-	remaining_pieces = generator.generate_solvable_round(board)
-	generation_diagnostics = generator.last_diagnostics.duplicate(true)
+	mode = str(setup.get("mode", "free"))
+	level_id = maxi(0, int(setup.get("level_id", 0)))
+	target_score = maxi(0, int(setup.get("target_score", 0))) if mode == "adventure" else 0
+	generator.candidate_samples = clampi(int(setup.get("candidate_samples", 1)), 1, 12) if mode == "adventure" else 1
+	generator.solution_count_cap = clampi(int(setup.get("solution_count_cap", 8)), 2, 32)
+	for entry: Dictionary in setup.get("initial_cells", []):
+		board.set_cell(int(entry["x"]), int(entry["y"]), int(entry["color"]))
+	if _accept_initial_tray(setup):
+		generation_diagnostics = setup.get("initial_diagnostics", {}).duplicate(true)
+		if mode == "adventure" and generator.candidate_samples > 1:
+			remaining_pieces = generator.generate_solvable_round(board, remaining_pieces)
+			generation_diagnostics["difficulty_selection"] = generator.last_diagnostics.duplicate(true)
+	else:
+		remaining_pieces = generator.generate_solvable_round(board)
+		generation_diagnostics = generator.last_diagnostics.duplicate(true)
 	if remaining_pieces.is_empty():
 		status = Status.GAME_OVER
+
+func _accept_initial_tray(setup: Dictionary) -> bool:
+	var pieces: Array[PieceData] = []
+	for piece in setup.get("initial_pieces", []):
+		if not piece is PieceData or not piece.is_valid_for_config(rules_config):
+			return false
+		pieces.append(piece.duplicate_piece())
+	if pieces.size() != rules_config.tray_count:
+		return false
+	var path: Array = setup.get("initial_solution", [])
+	if path.size() != pieces.size():
+		return false
+	var check := board.duplicate_board()
+	var seen := {}
+	for step: Dictionary in path:
+		var index := int(step.get("piece_index", -1))
+		var origin: Vector2i = step.get("origin", Vector2i(-99, -99))
+		if index < 0 or index >= pieces.size() or seen.has(index) or not check.can_place(pieces[index], origin):
+			return false
+		seen[index] = true
+		check.place(pieces[index], origin, 0)
+		check.clear_full_lines()
+	remaining_pieces = pieces
+	generator.last_solution.assign(path)
+	return true
 
 func has_legal_move_for_any_remaining_piece() -> bool:
 	for piece in remaining_pieces:
@@ -66,7 +107,9 @@ func place_piece(piece_index: int, origin: Vector2i, color_id: int = 0) -> Dicti
 	total_moves += 1
 	remaining_pieces.remove_at(piece_index)
 	var round_refilled := false
-	if remaining_pieces.is_empty():
+	if mode == "adventure" and target_score > 0 and scoring.score >= target_score:
+		status = Status.LEVEL_COMPLETE
+	elif remaining_pieces.is_empty():
 		round_index += 1
 		remaining_pieces = generator.generate_solvable_round(board)
 		generation_diagnostics = generator.last_diagnostics.duplicate(true)
@@ -95,6 +138,7 @@ func place_piece(piece_index: int, origin: Vector2i, color_id: int = 0) -> Dicti
 		"placed_color": color_id,
 		"round_refilled": round_refilled,
 		"generation_diagnostics": generation_diagnostics.duplicate(true),
+		"level_complete": status == Status.LEVEL_COMPLETE,
 		"status": status
 	}
 
@@ -114,4 +158,7 @@ func _invalid_move_result(reason: String) -> Dictionary:
 
 func is_game_over() -> bool:
 	return status == Status.GAME_OVER
+
+func is_level_complete() -> bool:
+	return status == Status.LEVEL_COMPLETE
 

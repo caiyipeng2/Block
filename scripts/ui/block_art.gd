@@ -81,6 +81,8 @@ static func draw_icon(canvas: CanvasItem, kind: String, rect: Rect2, color: Colo
 	var origin := rect.get_center() - Vector2.ONE * side * 0.5
 	var weight := maxf(1.4, side * 0.08)
 	match kind:
+		"back":
+			canvas.draw_polyline(PackedVector2Array([origin + Vector2(0.65, 0.15) * side, origin + Vector2(0.28, 0.50) * side, origin + Vector2(0.65, 0.85) * side]), color, weight, true)
 		"crown":
 			_polygon(canvas, origin, side, [Vector2(0.10, 0.32), Vector2(0.30, 0.51), Vector2(0.50, 0.12), Vector2(0.70, 0.51), Vector2(0.90, 0.32), Vector2(0.80, 0.81), Vector2(0.20, 0.81)], color)
 			canvas.draw_rect(Rect2(origin + Vector2(0.20, 0.84) * side, Vector2(0.60, 0.07) * side), color.darkened(0.08))

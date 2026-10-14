@@ -6,6 +6,8 @@ const ClearColorResolver := preload("res://scripts/ui/clear_color_resolver.gd")
 const FeedbackAudioScript := preload("res://scripts/audio/feedback_audio.gd")
 const MoveFeedbackScript := preload("res://scripts/ui/move_feedback.gd")
 const GameplayControlsScript := preload("res://scripts/ui/gameplay_controls.gd")
+const ModeCatalog := preload("res://scripts/modes/mode_catalog.gd")
+const LevelSelectScript := preload("res://scripts/ui/level_select.gd")
 
 signal quit_requested
 
@@ -51,6 +53,10 @@ var last_notice_round := -1
 var preview_clear_colors: Dictionary = {}
 var board_placement_orders: Dictionary = {}
 var placement_sequence := 0
+var game_mode := "free"
+var current_level := 0
+var level_select: Control
+var level_completion_recorded := false
 
 func _ready() -> void:
 	set_process_input(true)
@@ -75,6 +81,15 @@ func _ready() -> void:
 	gameplay_ui.restart_requested.connect(_request_restart)
 	gameplay_ui.menu_requested.connect(_request_menu)
 	gameplay_ui.settings_requested.connect(_request_game_settings)
+	gameplay_ui.next_level_requested.connect(_start_next_level)
+	gameplay_ui.levels_requested.connect(_return_to_menu)
+	level_select = LevelSelectScript.new()
+	level_select.name = "LevelSelect"
+	level_select.z_index = 12
+	add_child(level_select)
+	level_select.back_requested.connect(_show_menu)
+	level_select.level_started.connect(_start_adventure_level)
+	level_select.level_selected.connect(_update_level_description)
 	_create_menu_controls()
 	_create_confirmation_dialog()
 	resized.connect(_layout_controls)
@@ -106,13 +121,15 @@ func _input(event: InputEvent) -> void:
 		if event.keycode == KEY_ESCAPE:
 			if screen == "game":
 				_toggle_pause()
-			elif screen == "game_over":
+			elif screen == "game_over" or screen == "level_complete":
 				_return_to_menu()
+			elif screen == "levels":
+				_show_menu()
 			elif screen == "settings":
 				_close_settings()
 			elif screen == "menu":
 				_request_quit()
-		if event.keycode == KEY_R and (screen == "game" or screen == "game_over"):
+		if event.keycode == KEY_R and screen in ["game", "game_over", "level_complete"]:
 			_request_restart()
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if not event.pressed and dragging_index >= 0:
@@ -135,7 +152,11 @@ func _handle_press(position: Vector2) -> void:
 		return
 	if screen == "menu":
 		if _menu_start_button_rect().has_point(position):
-			_start_game()
+			_start_game("free")
+		elif _menu_classic_button_rect().has_point(position):
+			_start_game("classic")
+		elif _menu_adventure_button_rect().has_point(position):
+			_open_levels()
 		elif _menu_settings_button_rect().has_point(position):
 			_show_settings()
 		elif _menu_exit_button_rect().has_point(position):
@@ -225,12 +246,14 @@ func _handle_release(position: Vector2) -> void:
 			cleared_lines,
 			int(result.get("combo", 0)),
 		]
-		if game.scoring.score > int(save_data.get("high_score", 0)):
+		if game.scoring.score > _stored_high_score():
 			var first_record := not new_record
 			new_record = true
 			_save_high_score()
 			if first_record:
 				gameplay_ui.show_notice("新纪录！继续挑战", "record", _reduced_motion())
+		if game.is_level_complete():
+			_record_level_completion()
 		_sync_piece_colors()
 		_refresh_controls()
 		move_feedback.set_paused(false)
@@ -251,12 +274,33 @@ func _handle_release(position: Vector2) -> void:
 		_play_feedback("invalid")
 	queue_redraw()
 
-func _start_game() -> void:
+func _start_game(mode: String = "", level_id: int = 0) -> void:
 	_clear_confirmation()
 	_reset_visual_feedback()
 	_save_high_score()
-	game = GameState.new(Time.get_ticks_msec(), rules_config.board_size, rules_config)
+	if not mode.is_empty():
+		game_mode = mode
+	if level_id > 0:
+		current_level = level_id
+	var seed := Time.get_ticks_msec()
+	var setup: Dictionary = {}
+	if game_mode == "classic":
+		current_level = 0
+		setup = ModeCatalog.classic_setup(seed, rules_config)
+	elif game_mode == "adventure":
+		current_level = clampi(current_level, 1, _unlocked_level())
+		setup = ModeCatalog.level_setup(current_level, ModeCatalog.MAX_LEVELS, rules_config)
+		seed = int(setup["level_seed"])
+	else:
+		game_mode = "free"
+		current_level = 0
+	game = GameState.new(seed, rules_config.board_size, rules_config, setup)
+	level_completion_recorded = false
 	board_placement_orders.clear()
+	var initial_cells: Array = setup.get("initial_cells", [])
+	for index in range(initial_cells.size()):
+		var entry: Dictionary = initial_cells[index]
+		board_placement_orders[Vector2i(int(entry["x"]), int(entry["y"]))] = index - initial_cells.size()
 	placement_sequence = 0
 	piece_colors.clear()
 	_sync_piece_colors()
@@ -269,8 +313,43 @@ func _start_game() -> void:
 	last_gain = 0
 	_play_feedback("click")
 	_refresh_controls()
-	gameplay_ui.show_notice("拖动方块，填满一行或一列", "info", _reduced_motion())
+	var notice := "目标 %d 分，挑战第 %d 关" % [game.target_score, current_level] if game_mode == "adventure" else "拖动方块，填满一行或一列"
+	gameplay_ui.show_notice(notice, "info", _reduced_motion())
 	queue_redraw()
+
+func _unlocked_level() -> int:
+	return mini(ModeCatalog.MAX_LEVELS, int(save_data.get("adventure_highest_completed", 0)) + 1)
+
+func _open_levels() -> void:
+	screen = "levels"
+	paused = false
+	level_select.configure(ModeCatalog.MAX_LEVELS, int(save_data.get("adventure_highest_completed", 0)))
+	level_select.set_save_status("进度保存失败，仅本次运行有效" if not save_status_text.is_empty() else "")
+	_refresh_controls()
+	_update_level_description(level_select.selected_level)
+	level_select.activate()
+	_play_feedback("click")
+	queue_redraw()
+
+func _update_level_description(level_id: int) -> void:
+	var target := ModeCatalog.target_score_for_level(level_id)
+	level_select.set_level_description("第 %d 关 · 目标 %d 分" % [level_id, target])
+
+func _start_adventure_level(level_id: int) -> void:
+	if level_id >= 1 and level_id <= _unlocked_level():
+		_start_game("adventure", level_id)
+
+func _start_next_level() -> void:
+	if game != null and game.is_level_complete() and current_level < ModeCatalog.MAX_LEVELS:
+		_start_adventure_level(current_level + 1)
+
+func _record_level_completion() -> void:
+	if game == null or game_mode != "adventure" or not game.is_level_complete():
+		return
+	if not level_completion_recorded:
+		save_data = SaveRepository.record_level_completed(save_data, current_level, game.scoring.score)
+		level_completion_recorded = true
+	_persist_data()
 
 func _create_confirmation_dialog() -> void:
 	confirmation_dialog = ConfirmationDialog.new()
@@ -298,7 +377,7 @@ func _create_confirmation_dialog() -> void:
 func _request_restart() -> void:
 	if exiting or input_locked or not confirmation_action.is_empty():
 		return
-	if screen == "game_over":
+	if screen == "game_over" or screen == "level_complete":
 		_start_game()
 	elif screen == "game":
 		_show_confirmation("restart")
@@ -306,7 +385,7 @@ func _request_restart() -> void:
 func _request_menu() -> void:
 	if exiting or input_locked or not confirmation_action.is_empty():
 		return
-	if screen == "game_over":
+	if screen == "game_over" or screen == "level_complete":
 		_return_to_menu()
 	elif screen == "game":
 		_show_confirmation("menu")
@@ -325,9 +404,10 @@ func _show_confirmation(action: String) -> void:
 		confirmation_dialog.dialog_text = "重新开始会清空当前棋盘和本局分数。\n最高分和设置会保留。"
 		confirmation_dialog.ok_button_text = "确定重新开始"
 	else:
-		confirmation_dialog.title = "确认返回菜单"
-		confirmation_dialog.dialog_text = "返回菜单后，本局棋盘不会保存。\n最高分和设置会保留。"
-		confirmation_dialog.ok_button_text = "确定返回菜单"
+		var destination := "选关" if game_mode == "adventure" else "菜单"
+		confirmation_dialog.title = "确认返回" + destination
+		confirmation_dialog.dialog_text = "返回%s后，本局棋盘不会保存。\n最高分、通关记录和设置会保留。" % destination
+		confirmation_dialog.ok_button_text = "确定返回" + destination
 	confirmation_dialog.popup_centered(Vector2i(440, 190))
 	# Default keyboard focus stays on the non-destructive choice.
 	confirmation_dialog.get_cancel_button().grab_focus()
@@ -406,7 +486,7 @@ func _set_setting(key: String, value: bool) -> void:
 
 func _persist_data() -> void:
 	var saved := SaveRepository.save_data(save_data, save_path)
-	save_status_text = "" if saved else "保存失败，当前设置仅在本次运行生效。"
+	save_status_text = "" if saved else "保存失败，进度、最高分和设置仅本次生效。"
 
 func _show_settings() -> void:
 	settings_origin = "menu"
@@ -433,7 +513,12 @@ func _request_game_settings() -> void:
 
 func _close_settings() -> void:
 	if settings_origin == "game" and game != null:
-		screen = "game_over" if game.is_game_over() and not input_locked else "game"
+		screen = "game"
+		if not input_locked:
+			if game.is_level_complete():
+				screen = "level_complete"
+			elif game.is_game_over():
+				screen = "game_over"
 		paused = settings_was_paused if screen == "game" else false
 		move_feedback.set_paused(paused)
 		_refresh_controls()
@@ -506,7 +591,10 @@ func _return_to_menu() -> void:
 	status_text = ""
 	last_gain = 0
 	piece_colors.clear()
-	_show_menu()
+	if game_mode == "adventure":
+		_open_levels()
+	else:
+		_show_menu()
 
 func _reduced_motion() -> bool:
 	return bool(save_data.get("reduced_motion", false))
@@ -532,6 +620,10 @@ func _on_feedback_finished() -> void:
 	rebound_piece_id = -1
 	if game != null and screen == "game" and game.is_game_over():
 		screen = "game_over"
+		paused = false
+	elif game != null and screen == "game" and game.is_level_complete():
+		_record_level_completion()
+		screen = "level_complete"
 		paused = false
 	_refresh_controls()
 	if game != null and screen == "game" and refilled and game.round_index != last_notice_round:
@@ -581,15 +673,27 @@ func _orders_with_placement(placed_cells: Array[Vector2i], order: int) -> Dictio
 func _save_high_score() -> void:
 	if game == null:
 		return
-	save_data["high_score"] = max(int(save_data.get("high_score", 0)), game.scoring.score)
+	if game_mode == "adventure":
+		_record_level_completion()
+		return
+	var key := "classic_high_score" if game_mode == "classic" else "high_score"
+	save_data[key] = maxi(int(save_data.get(key, 0)), game.scoring.score)
 	_persist_data()
+
+func _stored_high_score() -> int:
+	if game_mode == "adventure":
+		var scores: Dictionary = save_data.get("adventure_best_scores", {})
+		return int(scores.get(str(current_level), 0))
+	return int(save_data.get("classic_high_score" if game_mode == "classic" else "high_score", 0))
 
 func _create_menu_controls() -> void:
 	menu_controls = Control.new()
 	menu_controls.name = "MenuControls"
 	menu_controls.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(menu_controls)
-	_add_button(menu_controls, "StartButton", "开始游戏", rules_config.primary_color, _start_game)
+	_add_button(menu_controls, "StartButton", "自由模式", rules_config.primary_color, _start_game.bind("free"))
+	_add_button(menu_controls, "ClassicButton", "经典模式", Color("#4477f3"), _start_game.bind("classic"))
+	_add_button(menu_controls, "AdventureButton", "闯关模式", Color("#52ce42"), _open_levels)
 	_add_button(menu_controls, "SettingsButton", "设置", rules_config.secondary_color, _show_settings)
 	_add_button(menu_controls, "ExitButton", "退出游戏", Color("#294576"), _request_quit)
 	settings_controls = Control.new()
@@ -669,9 +773,13 @@ func _layout_controls() -> void:
 	gameplay_ui.position = Vector2.ZERO
 	gameplay_ui.size = size
 	gameplay_ui.set_playfield(_board_rect())
+	level_select.position = Vector2.ZERO
+	level_select.size = size
 	move_feedback.position = Vector2.ZERO
 	move_feedback.size = size
 	_set_control_rect(menu_controls.get_node("StartButton"), _menu_start_button_rect())
+	_set_control_rect(menu_controls.get_node("ClassicButton"), _menu_classic_button_rect())
+	_set_control_rect(menu_controls.get_node("AdventureButton"), _menu_adventure_button_rect())
 	_set_control_rect(menu_controls.get_node("SettingsButton"), _menu_settings_button_rect())
 	_set_control_rect(menu_controls.get_node("ExitButton"), _menu_exit_button_rect())
 	_set_control_rect(setting_controls["sound_enabled"], _settings_sound_rect())
@@ -690,12 +798,15 @@ func _refresh_controls() -> void:
 		return
 	menu_controls.visible = screen == "menu"
 	settings_controls.visible = screen == "settings"
-	move_feedback.visible = screen == "game" or screen == "game_over"
+	level_select.visible = screen == "levels"
+	move_feedback.visible = screen in ["game", "game_over", "level_complete"]
 	if gameplay_ui != null:
 		var mode := "hidden"
 		if game != null and confirmation_action.is_empty() and not exiting:
 			if screen == "game_over":
 				mode = "game_over"
+			elif screen == "level_complete":
+				mode = "level_complete"
 			elif screen == "game":
 				mode = "paused" if paused else "playing"
 		var stats: Dictionary = {}
@@ -712,6 +823,13 @@ func _refresh_controls() -> void:
 				"new_record": new_record,
 				"input_locked": input_locked,
 				"reduced_motion": _reduced_motion(),
+				"mode": game_mode,
+				"level_id": current_level,
+				"target_score": game.target_score,
+				"highest_completed": int(save_data.get("adventure_highest_completed", 0)),
+				"has_next_level": current_level < ModeCatalog.MAX_LEVELS,
+				"total_levels": ModeCatalog.MAX_LEVELS,
+				"save_failed": not save_status_text.is_empty(),
 			}
 		gameplay_ui.set_playfield(_board_rect())
 		gameplay_ui.set_mode(mode, stats)
@@ -739,7 +857,7 @@ func _tray_hit(position: Vector2) -> int:
 	return -1
 
 func _display_high_score() -> int:
-	return maxi(int(save_data.get("high_score", 0)), game.scoring.score if game != null else 0)
+	return maxi(_stored_high_score(), game.scoring.score if game != null else 0)
 
 func _board_size() -> int:
 	return game.board.size if game != null else rules_config.board_size
@@ -787,15 +905,23 @@ func _floating_origin(position: Vector2) -> Vector2:
 	return position - drag_grab_offset * _cell_size()
 
 func _menu_start_button_rect() -> Rect2:
-	return Rect2(Vector2(size.x * 0.5 - minf(150.0, (size.x - 64.0) * 0.5), size.y * 0.5 - 4.0), Vector2(minf(300.0, size.x - 64.0), 62.0))
+	return Rect2(Vector2(size.x * 0.5 - minf(150.0, (size.x - 64.0) * 0.5), size.y * 0.5 - 68.0), Vector2(minf(300.0, size.x - 64.0), 56.0))
+
+func _menu_classic_button_rect() -> Rect2:
+	var start := _menu_start_button_rect()
+	return Rect2(start.position + Vector2(0, 74), start.size)
+
+func _menu_adventure_button_rect() -> Rect2:
+	var start := _menu_start_button_rect()
+	return Rect2(start.position + Vector2(0, 148), start.size)
 
 func _menu_settings_button_rect() -> Rect2:
 	var start := _menu_start_button_rect()
-	return Rect2(start.position + Vector2(0, 82), Vector2(start.size.x, 54))
+	return Rect2(start.position + Vector2(0, 222), Vector2(start.size.x, 52))
 
 func _menu_exit_button_rect() -> Rect2:
 	var start := _menu_start_button_rect()
-	return Rect2(start.position + Vector2(0, 156), Vector2(start.size.x, 48))
+	return Rect2(start.position + Vector2(0, 292), Vector2(start.size.x, 44))
 
 func _settings_panel_rect() -> Rect2:
 	var panel_size := Vector2(minf(470.0, size.x - 40.0), 530.0)
@@ -870,6 +996,8 @@ func _draw() -> void:
 	if screen == "settings":
 		_draw_settings()
 		return
+	if screen == "levels":
+		return
 	_draw_game()
 	if dragging_index >= 0:
 		_draw_drag_layer()
@@ -880,19 +1008,19 @@ func _draw_background() -> void:
 func _draw_menu() -> void:
 	var center := size * 0.5
 	var emblem_unit := minf(36.0, size.x * 0.075)
-	var emblem_origin := Vector2(center.x - emblem_unit * 1.5, center.y - 245.0)
+	var emblem_origin := Vector2(center.x - emblem_unit * 1.5, center.y - 300.0)
 	var emblem_cells := [Vector2i(0, 0), Vector2i(0, 1), Vector2i(1, 1), Vector2i(2, 1)]
 	for index in range(emblem_cells.size()):
 		var emblem_color := rules_config.primary_color if rules_config.palette.is_empty() else rules_config.palette[index % rules_config.palette.size()]
 		Art.draw_block(self, Rect2(emblem_origin + Vector2(emblem_cells[index]) * emblem_unit, Vector2.ONE * (emblem_unit - 2.0)), emblem_color)
-	_draw_centered_text("BLOCK BLAST", center.y - 125.0, mini(52, int(size.x * 0.13)), Color("#e5fbff"))
-	_draw_centered_text("放下方块，腾出更多可能", center.y - 84.0, 18, Color("#b9ceec"))
+	_draw_centered_text("BLOCK BLAST", center.y - 190.0, mini(52, int(size.x * 0.13)), Color("#e5fbff"))
+	_draw_centered_text("放下方块，腾出更多可能", center.y - 151.0, 18, Color("#b9ceec"))
 	var best := "最高分  %d" % int(save_data.get("high_score", 0))
-	_draw_centered_text(best, center.y - 40.0, 21, Color("#ffd154"))
-	Art.draw_icon(self, "crown", Rect2(Vector2(center.x - 115.0, center.y - 67.0), Vector2(26, 26)), Color("#ffd154"))
-	_draw_centered_text("拖动 · 消除 · 挑战新纪录", center.y + 250.0, 14, Color("#a8c1e5"))
+	_draw_centered_text(best, center.y - 106.0, 21, Color("#ffd154"))
+	Art.draw_icon(self, "crown", Rect2(Vector2(center.x - 115.0, center.y - 133.0), Vector2(26, 26)), Color("#ffd154"))
+	_draw_centered_text("自由探索 · 经典挑战 · 逐关冒险", minf(center.y + 302.0, size.y - 22.0), 14, Color("#a8c1e5"))
 	if not save_status_text.is_empty():
-		_draw_centered_text(save_status_text, center.y + 276.0, 14, Color("#ffbd9c"))
+		_draw_centered_text(save_status_text, size.y - 5.0, 12, Color("#ffbd9c"))
 
 func _draw_settings() -> void:
 	var panel := _settings_panel_rect()

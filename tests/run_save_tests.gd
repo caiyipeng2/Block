@@ -16,6 +16,9 @@ func _initialize() -> void:
 
 	_run(_test_defaults)
 	_run(_test_path_contract)
+	_run(_test_sequential_level_unlock)
+	_run(_test_replayed_level_best_score)
+	_run(_test_level_record_rejects_invalid_input)
 	if _supports_isolated_paths():
 		for test: Callable in [
 			_test_missing_file,
@@ -24,11 +27,15 @@ func _initialize() -> void:
 			_test_unknown_version,
 			_test_invalid_version_types,
 			_test_missing_fields,
+			_test_old_save_mode_migration,
 			_test_invalid_score_types,
+			_test_invalid_adventure_progress,
+			_test_invalid_adventure_best_scores,
 			_test_invalid_boolean_types,
 			_test_negative_score,
 			_test_round_trip_changed_settings,
 			_test_round_trip_default_settings,
+			_test_round_trip_mode_progress,
 			_test_save_normalizes_invalid_fields,
 			_test_save_uses_current_version,
 			_test_overwrites_existing_save,
@@ -52,11 +59,14 @@ func _test_defaults() -> void:
 	_expect_equal(Repository.defaults(), {
 		"version": 1,
 		"high_score": 0,
+		"classic_high_score": 0,
+		"adventure_highest_completed": 0,
+		"adventure_best_scores": {},
 		"sound_enabled": true,
 		"music_enabled": true,
 		"reduced_motion": false,
 		"screen_shake": true,
-	}, "defaults contain the score and all four settings")
+	}, "defaults contain independent mode records and all four settings")
 
 func _test_path_contract() -> void:
 	_expect(_supports_isolated_paths(), "load_data and save_data accept an optional isolated path")
@@ -99,13 +109,83 @@ func _test_invalid_version_types() -> void:
 func _test_missing_fields() -> void:
 	_expect_equal(_load(_json_fixture("missing-fields.json", {"version": 1})), Repository.defaults(), "missing fields use defaults")
 
+func _test_old_save_mode_migration() -> void:
+	var legacy := {"version": 1, "high_score": 2468, "sound_enabled": false, "music_enabled": false, "reduced_motion": true, "screen_shake": false}
+	var path := _json_fixture("legacy-mode-migration.json", legacy)
+	_expect_equal(_load(path), _changed_settings(), "version-1 score remains the free-mode record and valid settings survive")
+	_expect_equal(FileAccess.get_file_as_string(path), JSON.stringify(legacy), "loading an old save does not rewrite it")
+
 func _test_invalid_score_types() -> void:
-	for value: Variant in ["900", true, null, [], {}, 12.5]:
+	for field: String in ["high_score", "classic_high_score"]:
+		for value: Variant in ["900", true, null, [], {}, 12.5, 9223372036854775808.0]:
+			var payload := _changed_settings()
+			payload[field] = value
+			var expected := _changed_settings()
+			expected[field] = 0
+			_expect_equal(_load(_json_fixture("invalid-score.json", payload)), expected, "invalid %s value %s uses zero without losing valid settings" % [field, value])
+
+func _test_invalid_adventure_progress() -> void:
+	for value: Variant in [true, false, "2", null, [], {}, -1, 1.5, 10001, 9223372036854775808.0]:
 		var payload := _changed_settings()
-		payload["high_score"] = value
-		var expected := _changed_settings()
-		expected["high_score"] = 0
-		_expect_equal(_load(_json_fixture("invalid-score.json", payload)), expected, "invalid score type %s uses zero without losing valid settings" % [value])
+		payload["adventure_highest_completed"] = value
+		_expect_equal(_load(_json_fixture("invalid-adventure-progress.json", payload)), _changed_settings(), "invalid highest-completed value %s uses zero" % [value])
+	var payload := _changed_settings()
+	payload["adventure_highest_completed"] = 10000
+	_expect_equal(_load(_json_fixture("max-adventure-progress.json", payload))["adventure_highest_completed"], 10000, "bounded progress supports future level packs")
+
+func _test_invalid_adventure_best_scores() -> void:
+	for value: Variant in [true, "scores", 5, [], null]:
+		var payload := _changed_settings()
+		payload["adventure_best_scores"] = value
+		_expect_equal(_load(_json_fixture("invalid-adventure-scores.json", payload)), _changed_settings(), "invalid best-score container %s uses an empty dictionary" % [value])
+	var payload := _changed_settings()
+	payload["adventure_best_scores"] = {
+		"1": 350, "2": 0, "3": true, "4": 1.5, "5": -1,
+		"6": 9223372036854775808.0, "7": "300", "8": null,
+		"0": 100, "-1": 100, "01": 100, "+1": 100,
+		"1.0": 100, "10001": 100, "99999999999999999999": 100,
+		"10000": 800,
+	}
+	var expected := _changed_settings()
+	expected["adventure_best_scores"] = {"1": 350, "2": 0, "10000": 800}
+	_expect_equal(_load(_json_fixture("filtered-adventure-scores.json", payload)), expected, "only canonical positive level keys and finite nonnegative integer scores survive")
+	var with_numeric_key := _changed_settings()
+	with_numeric_key["adventure_best_scores"] = {1: 100, "2": 200}
+	var normalized := Repository.record_level_completed(with_numeric_key, 0, 0)
+	_expect_equal(normalized["adventure_best_scores"], {"2": 200}, "in-memory numeric keys are not silently accepted as canonical string keys")
+
+func _test_sequential_level_unlock() -> void:
+	var data := _changed_settings()
+	var first := Repository.record_level_completed(data, 1, 350)
+	_expect_equal(first["adventure_highest_completed"], 1, "first completed level unlocks only level 2")
+	_expect_equal(first["adventure_best_scores"], {"1": 350}, "first completion stores its best score")
+	_expect_equal(data, _changed_settings(), "recording returns a new record without mutating the input")
+	var skipped := Repository.record_level_completed(first, 3, 900)
+	_expect_equal(skipped, first, "skipping level 2 neither unlocks nor records level 3")
+	var second := Repository.record_level_completed(first, 2, 450)
+	_expect_equal(second["adventure_highest_completed"], 2, "completing the next level advances sequential progress")
+	_expect_equal(second["adventure_best_scores"], {"1": 350, "2": 450}, "sequential completion preserves previous scores")
+	_expect_equal(first["adventure_best_scores"], {"1": 350}, "new completion does not mutate the previous nested score dictionary")
+	_expect_equal(second["high_score"], 2468, "adventure completion preserves the free-mode high score")
+	_expect_equal(second["sound_enabled"], false, "adventure completion preserves settings")
+
+func _test_replayed_level_best_score() -> void:
+	var data := Repository.record_level_completed(Repository.defaults(), 1, 350)
+	data = Repository.record_level_completed(data, 2, 450)
+	var improved := Repository.record_level_completed(data, 1, 600)
+	_expect_equal(improved["adventure_highest_completed"], 2, "replaying an earlier level never rolls progress back")
+	_expect_equal(improved["adventure_best_scores"], {"1": 600, "2": 450}, "replay updates only an improved level best score")
+	_expect_equal(Repository.record_level_completed(improved, 1, 0), improved, "lower replay scores do not replace a best score")
+
+func _test_level_record_rejects_invalid_input() -> void:
+	var data := Repository.defaults()
+	for level_id: Variant in [0, -1, 10001, true, false, 1.0, 1.5, "1", null]:
+		_expect_equal(Repository.record_level_completed(data, level_id, 350), data, "invalid level id %s cannot unlock progress" % [level_id])
+	for score: Variant in [-1, true, false, 350.0, 350.5, "350", null, [], {}, INF, NAN]:
+		_expect_equal(Repository.record_level_completed(data, 1, score), data, "invalid completion score %s cannot unlock progress" % [score])
+	var at_limit := Repository.defaults()
+	at_limit["adventure_highest_completed"] = 10000
+	_expect_equal(Repository.record_level_completed(at_limit, 10001, 100), at_limit, "completion cannot exceed the bounded supported level range")
 
 func _test_invalid_boolean_types() -> void:
 	for field: String in ["sound_enabled", "music_enabled", "reduced_motion", "screen_shake"]:
@@ -133,6 +213,15 @@ func _test_round_trip_default_settings() -> void:
 	var path := _path("round-trip-default.json")
 	_expect(_save(Repository.defaults(), path), "write default settings")
 	_expect_equal(_load(path), Repository.defaults(), "zero score and four default boolean settings round trip")
+
+func _test_round_trip_mode_progress() -> void:
+	var payload := _changed_settings()
+	payload["classic_high_score"] = 4321
+	payload = Repository.record_level_completed(payload, 1, 350)
+	payload = Repository.record_level_completed(payload, 2, 450)
+	var path := _path("round-trip-modes.json")
+	_expect(_save(payload, path), "write independent scores and adventure progress")
+	_expect_equal(_load(path), payload, "all mode records and settings survive a save/load round trip")
 
 func _test_save_normalizes_invalid_fields() -> void:
 	var path := _path("invalid-save.json")
@@ -186,7 +275,13 @@ func _test_success_removes_temp() -> void:
 	_expect(not FileAccess.file_exists(path + ".tmp"), "successful replacement leaves no temporary file")
 
 func _changed_settings() -> Dictionary:
-	return {"version": 1, "high_score": 2468, "sound_enabled": false, "music_enabled": false, "reduced_motion": true, "screen_shake": false}
+	var data := Repository.defaults()
+	data["high_score"] = 2468
+	data["sound_enabled"] = false
+	data["music_enabled"] = false
+	data["reduced_motion"] = true
+	data["screen_shake"] = false
+	return data
 
 func _path(name: String) -> String:
 	return _directory.path_join(name)

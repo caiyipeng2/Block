@@ -7,6 +7,8 @@ signal restart_requested
 signal menu_requested
 signal resume_requested
 signal settings_requested
+signal next_level_requested
+signal levels_requested
 
 const BlockArt := preload("res://scripts/ui/block_art.gd")
 const ArtIconButton := preload("res://scripts/ui/art_icon_button.gd")
@@ -14,6 +16,7 @@ const MODE_HIDDEN := "hidden"
 const MODE_PLAYING := "playing"
 const MODE_PAUSED := "paused"
 const MODE_GAME_OVER := "game_over"
+const MODE_LEVEL_COMPLETE := "level_complete"
 const MIN_BUTTON_HEIGHT := 52.0
 const GOLD := Color("#ffd05a")
 const AQUA := Color("#73f8e4")
@@ -33,12 +36,18 @@ var _playing_root: Control
 var _title_label: Label
 var _stats_label: Label
 var _detail_label: Label
+var _mode_label: Label
+var _goal_label: Label
+var _goal_score_label: Label
 var _playing_buttons: HBoxContainer
 var _settings_button: Button
 var _pause_button: Button
 var _playing_restart_button: Button
 var _playing_menu_button: Button
 var _crown_rect := Rect2()
+var _progress_track := Rect2()
+var _current_badge := Rect2()
+var _goal_badge := Rect2()
 var _overlay_root: Control
 var _scrim: ColorRect
 var _card: PanelContainer
@@ -52,6 +61,7 @@ var _overlay_buttons: HBoxContainer
 var _resume_button: Button
 var _overlay_restart_button: Button
 var _overlay_menu_button: Button
+var _next_level_button: Button
 var _score_tween: Tween
 var _display_score := 0.0
 var _target_score := -1
@@ -76,7 +86,38 @@ func _notification(what: int) -> void:
 
 func _draw() -> void:
 	if _configured and _mode == MODE_PLAYING:
-		BlockArt.draw_icon(self, "crown", _crown_rect, GOLD)
+		if _is_adventure():
+			_draw_level_progress()
+		else:
+			BlockArt.draw_icon(self, "crown", _crown_rect, GOLD)
+
+func _is_adventure() -> bool:
+	return str(_stats.get("mode", "free")) == "adventure"
+
+func _draw_level_progress() -> void:
+	var current_center := _current_badge.get_center()
+	var goal_center := _goal_badge.get_center()
+	var radius := _current_badge.size.x * 0.5
+	draw_circle(current_center + Vector2(0.0, 3.0), radius, Color("#1b3566"))
+	draw_circle(current_center, radius, Color("#27c9d0"))
+	draw_arc(current_center, radius - 1.0, 0.0, TAU, 48, AQUA, 2.0, true)
+	draw_circle(goal_center + Vector2(0.0, 3.0), radius, Color("#1b3566"))
+	draw_circle(goal_center, radius, Color("#172b50"))
+	draw_arc(goal_center, radius - 1.0, 0.0, TAU, 48, Color("#6d8ac0"), 2.0, true)
+	var track_style := BlockArt.panel_style(Color("#182b4f"), 24, Color("#5e79ae"))
+	track_style.set_content_margin_all(0.0)
+	draw_style_box(track_style, _progress_track)
+	var goal := maxi(1, int(_stats.get("target_score", 1)))
+	var progress := clampf(_display_score / float(goal), 0.0, 1.0)
+	if progress <= 0.0:
+		return
+	var inner := _progress_track.grow(-4.0)
+	var fill_width := inner.size.x * progress
+	if fill_width > 0.0:
+		var fill := Rect2(inner.position, Vector2(fill_width, inner.size.y))
+		var fill_style := BlockArt.panel_style(AQUA if progress >= 1.0 else GOLD, 20, Color.TRANSPARENT)
+		fill_style.set_content_margin_all(0.0)
+		draw_style_box(fill_style, fill)
 
 func configure(primary: Color, secondary: Color, text: Color, surface: Color) -> void:
 	_primary = primary
@@ -100,7 +141,7 @@ func score_target() -> Vector2:
 
 ## Accepted stats include the existing score breakdown and reduced_motion.
 func set_mode(mode: String, stats: Dictionary = {}) -> void:
-	var next_mode := mode if mode in [MODE_HIDDEN, MODE_PLAYING, MODE_PAUSED, MODE_GAME_OVER] else MODE_HIDDEN
+	var next_mode := mode if mode in [MODE_HIDDEN, MODE_PLAYING, MODE_PAUSED, MODE_GAME_OVER, MODE_LEVEL_COMPLETE] else MODE_HIDDEN
 	var mode_changed := next_mode != _mode
 	_mode = next_mode
 	_stats = stats.duplicate(true)
@@ -117,12 +158,12 @@ func header_height() -> float:
 	return height
 
 func get_restart_rect() -> Rect2:
-	if _mode == MODE_PAUSED or _mode == MODE_GAME_OVER:
+	if _mode in [MODE_PAUSED, MODE_GAME_OVER, MODE_LEVEL_COMPLETE]:
 		return _local_button_rect(_overlay_restart_button)
 	return _local_button_rect(_playing_restart_button)
 
 func get_menu_rect() -> Rect2:
-	if _mode == MODE_PAUSED or _mode == MODE_GAME_OVER:
+	if _mode in [MODE_PAUSED, MODE_GAME_OVER, MODE_LEVEL_COMPLETE]:
 		return _local_button_rect(_overlay_menu_button)
 	return _local_button_rect(_playing_menu_button)
 
@@ -178,6 +219,17 @@ func _build_controls() -> void:
 	_detail_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_detail_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_playing_root.add_child(_detail_label)
+	_mode_label = _new_label("Mode", 14)
+	_mode_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_playing_root.add_child(_mode_label)
+	_goal_label = _new_label("LevelGoal", 14)
+	_goal_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_goal_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_playing_root.add_child(_goal_label)
+	_goal_score_label = _new_label("TargetScore", 36)
+	_goal_score_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_goal_score_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_playing_root.add_child(_goal_score_label)
 	_playing_buttons = HBoxContainer.new()
 	_playing_buttons.name = "Actions"
 	_playing_buttons.add_theme_constant_override("separation", 6)
@@ -241,6 +293,10 @@ func _build_controls() -> void:
 	_overlay_buttons.alignment = BoxContainer.ALIGNMENT_CENTER
 	_overlay_buttons.add_theme_constant_override("separation", 10)
 	_overlay_box.add_child(_overlay_buttons)
+	_next_level_button = _new_button("NextLevelButton", "下一关")
+	_next_level_button.tooltip_text = "开始下一关"
+	_next_level_button.pressed.connect(_on_next_level_pressed)
+	_overlay_buttons.add_child(_next_level_button)
 	_resume_button = _new_button("ResumeButton", "继续游戏")
 	_resume_button.tooltip_text = "继续游戏"
 	_resume_button.pressed.connect(_on_resume_pressed)
@@ -303,6 +359,9 @@ func _apply_theme() -> void:
 	_stats_label.add_theme_color_override("font_shadow_color", Color("#246e94"))
 	_stats_label.add_theme_constant_override("shadow_offset_y", 3)
 	_detail_label.add_theme_color_override("font_color", MUTED)
+	_mode_label.add_theme_color_override("font_color", MUTED)
+	_goal_label.add_theme_color_override("font_color", MUTED)
+	_goal_score_label.add_theme_color_override("font_color", GOLD)
 	_overlay_title.add_theme_color_override("font_color", _text)
 	_overlay_score.add_theme_color_override("font_color", AQUA)
 	_overlay_score.add_theme_color_override("font_shadow_color", Color("#124164"))
@@ -312,6 +371,7 @@ func _apply_theme() -> void:
 	_new_record_label.add_theme_color_override("font_color", GOLD)
 	_card.add_theme_stylebox_override("panel", _card_box())
 	_style_button(_resume_button, GOLD, Color("#213759"))
+	_style_button(_next_level_button, GOLD, Color("#213759"))
 	_style_button(_overlay_restart_button, GOLD, Color("#213759"))
 	_style_button(_overlay_menu_button, Color("#2c4677"), _text)
 	for button: Button in [_settings_button, _pause_button, _playing_restart_button, _playing_menu_button]:
@@ -381,20 +441,26 @@ func _apply_state(mode_changed: bool) -> void:
 	# A paused feedback animation must always be resumable.
 	_pause_button.disabled = false
 	_resume_button.disabled = false
+	_next_level_button.disabled = input_locked or not bool(_stats.get("has_next_level", false))
 	for button: Button in [_settings_button, _playing_restart_button, _playing_menu_button, _overlay_restart_button, _overlay_menu_button]:
 		button.disabled = input_locked
 	_playing_root.visible = _mode == MODE_PLAYING
-	_overlay_root.visible = _mode == MODE_PAUSED or _mode == MODE_GAME_OVER
+	_overlay_root.visible = _mode in [MODE_PAUSED, MODE_GAME_OVER, MODE_LEVEL_COMPLETE]
 	_scrim.visible = _overlay_root.visible
 	_card.visible = _overlay_root.visible
 	_resume_button.visible = _mode == MODE_PAUSED
+	_next_level_button.visible = _mode == MODE_LEVEL_COMPLETE
 	_overlay_restart_button.visible = _overlay_root.visible
 	_overlay_menu_button.visible = _overlay_root.visible
-	_new_record_label.visible = _mode == MODE_GAME_OVER
+	_new_record_label.visible = _mode in [MODE_GAME_OVER, MODE_LEVEL_COMPLETE]
+	_title_label.visible = not _is_adventure()
+	_goal_label.visible = _is_adventure()
+	_goal_score_label.visible = _is_adventure()
+	_stats_label.add_theme_color_override("font_color", Color("#efffff") if _is_adventure() else AQUA)
 	_layout_controls()
 	if _focus_pending:
 		if _mode == MODE_HIDDEN:
-			for button: Button in [_settings_button, _pause_button, _playing_restart_button, _playing_menu_button, _resume_button, _overlay_restart_button, _overlay_menu_button]:
+			for button: Button in [_settings_button, _pause_button, _playing_restart_button, _playing_menu_button, _resume_button, _overlay_restart_button, _overlay_menu_button, _next_level_button]:
 				button.release_focus()
 		else:
 			_grab_first_focus()
@@ -410,19 +476,35 @@ func _update_texts(mode_changed: bool) -> void:
 	var placement_points := int(_stats.get("placement_points", 0))
 	var clear_points := int(_stats.get("clear_points", 0))
 	var clear_lines := int(_stats.get("clear_lines", 0))
+	var adventure := _is_adventure()
+	var level_id := int(_stats.get("level_id", 1))
+	var goal := int(_stats.get("target_score", 0))
+	var gameplay_mode := str(_stats.get("mode", "free"))
+	_mode_label.text = "第 %d 关" % level_id if adventure else ("经典模式" if gameplay_mode == "classic" else "自由模式")
+	_goal_label.text = "第 %d 关 · 闯关模式" % level_id
+	_goal_score_label.text = str(goal)
 	_title_label.text = str(high_score)
 	_title_label.tooltip_text = "最高分：%d" % high_score
 	_detail_label.text = "放置 +%d  ·  消除 +%d  ·  %d 线" % [placement_points, clear_points, clear_lines]
 	if combo > 0:
 		_detail_label.text += "  ·  连击 ×%d" % combo
-	_overlay_title.text = "已暂停" if _mode == MODE_PAUSED else "游戏结束"
+	_overlay_title.text = "第 %d 关通过" % level_id if _mode == MODE_LEVEL_COMPLETE else ("已暂停" if _mode == MODE_PAUSED else ("第 %d 关未通过" % level_id if adventure else "游戏结束"))
 	_overlay_score.text = str(score)
-	_overlay_best.text = "最高分  %d" % high_score
+	_overlay_best.text = "目标  %d 分" % goal if adventure else "最高分  %d" % high_score
 	if _mode == MODE_PAUSED:
 		_overlay_stats.text = "当前连击 ×%d   ·   已消除 %d 行/列\n最近放置 +%d   消除 +%d   ·   %d 线" % [combo, total_cleared, placement_points, clear_points, clear_lines]
 	else:
 		_overlay_stats.text = "消除 %d 行/列   ·   完成 %d 回合\n最近放置 +%d   消除 +%d   ·   %d 线" % [total_cleared, round_index + 1, placement_points, clear_points, clear_lines]
-	_new_record_label.text = "新纪录！" if bool(_stats.get("new_record", false)) else "再来一局"
+	if _mode == MODE_LEVEL_COMPLETE:
+		if bool(_stats.get("save_failed", false)):
+			_new_record_label.text = "进度保存失败，本次运行已解锁"
+		else:
+			_new_record_label.text = "下一关已解锁" if bool(_stats.get("has_next_level", false)) else "恭喜完成全部 %d 关！" % int(_stats.get("total_levels", level_id))
+	elif adventure:
+		_new_record_label.text = "再挑战一次"
+	else:
+		_new_record_label.text = "新纪录！" if bool(_stats.get("new_record", false)) else "再来一局"
+	_playing_menu_button.tooltip_text = "返回选关" if adventure else "返回菜单"
 	_refresh_score(score, mode_changed)
 
 func _refresh_score(score: int, mode_changed: bool) -> void:
@@ -446,6 +528,7 @@ func _set_display_score(value: float) -> void:
 	_display_score = value
 	if is_instance_valid(_stats_label):
 		_stats_label.text = str(int(roundf(value)))
+	queue_redraw()
 
 func _stop_score_animation() -> void:
 	if is_instance_valid(_score_tween):
@@ -497,6 +580,33 @@ func _layout_controls() -> void:
 	_stats_label.position = Vector2(stage_left, score_y)
 	_stats_label.size = Vector2(stage_width, score_height)
 	_stats_label.pivot_offset = _stats_label.size * 0.5
+	_mode_label.position = Vector2(stage_left, 58.0)
+	_mode_label.size = Vector2(maxf(stage_width - icons_width - 18.0, 1.0), 22.0)
+	_mode_label.add_theme_font_size_override("font_size", 14 if narrow else 16)
+	if _is_adventure():
+		_mode_label.position.y = 19.0
+		_mode_label.size.y = 38.0
+		_mode_label.add_theme_font_size_override("font_size", 21 if narrow else 24)
+		var badge_side := clampf(stage_width * 0.115, 64.0, 92.0) if portrait else 58.0
+		var band_y := maxf(_playing_buttons.position.y + icon_side + 12.0, header_height() - badge_side - (38.0 if portrait else 18.0))
+		if stacked_actions:
+			band_y = maxf(band_y, _playing_buttons.position.y + icon_side + 12.0)
+		_current_badge = Rect2(Vector2(stage_left, band_y), Vector2.ONE * badge_side)
+		_goal_badge = Rect2(Vector2(stage_left + stage_width - badge_side, band_y), Vector2.ONE * badge_side)
+		var track_height := clampf(badge_side * 0.82, 44.0, 64.0)
+		var track_left := _current_badge.end.x + 12.0
+		var track_width := maxf(1.0, _goal_badge.position.x - 12.0 - track_left)
+		_progress_track = Rect2(Vector2(track_left, band_y + (badge_side - track_height) * 0.5), Vector2(track_width, track_height))
+		_stats_label.position = _current_badge.position + Vector2(3.0, 0.0)
+		_stats_label.size = _current_badge.size - Vector2(6.0, 0.0)
+		_stats_label.pivot_offset = _stats_label.size * 0.5
+		_stats_label.add_theme_font_size_override("font_size", _badge_font(int(_stats.get("score", 0)), badge_side))
+		_goal_score_label.position = _goal_badge.position + Vector2(3.0, 0.0)
+		_goal_score_label.size = _goal_badge.size - Vector2(6.0, 0.0)
+		_goal_score_label.add_theme_font_size_override("font_size", _badge_font(int(_stats.get("target_score", 0)), badge_side))
+		_goal_label.position = Vector2(track_left, band_y + badge_side + 2.0)
+		_goal_label.size = Vector2(track_width, 20.0 if portrait else 12.0)
+		_goal_label.add_theme_font_size_override("font_size", 14 if portrait else 12)
 	var detail_y := field.position.y - 52.0
 	_detail_label.position = Vector2(stage_left, detail_y)
 	_detail_label.size = Vector2(stage_width, 24.0)
@@ -504,6 +614,10 @@ func _layout_controls() -> void:
 	_layout_overlay()
 	_layout_notice()
 	queue_redraw()
+
+func _badge_font(value: int, diameter: float) -> int:
+	var digit_count := maxi(1, str(maxi(0, value)).length())
+	return clampi(int(minf(diameter * 0.62, (diameter - 10.0) / (float(digit_count) * 0.60))), 12, 50)
 
 func _effective_playfield() -> Rect2:
 	if _playfield.size.x > 0.0:
@@ -526,12 +640,16 @@ func _layout_overlay() -> void:
 	_overlay_stats.custom_minimum_size = Vector2(0.0, 66.0)
 	_new_record_label.custom_minimum_size = Vector2(0.0, 24.0)
 	_overlay_buttons.custom_minimum_size = Vector2(0.0, MIN_BUTTON_HEIGHT)
-	var card_width := minf(480.0, maxf(size.x - 32.0, 240.0))
+	var card_width := minf(540.0 if _mode == MODE_LEVEL_COMPLETE else 480.0, maxf(size.x - 32.0, 240.0))
 	var card_height := 376.0 if _mode == MODE_PAUSED else 428.0
 	var short_labels := card_width < 420.0
 	_resume_button.text = "继续" if short_labels else "继续游戏"
-	_overlay_restart_button.text = "重开" if short_labels else "重新开始"
-	_overlay_menu_button.text = "菜单" if short_labels else "返回菜单"
+	_next_level_button.text = "下一关" if bool(_stats.get("has_next_level", false)) else "全部通关"
+	_next_level_button.tooltip_text = "开始下一关" if bool(_stats.get("has_next_level", false)) else "已通过所有关卡"
+	_overlay_restart_button.text = ("重玩" if short_labels else "重玩本关") if _is_adventure() else ("重开" if short_labels else "重新开始")
+	_overlay_menu_button.text = ("选关" if short_labels else "返回选关") if _is_adventure() else ("菜单" if short_labels else "返回菜单")
+	_overlay_restart_button.tooltip_text = "重玩本关" if _is_adventure() else "重新开始"
+	_overlay_menu_button.tooltip_text = "返回选关" if _is_adventure() else "返回菜单"
 	_card.size = Vector2(card_width, card_height)
 	_card.position = Vector2((size.x - card_width) * 0.5, maxf((size.y - card_height) * 0.5, 12.0))
 	# PanelContainer owns Content and its margins; do not preset child anchors.
@@ -544,6 +662,8 @@ func _grab_first_focus() -> void:
 		first = _pause_button
 	elif _mode == MODE_PAUSED:
 		first = _resume_button
+	elif _mode == MODE_LEVEL_COMPLETE:
+		first = _overlay_menu_button if _next_level_button.disabled else _next_level_button
 	else:
 		first = _overlay_restart_button
 	if is_instance_valid(first) and not first.disabled and first.visible:
@@ -561,16 +681,19 @@ func _on_pause_pressed() -> void:
 		pause_requested.emit()
 
 func _on_restart_pressed() -> void:
-	if _mode == MODE_PAUSED or _mode == MODE_GAME_OVER:
+	if _mode in [MODE_PAUSED, MODE_GAME_OVER, MODE_LEVEL_COMPLETE]:
 		if not _overlay_restart_button.disabled:
 			restart_requested.emit()
 	elif not _playing_restart_button.disabled:
 		restart_requested.emit()
 
 func _on_menu_pressed() -> void:
-	if _mode == MODE_PAUSED or _mode == MODE_GAME_OVER:
+	if _mode in [MODE_PAUSED, MODE_GAME_OVER, MODE_LEVEL_COMPLETE]:
 		if not _overlay_menu_button.disabled:
-			menu_requested.emit()
+			if _mode == MODE_LEVEL_COMPLETE:
+				levels_requested.emit()
+			else:
+				menu_requested.emit()
 	elif not _playing_menu_button.disabled:
 		menu_requested.emit()
 
@@ -581,3 +704,7 @@ func _on_resume_pressed() -> void:
 func _on_settings_pressed() -> void:
 	if not _settings_button.disabled:
 		settings_requested.emit()
+
+func _on_next_level_pressed() -> void:
+	if _mode == MODE_LEVEL_COMPLETE and not _next_level_button.disabled:
+		next_level_requested.emit()
