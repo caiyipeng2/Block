@@ -116,7 +116,7 @@ static func collection_rules(base: GameRulesConfig) -> GameRulesConfig:
 	return rules
 
 static func reload_level_config() -> PackedStringArray:
-	return LevelTable.reload()
+	return LevelTable.reload_table()
 
 static func level_config_errors() -> PackedStringArray:
 	return LevelTable.errors()

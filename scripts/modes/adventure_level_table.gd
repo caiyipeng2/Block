@@ -18,7 +18,8 @@ static var _loaded := false
 static var _levels: Dictionary = {}
 static var _errors := PackedStringArray()
 
-static func reload() -> PackedStringArray:
+## Avoid Script.reload(): the preloaded class is itself a Script resource.
+static func reload_table() -> PackedStringArray:
 	_loaded = true
 	_levels = {}
 	_errors = PackedStringArray()
@@ -26,21 +27,62 @@ static func reload() -> PackedStringArray:
 	if file == null:
 		_errors.append("%s：无法读取关卡配置（文件错误码 %d）" % [PATH, FileAccess.get_open_error()])
 		return _errors.duplicate()
-	var parsed := parse_text(file.get_as_text(), PATH)
+	var bytes := file.get_buffer(file.get_length())
+	file.close()
+	if not _is_utf8(bytes):
+		_errors.append("%s：文件不是 UTF-8 编码。请在 Excel/WPS 中另存为 CSV UTF-8（逗号分隔），不要选择普通 CSV/ANSI。" % PATH)
+		return _errors.duplicate()
+	var parsed := parse_text(bytes.get_string_from_utf8(), PATH)
 	_levels = parsed["levels"]
 	_errors = parsed["errors"]
 	return _errors.duplicate()
 
 static func errors() -> PackedStringArray:
 	if not _loaded:
-		reload()
+		reload_table()
 	return _errors.duplicate()
 
 static func level(level_id: int) -> Dictionary:
 	if not _loaded:
-		reload()
+		reload_table()
 	var row: Dictionary = _levels.get(level_id, {})
 	return row.duplicate(true)
+
+## Check bytes before decoding so legacy ANSI/GBK edits produce one useful
+## configuration error instead of Unicode decode errors and garbled labels.
+static func _is_utf8(bytes: PackedByteArray) -> bool:
+	var index := 0
+	while index < bytes.size():
+		var lead := int(bytes[index])
+		if lead <= 0x7f:
+			index += 1
+			continue
+		var width := 0
+		var second_min := 0x80
+		var second_max := 0xbf
+		if lead >= 0xc2 and lead <= 0xdf:
+			width = 2
+		elif lead >= 0xe0 and lead <= 0xef:
+			width = 3
+			if lead == 0xe0:
+				second_min = 0xa0
+			elif lead == 0xed:
+				second_max = 0x9f
+		elif lead >= 0xf0 and lead <= 0xf4:
+			width = 4
+			if lead == 0xf0:
+				second_min = 0x90
+			elif lead == 0xf4:
+				second_max = 0x8f
+		else:
+			return false
+		if index + width > bytes.size() or bytes[index + 1] < second_min or bytes[index + 1] > second_max:
+			return false
+		for offset in range(2, width):
+			if bytes[index + offset] < 0x80 or bytes[index + offset] > 0xbf:
+				return false
+		index += width
+	return true
 
 ## Pure parser: this method never opens a file, mutates the cache, or modifies
 ## game rules. UTF-8 BOM, CRLF, quoted commas, and escaped quotes are supported.

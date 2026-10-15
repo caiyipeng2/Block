@@ -64,6 +64,11 @@ func _run_tests() -> void:
 	_assert_true(base.min_piece_cells == 3 and base.max_piece_cells == 5 and base.shape_pool.size() == ordinary_pool_size and base.combo_miss_tolerance == 0, "遍历所有表内关卡后普通模式配置保持独立")
 
 func _test_table_parser() -> void:
+	var reader_script: Script = LevelTable
+	_assert_true(not reader_script.has_script_method("reload") and reader_script.has_script_method("reload_table"), "读表入口避免与 Script.reload 原生方法重名")
+	_assert_true(LevelTable._is_utf8("教学,关卡😀".to_utf8_buffer()), "中文与四字节字符的 UTF-8 配置编码有效")
+	_assert_true(not LevelTable._is_utf8(PackedByteArray([0xbd, 0xcc, 0xd1, 0xa7])), "ANSI/GBK 配置需明确提示改存 UTF-8")
+	_assert_true(not LevelTable._is_utf8(PackedByteArray([0xe0, 0x80, 0x80])) and not LevelTable._is_utf8(PackedByteArray([0xf0, 0x9f])), "拒绝过长编码与截断 UTF-8 字符")
 	var source := FileAccess.get_file_as_string(LevelTable.PATH)
 	var parsed: Dictionary = LevelTable.parse_text(source, "测试原表")
 	_assert_true(parsed["errors"].is_empty() and parsed["levels"].size() == LevelTable.LEVEL_COUNT, "完整配置包含 1–96 关且无解析错误")

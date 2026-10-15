@@ -4,13 +4,25 @@
 引擎：Godot 4.7.2 stable  
 平台目标：Windows 桌面，鼠标输入
 
-## 闯关 CSV 配表（2026-10-15；源码 0.6.7，待用户验收）
+## 闯关读表闪退修复（2026-10-15；源码 0.6.8，待用户验收）
+
+用户实际 Godot 日志为 signal 11，调用链 `_open_levels()` → `_reload_adventure_config()`。自定义静态 `reload()` 与原生 `Script.reload()` 重名，旧最小只读表诊断实际返回 `TYPE_INT = 2`、值 0，而非错误数组；现改为 `reload_table()`，同步懒加载调用，公共 `ModeCatalog.reload_level_config()` 保留。
+
+当前用户 CSV 原为 GB18030，现无损转为 UTF-8 BOM，全部 96 行、15 列字段逐项一致，包括用户对第 3/4/8/9 关等目标或难度的调整。严格 UTF-8 字节校验拒绝非法编码，提示 Excel/WPS 另存“CSV UTF-8（逗号分隔）”，避免中文标签乱码；旧字节备份仅留本地，不提交。
+
+最小无 GUI 读表诊断确认公共入口返回 `TYPE_PACKED_STRING_ARRAY = 34`、空错误数组，第 3 关读到 40/29/15，再次重读错误数为 0；非 UTF-8 拒绝、合法四字节 UTF-8 通过，退出码 0。未实例化游戏或场景。环境另有根证书存储错误，与读表业务结果分开记录，不声称全部环境日志无 ERROR。
+
+读表层、目录、Main、目录测试与 UI action 测试共 5 份不同脚本 Godot 4.7.2 `--check-only` 均退出码 0，无 SCRIPT/Parse/Compile/Failedload 错误。独立窄范围静态复核通过命名冲突、UTF-8 边界、全部调用点及逐字段转换一致性。没有执行完整测试用例、GUI、桌面控制或打包；最小诊断不等于实际界面验收。
+
+请停止旧游戏后按 **F5**，点击闯关确认选关页不再闪退；开始和重开均能读表，用户目标/难度保留。再核对非 UTF-8 的另存格式提示、恢复有效表后重进，以及旧解锁进度与自由/经典不受影响。
+
+## 历史闯关 CSV 配表（2026-10-15；源码 0.6.7，待用户验收）
 
 用户要求难度与特殊方块数量支持逐关配表，取消按关号自动增长。当前参数唯一来源为 [`config/adventure_levels.csv`](../config/adventure_levels.csv)，96 行连续 1–96 关；四类目标独立为 0–999，0 不参与，收集关可启用 1–4 类。`difficulty` 为 0–100 小数，模板/镜像、初始特殊格数、种子、难度标签与前两关分数/填充量分别可配。随附值保留旧版基线，并非不可修改的生成公式，说明见 [关卡配表说明](Block-Blast-Godot-关卡配表说明.md)。
 
 进入选关、新开和重开时重新读取；进行中局使用开局快照。表头、数字、范围、重复/漏关或非法模板等错误整表拒绝，显示 CSV 路径与行列原因，不回退公式、不清已有局，自由/经典保持可用；自定义棋盘不适配模板时拒绝开局。CSV 原文导入与导出包含规则已配置，当前不能只加第 97 行扩关。
 
-Godot 4.7.2 headless `--check-only` 检查 **8 份不同脚本**：`adventure_level_table.gd`、`adventure_templates.gd`、`mode_catalog.gd`、`game_state.gd`、`main.gd`、`run_mode_catalog_tests.gd`、`run_mode_state_tests.gd`、`run_ui_action_tests.gd`，均退出码 0，无 SCRIPT/Parse/Compile/Failedload 错误；最终 Main/UI action 两份重检通过，重复不重复计数。测试只维护、编译，未执行用例。
+Godot 4.7.2 headless `--check-only` 检查 **8 份不同脚本**：`adventure_level_table.gd`、`collection_templates.gd`、`mode_catalog.gd`、`game_state.gd`、`main.gd`、`run_mode_catalog_tests.gd`、`run_mode_state_tests.gd`、`run_ui_action_tests.gd`，均退出码 0，无 SCRIPT/Parse/Compile/Failedload 错误；最终 Main/UI action 两份重检通过，重复不重复计数。测试只维护、编译，未执行用例。
 
 另用 Python 仅检查 CSV 静态数据：96 行、15 列、ID 1–96 唯一且完整；各目标与难度范围符合约束；`wings`/`heart`/`ring`/`steps`/`butterfly` 真实容量分别为 24/22/20/20/22，初始特殊格不越容量；CSV Keep 与导出 include 原文规则符合预期。独立静态审查完成、默认 8×8 无阻断问题，已明确前两关难度只影响开局、不取消教学救援，以及读表失败时保留已有局的边界。没有执行 GUI、桌面控制、游戏自动验收或打包，也未验证新包实际读表。
 
