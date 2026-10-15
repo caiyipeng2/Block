@@ -7,6 +7,15 @@ const NAVY := Color("#192441")
 const GOLD := Color("#ffd154")
 const AQUA := Color("#73f5e7")
 
+## One cell rectangle is shared by the resting board and its move snapshot.
+## Changing layers must never resize unrelated, stationary blocks.
+static func grid_cell_rect(origin: Vector2, unit: float, inset: float = 1.0, scale_factor: float = 1.0) -> Rect2:
+	var side := maxf(unit, 0.0)
+	var padding := clampf(inset, 0.0, side * 0.5)
+	var drawn_side := maxf(side - padding * 2.0, 0.0) * maxf(scale_factor, 0.0)
+	var drawn_size := Vector2.ONE * drawn_side
+	return Rect2(origin + Vector2.ONE * side * 0.5 - drawn_size * 0.5, drawn_size)
+
 static func draw_block(canvas: CanvasItem, rect: Rect2, color: Color, opacity: float = 1.0, highlight: float = 0.0) -> void:
 	if rect.size.x <= 0.0 or rect.size.y <= 0.0 or opacity <= 0.0:
 		return

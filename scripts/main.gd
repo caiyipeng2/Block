@@ -279,6 +279,7 @@ func _handle_release(position: Vector2) -> void:
 		move_feedback.set_paused(false)
 		move_feedback.play_move(before_board, result["placed_cells"], result["clear"]["cells"], int(result["placed_color"]), _board_rect(), rules_config.palette, Vector2(rules_config.placement_duration, rules_config.clear_duration), last_gain, _reduced_motion(), {
 			"combo": game.scoring.combo,
+			"cell_inset": _board_cell_inset(),
 			"clear_lines": cleared_lines,
 			"placement_points": int(result.get("placement_points", 0)),
 			"clear_points": int(result.get("clear_points", 0)),
@@ -1086,6 +1087,9 @@ func _board_rect() -> Rect2:
 func _cell_size() -> float:
 	return _board_rect().size.x / float(maxi(1, _board_size()))
 
+func _board_cell_inset() -> float:
+	return 0.4 if _is_collect_mode() else 1.0
+
 func _board_origin_from_mouse(position: Vector2, _piece: PieceData) -> Vector2i:
 	var rect := _board_rect()
 	var cell := _cell_size()
@@ -1172,16 +1176,21 @@ func _draw_board() -> void:
 	Art.draw_board_frame(self, rect, _is_collect_mode())
 	var cell := _cell_size()
 	var hide_final_board := input_locked and not pending_move.is_empty()
+	# Paint every empty cell before any occupied cell, matching the snapshot.
+	# Otherwise later empty cells clip the shadows of their left/top neighbours.
+	for y in range(_board_size()):
+		for x in range(_board_size()):
+			var empty_rect := Art.grid_cell_rect(rect.position + Vector2(x, y) * cell, cell, _board_cell_inset())
+			Art.draw_empty_cell(self, empty_rect, rules_config.empty_cell_color, _is_collect_mode())
 	for y in range(_board_size()):
 		for x in range(_board_size()):
 			var value := -1 if hide_final_board else game.board.get_cell(x, y)
 			var color := rules_config.empty_cell_color
 			if value >= 0:
 				color = _block_color(int(preview_clear_colors.get(Vector2i(x, y), value)))
-			var inset := 0.4 if _is_collect_mode() else 1.0
-			var cell_rect := Rect2(rect.position + Vector2(x, y) * cell + Vector2.ONE * inset, Vector2.ONE * (cell - inset * 2.0))
+			var cell_rect := Art.grid_cell_rect(rect.position + Vector2(x, y) * cell, cell, _board_cell_inset())
 			if value < 0:
-				Art.draw_empty_cell(self, cell_rect, color, _is_collect_mode())
+				continue
 			else:
 				if game.target_cells.has(Vector2i(x, y)) and not preview_clear_colors.has(Vector2i(x, y)):
 					Art.draw_target_tile(self, cell_rect, 1.0, 0.0, _target_kind_at(Vector2i(x, y)))
@@ -1195,7 +1204,7 @@ func _draw_board() -> void:
 		for local_cell in piece.cells:
 			var target := drag_origin + local_cell
 			if target.x >= 0 and target.x < _board_size() and target.y >= 0 and target.y < _board_size():
-				var preview_rect := Rect2(rect.position + Vector2(target.x, target.y) * cell + Vector2.ONE, Vector2.ONE * (cell - 2.0))
+				var preview_rect := Art.grid_cell_rect(rect.position + Vector2(target) * cell, cell, _board_cell_inset())
 				if preview_clear_colors.has(target):
 					Art.draw_block(self, preview_rect, _block_color(int(preview_clear_colors[target])), 1.0, 0.20)
 				else:
@@ -1241,7 +1250,7 @@ func _draw_drag_layer() -> void:
 	var origin := _floating_origin(drag_mouse)
 	var unit := _cell_size()
 	for cell in piece.cells:
-		var rect := Rect2(origin + Vector2(cell) * unit + Vector2.ONE, Vector2.ONE * (unit - 2))
+		var rect := Art.grid_cell_rect(origin + Vector2(cell) * unit, unit, _board_cell_inset())
 		var target: Vector2i = drag_origin + cell
 		if drag_valid and preview_clear_colors.has(target):
 			_draw_piece_cell(piece, cell, rect, 1.0, _block_color(int(preview_clear_colors[target])))

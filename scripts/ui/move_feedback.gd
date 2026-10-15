@@ -34,6 +34,7 @@ var _board_rect := Rect2()
 var _board_offset := Vector2.ZERO
 var _board_size := 0
 var _cell_size := 0.0
+var _cell_inset := 1.0
 var _palette := PackedColorArray()
 var _context: Dictionary = {}
 var _cell_colors: Dictionary = {}
@@ -131,6 +132,7 @@ func play_move(
 	_board_rect = rect
 	_board_size = before_board.size
 	_cell_size = _board_rect.size.x / float(_board_size)
+	_cell_inset = float(context.get("cell_inset", 1.0))
 	_palette = palette
 	_context = context.duplicate()
 	_clear_colors = context.get("clear_colors", {}).duplicate()
@@ -485,28 +487,31 @@ func _draw() -> void:
 		if _rebound_piece != null:
 			_draw_rebound()
 		elif _board_size > 0 and _cell_size > 0.0:
-			for key in _cell_colors:
-				var coordinate: Vector2i = key
-				var alpha := 1.0
-				var block_scale := 1.0
-				var highlight := 0.0
-				if _clear_started and _clear_cells.has(coordinate):
-					highlight = 0.70 if _sweep_started else sin(_flash_progress * PI) * 0.95
-					if _dispersing:
-						alpha = 1.0 - _clear_progress
-						block_scale = lerpf(1.0, 0.32, _clear_progress)
-				elif _placed_cells.has(coordinate):
-					block_scale = _placed_scale
-				_draw_board_cell(coordinate, _color_for_id(_resolved_cell_color_id(coordinate)), block_scale, alpha, highlight)
+			# Use the resting board's row order, including newly placed cells.
+			for y in range(_board_size):
+				for x in range(_board_size):
+					var coordinate := Vector2i(x, y)
+					if not _cell_colors.has(coordinate):
+						continue
+					var alpha := 1.0
+					var block_scale := 1.0
+					var highlight := 0.0
+					if _clear_started and _clear_cells.has(coordinate):
+						highlight = 0.70 if _sweep_started else sin(_flash_progress * PI) * 0.95
+						if _dispersing:
+							alpha = 1.0 - _clear_progress
+							block_scale = lerpf(1.0, 0.32, _clear_progress)
+					elif _placed_cells.has(coordinate):
+						block_scale = _placed_scale
+					_draw_board_cell(coordinate, _color_for_id(_resolved_cell_color_id(coordinate)), block_scale, alpha, highlight)
 			_draw_clear_lines()
 	_draw_particles()
 
 func _draw_board_cell(coordinate: Vector2i, color: Color, block_scale: float, alpha: float, highlight: float) -> void:
 	if coordinate.x < 0 or coordinate.y < 0 or coordinate.x >= _board_size or coordinate.y >= _board_size:
 		return
-	var source_rect := Rect2(_board_rect.position + _board_offset + Vector2(coordinate) * _cell_size, Vector2.ONE * _cell_size)
-	var draw_size := Vector2.ONE * maxf(_cell_size - 2.0, 1.0) * block_scale
-	var block_rect := Rect2(source_rect.get_center() - draw_size * 0.5, draw_size)
+	var cell_origin := _board_rect.position + _board_offset + Vector2(coordinate) * _cell_size
+	var block_rect := BlockArt.grid_cell_rect(cell_origin, _cell_size, _cell_inset, block_scale)
 	if _target_cells.has(coordinate) and not _clear_cells.has(coordinate):
 		BlockArt.draw_target_tile(self, block_rect, alpha, highlight, _target_kind(_target_cells[coordinate]))
 	else:
