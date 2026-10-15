@@ -237,7 +237,7 @@ func _handle_release(position: Vector2) -> void:
 			input_locked = true
 			rebound_piece_id = piece.get_instance_id()
 			_refresh_controls()
-			move_feedback.play_rebound(piece, from_origin, _tray_piece_origin(index, piece), _cell_size(), _tray_unit(index, piece), _piece_color(piece), rules_config.rebound_duration, _reduced_motion())
+			move_feedback.play_rebound(piece, from_origin, _tray_piece_origin(index, piece), _cell_size(), _tray_unit(index, piece), _piece_color(piece), rules_config.rebound_duration, _reduced_motion(), _board_cell_inset(), _tray_cell_inset())
 		queue_redraw()
 		return
 	var before_board := game.board.duplicate_board()
@@ -1015,7 +1015,7 @@ func _header_height() -> float:
 
 func _tray_height() -> float:
 	if _is_collect_mode():
-		return clampf(size.y * 0.14, 104.0, 170.0)
+		return clampf(size.y * 0.21, 148.0, 230.0)
 	return clampf(size.y * 0.16, 128.0, 190.0)
 
 func _visible_tray() -> Array[PieceData]:
@@ -1028,7 +1028,7 @@ func _tray_slot_rect(index: int) -> Rect2:
 	var tray_width := minf(size.x - BOARD_MARGIN * 2.0, maxf(_board_rect().size.x, 320.0 if _is_collect_mode() else 440.0))
 	var slot_width := (tray_width - float(count - 1) * 16.0) / float(count)
 	var tray_top := _board_rect().end.y + (clampf(_cell_size() * 0.6, 12.0, 40.0) if _is_collect_mode() else 84.0)
-	return Rect2(Vector2((size.x - tray_width) * 0.5 + float(index) * (slot_width + 16.0), tray_top), Vector2(slot_width, _tray_height() - 32.0))
+	return Rect2(Vector2((size.x - tray_width) * 0.5 + float(index) * (slot_width + 16.0), tray_top), Vector2(slot_width, _tray_height() - (20.0 if _is_collect_mode() else 32.0)))
 
 func _piece_bounds(piece: PieceData) -> Rect2i:
 	if piece.cells.is_empty():
@@ -1040,10 +1040,38 @@ func _piece_bounds(piece: PieceData) -> Rect2i:
 		maximum = Vector2i(maxi(maximum.x, cell.x), maxi(maximum.y, cell.y))
 	return Rect2i(minimum, maximum - minimum + Vector2i.ONE)
 
-func _tray_unit(index: int, piece: PieceData) -> float:
-	var bounds := _piece_bounds(piece)
-	var slot := _tray_slot_rect(index)
-	return maxf(6.0, minf(_cell_size() * (0.48 if _is_collect_mode() else 0.57), minf((slot.size.x - 24.0) / float(bounds.size.x), (slot.size.y - 20.0) / float(bounds.size.y))))
+func _tray_max_bounds() -> Vector2i:
+	# Reserve the whole mode's shape envelope, rather than resizing each piece
+	# independently or changing the remaining pieces after one is consumed.
+	var extent := Vector2i.ONE
+	var mode_rules: GameRulesConfig = game.rules_config if game != null else rules_config
+	var shapes: Array[PieceData] = []
+	for definition in mode_rules.shape_pool:
+		if definition is ShapeDefinition:
+			shapes.append(definition.to_piece())
+		elif definition is PieceData:
+			shapes.append(definition)
+		elif definition is Dictionary:
+			shapes.append(PieceData.new(Vector2i.ZERO, definition.get("cells", [])))
+	shapes.append_array(_visible_tray())
+	if game != null:
+		shapes.append_array(game.remaining_pieces)
+	for shape in shapes:
+		var bounds := _piece_bounds(shape).size
+		extent.x = maxi(extent.x, bounds.x)
+		extent.y = maxi(extent.y, bounds.y)
+	return extent
+
+func _tray_unit(_index: int, _piece: PieceData) -> float:
+	var extent := _tray_max_bounds()
+	var slot := _tray_slot_rect(0)
+	var padding := Vector2(12.0, 12.0) if _is_collect_mode() else Vector2(24.0, 20.0)
+	var available := (slot.size - padding).max(Vector2.ONE)
+	var fit := minf(available.x / float(extent.x), available.y / float(extent.y))
+	return minf(_cell_size() * (0.48 if _is_collect_mode() else 0.57), fit)
+
+func _tray_cell_inset() -> float:
+	return 0.2 if _is_collect_mode() else 1.0
 
 func _tray_piece_origin(index: int, piece: PieceData) -> Vector2:
 	var slot := _tray_slot_rect(index)
@@ -1253,8 +1281,7 @@ func _draw_tray() -> void:
 		var cell := _tray_unit(index, piece)
 		for local_cell in piece.cells:
 			var p := origin + Vector2(local_cell.x, local_cell.y) * cell
-			var inset := 0.2 if _is_collect_mode() else 1.0
-			var r := Rect2(p + Vector2.ONE * inset, Vector2.ONE * (cell - inset * 2.0))
+			var r := Art.grid_cell_rect(p, cell, _tray_cell_inset())
 			_draw_piece_cell(piece, local_cell, r)
 
 func _draw_piece_cell(piece: PieceData, local_cell: Vector2i, rect: Rect2, opacity: float = 1.0, clear_color: Variant = null) -> void:

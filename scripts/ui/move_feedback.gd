@@ -69,6 +69,8 @@ var _rebound_from_origin := Vector2.ZERO
 var _rebound_to_origin := Vector2.ZERO
 var _rebound_from_unit := 0.0
 var _rebound_to_unit := 0.0
+var _rebound_from_inset := 1.0
+var _rebound_to_inset := 1.0
 var _rebound_color := Color.WHITE
 var _rebound_progress := 0.0
 
@@ -226,7 +228,9 @@ func play_rebound(
 		to_unit: float,
 		color: Color,
 		duration: float,
-		reduced_motion: bool
+		reduced_motion: bool,
+		from_inset: float = 1.0,
+		to_inset: float = 1.0
 	) -> void:
 	reset_move()
 	if piece == null or piece.cells.is_empty():
@@ -238,6 +242,8 @@ func play_rebound(
 	_rebound_to_origin = to_origin
 	_rebound_from_unit = maxf(from_unit, 0.0)
 	_rebound_to_unit = maxf(to_unit, 0.0)
+	_rebound_from_inset = maxf(from_inset, 0.0)
+	_rebound_to_inset = maxf(to_inset, 0.0)
 	_rebound_color = color
 	_overlay_visible = true
 	_busy = true
@@ -708,8 +714,9 @@ func _draw_particles() -> void:
 func _draw_rebound() -> void:
 	var origin := _rebound_from_origin.lerp(_rebound_to_origin, _rebound_progress)
 	var unit := lerpf(_rebound_from_unit, _rebound_to_unit, _rebound_progress)
+	var inset := lerpf(_rebound_from_inset, _rebound_to_inset, _rebound_progress)
 	for local_cell in _rebound_piece.cells:
-		var cell_rect := Rect2(origin + Vector2(local_cell) * unit + Vector2.ONE, Vector2.ONE * maxf(unit - 2.0, 1.0))
+		var cell_rect := BlockArt.grid_cell_rect(origin + Vector2(local_cell) * unit, unit, inset)
 		if _rebound_piece.targets.has(local_cell):
 			var kind := _target_kind(_rebound_piece.targets[local_cell])
 			BlockArt.draw_target_tile(self, cell_rect, 1.0, 0.0, kind)
