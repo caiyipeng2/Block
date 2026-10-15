@@ -54,6 +54,10 @@ func _init(initial_seed: int = 0, board_size: int = 8, config: GameRulesConfig =
 	generator = RoundGenerator.new(initial_seed, rules_config)
 	target_score = maxi(0, int(setup.get("target_score", 0))) if mode == "adventure" and objective_type == "score" else 0
 	difficulty_label = str(setup.get("difficulty_label", ""))
+	if not bool(setup.get("config_valid", true)) or bool(setup.get("initial_setup_invalid", false)):
+		generation_diagnostics = setup.get("initial_diagnostics", {"reason": "invalid_level_configuration", "solution_certified": false}).duplicate(true)
+		status = Status.GAME_OVER
+		return
 	generator.candidate_samples = clampi(int(setup.get("candidate_samples", 1)), 1, 12) if mode == "adventure" else 1
 	generator.solution_count_cap = clampi(int(setup.get("solution_count_cap", 8)), 2, 32)
 	if objective_type == "collect":

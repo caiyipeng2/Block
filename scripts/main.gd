@@ -62,6 +62,7 @@ var level_objective: Dictionary = {}
 var display_remaining_counts: Dictionary = {}
 var progress_milestones_shown: Dictionary = {}
 var pending_level_unlock: Dictionary = {}
+var level_config_dialog: AcceptDialog
 
 func _ready() -> void:
 	set_process_input(true)
@@ -128,6 +129,8 @@ func _process(delta: float) -> void:
 
 func _input(event: InputEvent) -> void:
 	if exiting:
+		return
+	if is_instance_valid(level_config_dialog) and level_config_dialog.visible:
 		return
 	if _objective_intro_open():
 		if event is InputEventKey and event.pressed and not event.echo and event.keycode in [KEY_ENTER, KEY_KP_ENTER, KEY_SPACE, KEY_ESCAPE]:
@@ -322,25 +325,31 @@ func _handle_release(position: Vector2) -> void:
 	queue_redraw()
 
 func _start_game(mode: String = "", level_id: int = 0) -> void:
+	var next_mode := mode if not mode.is_empty() else game_mode
+	var next_level := level_id if level_id > 0 else current_level
+	if next_mode == "adventure" and not _reload_adventure_config():
+		return
+	var seed := Time.get_ticks_msec()
+	var setup: Dictionary = {}
+	if next_mode == "classic":
+		next_level = 0
+		setup = ModeCatalog.classic_setup(seed, rules_config)
+	elif next_mode == "adventure":
+		next_level = clampi(next_level, 1, _unlocked_level())
+		setup = ModeCatalog.level_setup(next_level, ModeCatalog.MAX_LEVELS, rules_config)
+		if not bool(setup.get("config_valid", false)) or bool(setup.get("initial_setup_invalid", false)):
+			_show_level_config_error("第 %d 关初始配置无法用于当前棋盘：%s" % [next_level, str(setup.get("initial_diagnostics", {}).get("reason", "配置错误"))])
+			return
+		seed = int(setup["level_seed"])
+	else:
+		next_mode = "free"
+		next_level = 0
+	# Validate the next setup before touching the current game's snapshot.
 	_clear_confirmation()
 	_reset_visual_feedback()
 	_save_high_score()
-	if not mode.is_empty():
-		game_mode = mode
-	if level_id > 0:
-		current_level = level_id
-	var seed := Time.get_ticks_msec()
-	var setup: Dictionary = {}
-	if game_mode == "classic":
-		current_level = 0
-		setup = ModeCatalog.classic_setup(seed, rules_config)
-	elif game_mode == "adventure":
-		current_level = clampi(current_level, 1, _unlocked_level())
-		setup = ModeCatalog.level_setup(current_level, ModeCatalog.MAX_LEVELS, rules_config)
-		seed = int(setup["level_seed"])
-	else:
-		game_mode = "free"
-		current_level = 0
+	game_mode = next_mode
+	current_level = next_level
 	level_objective = ModeCatalog.objective_config(current_level) if game_mode == "adventure" else {}
 	game = GameState.new(seed, rules_config.board_size, rules_config, setup)
 	display_remaining_counts = game.target_remaining_counts.duplicate()
@@ -446,7 +455,9 @@ func _on_objective_intro_dismissed() -> void:
 func _unlocked_level() -> int:
 	return mini(ModeCatalog.MAX_LEVELS, int(save_data.get("adventure_highest_completed", 0)) + 1)
 
-func _open_levels() -> void:
+func _open_levels(reload_table: bool = true) -> void:
+	if reload_table and not _reload_adventure_config():
+		return
 	screen = "levels"
 	paused = false
 	level_select.configure(ModeCatalog.MAX_LEVELS, int(save_data.get("adventure_highest_completed", 0)))
@@ -459,6 +470,34 @@ func _open_levels() -> void:
 	level_select.activate(int(unlock_event.get("completed", 0)), int(unlock_event.get("unlocked", 0)))
 	_play_feedback("click")
 	queue_redraw()
+
+func _reload_adventure_config() -> bool:
+	var errors := ModeCatalog.reload_level_config()
+	if errors.is_empty():
+		return true
+	var visible_errors := PackedStringArray()
+	for index in range(mini(3, errors.size())):
+		visible_errors.append(errors[index])
+	if errors.size() > 3:
+		visible_errors.append("另有错误，请查看 Godot 输出。")
+	push_error("\n".join(errors))
+	_show_level_config_error("\n".join(visible_errors))
+	return false
+
+func _show_level_config_error(details: String) -> void:
+	if not is_instance_valid(level_config_dialog):
+		level_config_dialog = AcceptDialog.new()
+		level_config_dialog.name = "LevelConfigError"
+		level_config_dialog.title = "关卡配置错误"
+		level_config_dialog.dialog_autowrap = true
+		level_config_dialog.ok_button_text = "知道了"
+		level_config_dialog.theme = confirmation_dialog.theme
+		add_child(level_config_dialog)
+	level_config_dialog.dialog_text = "闯关配置未生效：\n\n%s\n\n请修正 config/adventure_levels.csv 后重新进入选关页。" % details
+	_refresh_controls()
+	var width := mini(720, maxi(260, int(size.x) - 48))
+	level_config_dialog.min_size = Vector2i(width, 200)
+	level_config_dialog.popup_centered(Vector2i(width, 0))
 
 func _update_level_description(level_id: int) -> void:
 	level_select.set_level_description("第 %d 关 · %s" % [level_id, ModeCatalog.objective_description(level_id)])
@@ -723,6 +762,10 @@ func _fade_controls(control: Control) -> void:
 		transition.tween_property(control, "modulate:a", 1.0, 0.15)
 
 func _return_to_menu() -> void:
+	# A broken edited table must not discard the current game before we can
+	# actually open its destination. Reuse this validated snapshot below.
+	if game_mode == "adventure" and not _reload_adventure_config():
+		return
 	_clear_confirmation()
 	_reset_visual_feedback()
 	_save_high_score()
@@ -736,7 +779,7 @@ func _return_to_menu() -> void:
 	last_gain = 0
 	piece_colors.clear()
 	if game_mode == "adventure":
-		_open_levels()
+		_open_levels(false)
 	else:
 		_show_menu()
 

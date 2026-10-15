@@ -10,12 +10,17 @@ const TEMPLATES := [
 	{"id": "butterfly", "name": "斜蝶", "rows": ["........", ".##.....", ".###..#.", "..#####.", ".#####..", ".#..###.", ".....##.", "........"]},
 ]
 
-static func create(level_id: int, board_size: int, palette_count: int) -> Dictionary:
-	var template: Dictionary = TEMPLATES[posmod(level_id - 3, TEMPLATES.size())]
+static func create(level_id: int, board_size: int, palette_count: int, template_id: String = "wings", mirror: bool = false) -> Dictionary:
+	var template: Dictionary = {}
+	for candidate: Dictionary in TEMPLATES:
+		if str(candidate["id"]) == template_id:
+			template = candidate
+			break
+	if template.is_empty():
+		return {"error": "unknown_collection_template", "initial_cells": []}
 	var rows: Array = template["rows"]
 	var cells: Array[Dictionary] = []
 	var seen: Dictionary = {}
-	var mirror := posmod(floori(float(level_id) / float(TEMPLATES.size())), 2) == 1
 	for y in range(rows.size()):
 		var row := str(rows[y])
 		for x in range(row.length()):

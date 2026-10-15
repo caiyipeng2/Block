@@ -1,6 +1,8 @@
 extends SceneTree
 
 const ModeCatalog = preload("res://scripts/modes/mode_catalog.gd")
+const LevelTable = preload("res://scripts/modes/adventure_level_table.gd")
+const CollectionTemplates = preload("res://scripts/modes/collection_templates.gd")
 var _failures := 0
 
 func _initialize() -> void:
@@ -10,6 +12,7 @@ func _initialize() -> void:
 	quit(0 if _failures == 0 else 1)
 
 func _run_tests() -> void:
+	_test_table_parser()
 	var base := GameRulesConfig.new()
 	var ordinary_pool_size := base.shape_pool.size()
 	var expanded: GameRulesConfig = ModeCatalog.collection_rules(base)
@@ -22,42 +25,98 @@ func _run_tests() -> void:
 		_assert_true(piece.is_valid_for_config(expanded), "扩展形状保持配置允许的2至9格")
 	for id in ["horizontal2", "horizontal4", "horizontal5", "vertical5", "diagonal3", "rectangle2x3", "rectangle3x3"]:
 		_assert_true(ids.has(id), "参考形状进入收集专用池：" + id)
-	var template_ids: Dictionary = {}
-	var kind_sets: Dictionary = {}
-	var previous_total := 0
-	for level_id in [1, 2, 3, 4, 5, 6, 9, 12, 18, 24, 36, 48, 72, 96]:
-		var level: Dictionary = ModeCatalog.level_setup(level_id, 96, base)
-		var repeated: Dictionary = ModeCatalog.level_setup(level_id, 96, base)
+	_assert_true(ModeCatalog.reload_level_config().is_empty(), "当前 CSV 完整有效")
+	for level_id in range(1, LevelTable.LEVEL_COUNT + 1):
+		var row: Dictionary = ModeCatalog.level_config(level_id)
+		var level: Dictionary = ModeCatalog.level_setup(level_id, LevelTable.LEVEL_COUNT, base)
+		var repeated: Dictionary = ModeCatalog.level_setup(level_id, LevelTable.LEVEL_COUNT, base)
 		_assert_true(level["initial_cells"] == repeated["initial_cells"] and level["target_cells"] == repeated["target_cells"], "同关图案与初始标记可复现")
 		var objective: Dictionary = ModeCatalog.objective_config(level_id)
 		_assert_true(level["target_counts"] == objective["target_counts"] and level["description"] == objective["description"], "页面描述与实际配额同源")
+		var expected_counts: Dictionary = {}
+		var expected_total := 0
+		for kind: String in LevelTable.TARGET_COLUMNS:
+			var amount := int(row[kind])
+			if amount > 0:
+				expected_counts[kind] = amount
+				expected_total += amount
+		_assert_true(level["config_valid"] and level["target_counts"] == expected_counts and level["target_total"] == expected_total, "每类配额与总量精确读取 CSV，零配额不进入目标")
+		_assert_true(level["target_score"] == int(row["target_score"]) and level["objective_type"] == row["objective_type"], "分数与目标类型精确读取 CSV")
+		_assert_true(is_equal_approx(float(level["difficulty_ratio"]), float(row["difficulty"]) / 100.0) and is_equal_approx(ModeCatalog.collection_difficulty(level_id), float(row["difficulty"]) / 100.0), "供块难度仅按表值百分比换算")
+		_assert_true(level["level_seed"] == int(row["seed"]) and level["initial_diagnostics"]["seed"] == int(row["seed"]), "关卡随机种子精确读取 CSV")
 		if level_id <= 2:
-			_assert_true(level["target_score"] == 368 + 24 * (level_id - 1) and level["objective_type"] == "score", "前两关保持368与392分教学目标")
+			_assert_true(int(level["initial_diagnostics"]["requested_occupied"]) == int(row["initial_fill"]) and level["target_cells"].is_empty(), "教学初始占格请求来自表且不生成收集标记")
 			_validate_setup(level, base)
 		else:
-			_assert_true(level["target_total"] >= previous_total and level["target_counts"].size() == 3, "每关包含三类且配额随阶段增加")
-			_assert_true(is_equal_approx(float(level["difficulty_ratio"]), ModeCatalog.collection_difficulty(level_id)) and is_equal_approx(float(level["initial_diagnostics"]["difficulty_ratio"]), float(level["difficulty_ratio"])), "关卡难度传入首托盘供块诊断")
-			previous_total = level["target_total"]
-			template_ids[level["template_id"]] = true
-			kind_sets[str(level["target_kinds"])] = true
+			_assert_true(level["target_counts"].size() >= 1 and level["target_counts"].size() <= 4, "收集关允许一至四种正配额目标")
+			_assert_true(is_equal_approx(float(level["initial_diagnostics"]["difficulty_ratio"]), float(row["difficulty"]) / 100.0), "表内难度传入首托盘供块诊断")
+			_assert_true(level["target_cells"].size() == int(row["initial_markers"]) and level["initial_diagnostics"]["initial_markers"] == int(row["initial_markers"]), "初始物理标记数精确读取 CSV，不与总配额混同")
+			var template: Dictionary = CollectionTemplates.create(level_id, base.board_size, base.palette.size(), str(row["template_id"]), bool(row["mirror"]))
+			_assert_true(level["template_id"] == row["template_id"] and level["initial_cells"] == template["initial_cells"], "模板与镜像由表指定，不按关号自动选取")
 			_assert_true(level["initial_diagnostics"]["certification_scope"] == "current_tray" and not level["initial_diagnostics"]["whole_level_certified"], "只声明真实首托盘证书，不宣称整关必过")
 			_validate_setup(level, expanded)
-	for level_id in range(3, 8):
-		var level: Dictionary = ModeCatalog.level_setup(level_id, 96, base)
-		template_ids[level["template_id"]] = true
-		_validate_setup(level, expanded)
-	_assert_true(template_ids.size() >= 5, "至少五种负空间图案")
-	_assert_true(kind_sets.size() > 1, "不同阶段可以替换目标类别")
-	_assert_true(ModeCatalog.objective_config(3)["target_total"] == 24 and ModeCatalog.objective_config(96)["target_total"] == 120, "需求配额从24提升至120")
-	_assert_true(ModeCatalog.collection_difficulty(3) == 0.0 and ModeCatalog.collection_difficulty(96) == 1.0, "第三关至第九十六关供块难度映射零至一")
-	var final: Dictionary = ModeCatalog.level_setup(96, 96, base)
-	_assert_true(final["target_cells"].size() < final["target_total"], "后期目标配额允许超过初始盘实际标记数")
 	var classic: Dictionary = ModeCatalog.classic_setup(17, base)
 	_validate_setup(classic, base)
 	_assert_true(classic["initial_cells"].size() >= 16 and classic["initial_cells"].size() <= 24, "经典模式原始开局范围保持")
 	var invalid_config := GameRulesConfig.new()
 	invalid_config.shape_pool = []
 	_assert_true(not ModeCatalog.classic_setup(17, invalid_config)["initial_diagnostics"]["solution_certified"], "经典模式无形状配置不能伪造认证")
+	_assert_true(base.min_piece_cells == 3 and base.max_piece_cells == 5 and base.shape_pool.size() == ordinary_pool_size and base.combo_miss_tolerance == 0, "遍历所有表内关卡后普通模式配置保持独立")
+
+func _test_table_parser() -> void:
+	var source := FileAccess.get_file_as_string(LevelTable.PATH)
+	var parsed: Dictionary = LevelTable.parse_text(source, "测试原表")
+	_assert_true(parsed["errors"].is_empty() and parsed["levels"].size() == LevelTable.LEVEL_COUNT, "完整配置包含 1–96 关且无解析错误")
+	if not parsed["errors"].is_empty():
+		return
+	var nonlinear := _csv_with_changes(source, {
+		3: {"blue_diamond": 13, "gold_gem": 0, "yellow_star": 4, "red_star": 0, "difficulty": 85},
+		4: {"blue_diamond": 2, "gold_gem": 1, "yellow_star": 0, "red_star": 0, "difficulty": 12},
+		5: {"blue_diamond": 1, "gold_gem": 2, "yellow_star": 3, "red_star": 4, "difficulty": 57.5},
+		6: {"blue_diamond": 0, "gold_gem": 0, "yellow_star": 0, "red_star": 6, "difficulty": 0},
+	})
+	var tuned: Dictionary = LevelTable.parse_text(nonlinear, "自定义非单调配置")
+	_assert_true(tuned["errors"].is_empty(), "后关配额和难度可以下降，不强制线性或单调增长")
+	if tuned["errors"].is_empty():
+		var levels: Dictionary = tuned["levels"]
+		_assert_true(levels[3]["blue_diamond"] == 13 and levels[3]["gold_gem"] == 0 and levels[3]["yellow_star"] == 4 and levels[3]["red_star"] == 0 and levels[3]["difficulty"] == 85.0, "自定义不等量及零配额原样保留，不重新均分")
+		_assert_true(levels[4]["blue_diamond"] == 2 and levels[4]["gold_gem"] == 1 and levels[4]["yellow_star"] == 0 and levels[4]["red_star"] == 0 and levels[4]["difficulty"] == 12.0, "后关低配额与低难度不被关号公式覆盖")
+		_assert_true(levels[5]["blue_diamond"] == 1 and levels[5]["gold_gem"] == 2 and levels[5]["yellow_star"] == 3 and levels[5]["red_star"] == 4 and levels[5]["difficulty"] == 57.5, "四种目标与小数难度均可独立配置")
+		_assert_true(levels[6]["blue_diamond"] == 0 and levels[6]["gold_gem"] == 0 and levels[6]["yellow_star"] == 0 and levels[6]["red_star"] == 6, "单一种类配额配置同样有效")
+	_assert_table_rejected(_csv_with_changes(source, {4: {"level_id": 3}}), "level_id", "重复关号拒绝整表")
+	var missing_lines := source.replace("\r\n", "\n").strip_edges().split("\n", true)
+	missing_lines.remove_at(3)
+	_assert_table_rejected("\n".join(missing_lines), "level_id", "缺少关卡拒绝整表")
+	for invalid in [-1, 1.5]:
+		_assert_table_rejected(_csv_with_changes(source, {3: {"blue_diamond": invalid}}), "blue_diamond", "负数或小数收集配额拒绝整表")
+	_assert_table_rejected(_csv_with_changes(source, {3: {"template_id": "missing_template"}}), "template_id", "未知模板拒绝整表")
+	_assert_table_rejected(_csv_with_changes(source, {3: {"template_id": "wings", "initial_markers": 25}}), "initial_markers", "初始标记超过模板占格拒绝整表")
+	var quoted_note := "非线性,四目标\"独立配额\""
+	var encoded := "\ufeff" + _csv_with_changes(source, {3: {"note": quoted_note}}).replace("\n", "\r\n")
+	var portable: Dictionary = LevelTable.parse_text(encoded, "带 BOM 的 Windows CSV")
+	_assert_true(portable["errors"].is_empty(), "支持 UTF-8 BOM、CRLF、引号逗号和转义双引号")
+	if portable["errors"].is_empty():
+		_assert_true(portable["levels"][3]["note"] == quoted_note, "备注逗号及双引号不破坏其他配置字段")
+
+func _csv_with_changes(source: String, changes: Dictionary) -> String:
+	# Serialize parsed source rows so authored notes may contain quoted commas.
+	var parsed: Dictionary = LevelTable.parse_text(source, "测试配置源")
+	var lines := PackedStringArray([",".join(LevelTable.COLUMNS)])
+	for level_id in range(1, LevelTable.LEVEL_COUNT + 1):
+		var row: Dictionary = parsed["levels"][level_id].duplicate(true)
+		row.merge(changes.get(level_id, {}), true)
+		var fields := PackedStringArray()
+		for column: String in LevelTable.COLUMNS:
+			var value := str(row[column])
+			fields.append("\"%s\"" % value.replace("\"", "\"\"") if value.contains(",") or value.contains("\"") else value)
+		lines.append(",".join(fields))
+	return "\n".join(lines)
+
+func _assert_table_rejected(source: String, column: String, message: String) -> void:
+	var parsed: Dictionary = LevelTable.parse_text(source, "故意无效配置")
+	_assert_true(parsed["levels"].is_empty() and not parsed["errors"].is_empty(), message)
+	var details := "\n".join(parsed["errors"])
+	_assert_true(details.contains("CSV 行") and details.contains(column), "解析错误附带行号与相关列：" + column)
 
 func _validate_setup(setup: Dictionary, rules: GameRulesConfig) -> void:
 	var board := BoardRules.new(rules.board_size)

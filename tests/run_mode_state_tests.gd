@@ -7,6 +7,7 @@ var failures := 0
 
 func _initialize() -> void:
 	_test_score_modes()
+	_test_rejected_configuration()
 	_test_tutorial_adaptation()
 	_test_collection_progress()
 	_test_crossing_collection()
@@ -51,6 +52,15 @@ func _test_score_modes() -> void:
 	var classic := GameState.new(19, 8, config, free_setup)
 	classic.place_piece(0, Vector2i.ZERO, 0)
 	_check(not classic.is_level_complete() and classic.target_score == 0, "经典模式不受目标限制")
+
+func _test_rejected_configuration() -> void:
+	var config := GameRulesConfig.new()
+	for invalid_flag in ["config_valid", "initial_setup_invalid"]:
+		var setup := {"mode": "adventure", "level_id": 1, "objective_type": "score", "target_score": 368}
+		setup[invalid_flag] = invalid_flag != "config_valid"
+		var rejected := GameState.new(17, 8, config, setup)
+		_check(rejected.is_game_over() and not rejected.is_level_complete() and rejected.remaining_pieces.is_empty(), "分数关显式配置失败不能静默生成普通游戏：" + invalid_flag)
+		_check(rejected.scoring.score == 0, "配置拒绝不赠分：" + invalid_flag)
 
 func _isolated_holes_setup(mode: String = "adventure", level_id: int = 1) -> Dictionary:
 	var initial: Array[Dictionary] = []

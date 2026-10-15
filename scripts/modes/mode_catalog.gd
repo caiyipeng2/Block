@@ -2,12 +2,12 @@ extends RefCounted
 
 const CollectionTemplates = preload("res://scripts/modes/collection_templates.gd")
 const CollectionTraySupplier = preload("res://scripts/rules/collection_tray_supplier.gd")
+const LevelTable = preload("res://scripts/modes/adventure_level_table.gd")
 const FREE := "free"
 const CLASSIC := "classic"
 const ADVENTURE := "adventure"
-const MAX_LEVELS := 96
+const MAX_LEVELS := LevelTable.LEVEL_COUNT
 const SETUP_ATTEMPTS := 8
-const LEVEL_SEED_BASE := 272912
 const TARGET_KINDS := ["blue_diamond", "gold_gem", "yellow_star", "red_star"]
 const TARGET_NAMES := {"blue_diamond": "蓝色宝石", "gold_gem": "金色宝石", "yellow_star": "黄星", "red_star": "红星"}
 
@@ -35,24 +35,29 @@ static func classic_setup(seed: int, config: GameRulesConfig) -> Dictionary:
 
 static func level_setup(level_id: int, total_levels: int, config: GameRulesConfig) -> Dictionary:
 	var base: GameRulesConfig = config if config != null else GameRulesConfig.new()
-	var count := maxi(1, total_levels)
-	var current := clampi(level_id, 1, count)
-	var ratio := float(current - 1) / float(maxi(1, count - 1))
-	var level_seed := LEVEL_SEED_BASE + current * 104729
-	var requested := roundi(lerpf(16.0, 43.0, ratio) * _board_scale(base))
-	var objective := objective_config(current, count)
+	var current := clampi(level_id, 1, clampi(total_levels, 1, MAX_LEVELS))
+	var row := level_config(current)
+	var objective := objective_config(current, total_levels)
+	if row.is_empty():
+		var invalid := _invalid_setup(0, 0, "invalid_level_configuration")
+		invalid.merge({"mode": ADVENTURE, "level_id": current, "level_seed": 0, "config_valid": false, "config_errors": LevelTable.errors()})
+		return invalid
+	var difficulty := float(row["difficulty"]) / 100.0
+	var level_seed := int(row["seed"])
 	var result: Dictionary
 	if current <= 2:
-		result = _initial_setup(level_seed, base, requested, ratio)
+		var requested := roundi(float(row["initial_fill"]) * _board_scale(base))
+		result = _initial_setup(level_seed, base, requested, difficulty)
 		result["target_cells"] = []
 	else:
-		result = _collection_setup(level_seed, collection_rules(base), current, objective, requested, collection_difficulty(current, count))
+		result = _collection_setup(level_seed, collection_rules(base), current, objective, row)
 	for field in objective:
 		result[field] = objective[field]
 	result["mode"] = ADVENTURE
 	result["level_id"] = current
 	result["level_seed"] = level_seed
-	result["difficulty_ratio"] = collection_difficulty(current, count) if current >= 3 else ratio
+	result["difficulty_ratio"] = difficulty
+	result["config_valid"] = true
 	result["candidate_samples"] = 1
 	result["solution_count_cap"] = 8
 	return result
@@ -110,90 +115,88 @@ static func collection_rules(base: GameRulesConfig) -> GameRulesConfig:
 	rules.shape_pool = unique_pool
 	return rules
 
-static func target_score_for_level(level_id: int, total_levels: int = MAX_LEVELS) -> int:
-	var current := clampi(level_id, 1, maxi(1, total_levels))
-	return 368 + 24 * (current - 1) if current <= 2 else 0
+static func reload_level_config() -> PackedStringArray:
+	return LevelTable.reload()
 
-## Quotas are finite per-kind requirements. They are not a promise that all
-## markers fit on the initial board; later trays keep bringing marked cells.
+static func level_config_errors() -> PackedStringArray:
+	return LevelTable.errors()
+
+static func level_config(level_id: int) -> Dictionary:
+	return LevelTable.level(level_id)
+
+static func target_score_for_level(level_id: int, total_levels: int = MAX_LEVELS) -> int:
+	var row := level_config(clampi(level_id, 1, clampi(total_levels, 1, MAX_LEVELS)))
+	return int(row.get("target_score", 0))
+
+## Every positive per-kind cell in the table is a quota, independent of the
+## physical marker count on the opening board.
 static func objective_config(level_id: int, total_levels: int = MAX_LEVELS) -> Dictionary:
-	var current := clampi(level_id, 1, maxi(1, total_levels))
+	var current := clampi(level_id, 1, clampi(total_levels, 1, MAX_LEVELS))
+	var row := level_config(current)
+	if row.is_empty():
+		return {"config_valid": false, "objective_type": "invalid", "target_score": 0, "target_total": 0, "target_counts": {}, "target_kinds": [], "difficulty_label": "配置错误", "description": "关卡配置不可用"}
 	var counts: Dictionary = {}
-	var total := _target_count_for_level(current)
+	var total := 0
 	var descriptions := PackedStringArray()
-	var kinds := _level_kinds(current)
-	if current >= 3:
-		var share := floori(float(total) / 3.0)
-		for index in range(kinds.size()):
-			counts[kinds[index]] = share + (1 if index < total % 3 else 0)
-			descriptions.append("%s %d 个" % [TARGET_NAMES[kinds[index]], counts[kinds[index]]])
+	var kinds: Array[String] = []
+	for kind: String in TARGET_KINDS:
+		var amount := int(row[kind])
+		if amount > 0:
+			counts[kind] = amount
+			total += amount
+			kinds.append(kind)
+			descriptions.append("%s %d 个" % [TARGET_NAMES[kind], amount])
 	return {
-		"objective_type": "score" if current <= 2 else "collect",
-		"target_score": target_score_for_level(current, total_levels),
-		"target_total": total, "target_counts": counts,
-		"target_kinds": kinds if current >= 3 else [],
-		"difficulty_label": _difficulty_label(current),
-		"description": "目标 %d 分" % target_score_for_level(current, total_levels) if current <= 2 else " · ".join(descriptions),
+		"config_valid": true, "objective_type": row["objective_type"],
+		"target_score": int(row["target_score"]),
+		"target_total": total, "target_counts": counts, "target_kinds": kinds,
+		"difficulty_label": row["difficulty_label"],
+		"description": "目标 %d 分" % int(row["target_score"]) if row["objective_type"] == "score" else " · ".join(descriptions),
 	}
 
 static func objective_description(level_id: int, total_levels: int = MAX_LEVELS) -> String:
 	return str(objective_config(level_id, total_levels)["description"])
 
 static func collection_difficulty(level_id: int, total_levels: int = MAX_LEVELS) -> float:
-	return clampf(float(level_id - 3) / float(maxi(1, total_levels - 3)), 0.0, 1.0)
+	var row := level_config(clampi(level_id, 1, clampi(total_levels, 1, MAX_LEVELS)))
+	return float(row.get("difficulty", 0.0)) / 100.0
 
-static func _level_kinds(level_id: int) -> Array[String]:
-	var omitted := posmod(3 + floori(float(maxi(0, level_id - 3)) / 5.0), TARGET_KINDS.size())
-	var kinds: Array[String] = []
-	for index in range(TARGET_KINDS.size()):
-		if index != omitted:
-			kinds.append(TARGET_KINDS[index])
-	return kinds
-
-static func _target_count_for_level(level_id: int) -> int:
-	for entry in [[96, 120], [72, 108], [48, 96], [36, 84], [24, 72], [18, 66], [12, 60], [9, 48], [6, 42], [5, 36], [4, 30], [3, 24]]:
-		if level_id >= int(entry[0]):
-			return int(entry[1])
-	return 0
-
-static func _difficulty_label(level_id: int) -> String:
-	if level_id <= 2:
-		return "教学"
-	if level_id <= 5:
-		return "入门"
-	if level_id <= 11:
-		return "进阶"
-	if level_id <= 23:
-		return "挑战"
-	if level_id <= 47:
-		return "困难"
-	if level_id <= 71:
-		return "专家"
-	return "大师"
-
-static func _collection_setup(seed: int, rules: GameRulesConfig, level_id: int, objective: Dictionary, requested: int, difficulty: float) -> Dictionary:
-	var template := CollectionTemplates.create(level_id, rules.board_size, rules.palette.size())
+static func _collection_setup(seed: int, rules: GameRulesConfig, level_id: int, objective: Dictionary, row: Dictionary) -> Dictionary:
+	var template := CollectionTemplates.create(level_id, rules.board_size, rules.palette.size(), str(row["template_id"]), bool(row["mirror"]))
+	var requested := int(row["initial_markers"])
+	if template.has("error"):
+		return _invalid_setup(seed, requested, str(template["error"]))
+	if requested > template["initial_cells"].size():
+		return _invalid_setup(seed, requested, "initial_markers_exceed_actual_template_cells")
 	var board := BoardRules.new(rules.board_size)
 	for entry: Dictionary in template["initial_cells"]:
 		board.set_cell(entry["x"], entry["y"], entry["color"])
-	# Never start on a full line, including when a custom board size maps two
-	# authored mask coordinates together.
 	if not board.duplicate_board().clear_full_lines()["cells"].is_empty():
 		return _invalid_setup(seed, requested, "template_contains_full_line")
 	var targets: Dictionary = {}
 	var kinds: Array = objective["target_kinds"]
-	var marker_index := 0
+	var positions: Array[Vector2i] = []
 	for entry: Dictionary in template["initial_cells"]:
-		if posmod(int(entry["x"]) + int(entry["y"]) + level_id, 3) == 0:
-			targets[Vector2i(entry["x"], entry["y"])] = kinds[marker_index % kinds.size()]
-			marker_index += 1
+		positions.append(Vector2i(entry["x"], entry["y"]))
+	var marker_rng := RandomNumberGenerator.new()
+	marker_rng.seed = seed ^ 0x5A17
+	for index in range(positions.size() - 1, 0, -1):
+		var other := marker_rng.randi_range(0, index)
+		var saved := positions[index]
+		positions[index] = positions[other]
+		positions[other] = saved
+	for index in range(requested):
+		targets[positions[index]] = kinds[index % kinds.size()]
+	var difficulty := float(row["difficulty"]) / 100.0
 	var generator := RoundGenerator.new(seed, rules)
 	var supplier := CollectionTraySupplier.new(rules, seed, difficulty)
 	var supplied := supplier.build(board, objective["target_counts"], generator)
 	var diagnostics: Dictionary = supplied["diagnostics"]
 	diagnostics["seed"] = seed
-	diagnostics["requested_occupied"] = requested
+	diagnostics["requested_occupied"] = template["initial_cells"].size()
 	diagnostics["initial_occupied"] = template["initial_cells"].size()
+	diagnostics["requested_initial_markers"] = requested
+	diagnostics["initial_markers"] = targets.size()
 	diagnostics["template_id"] = template["template_id"]
 	diagnostics["template_name"] = template["template_name"]
 	return {
