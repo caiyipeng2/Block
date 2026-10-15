@@ -20,7 +20,6 @@ var _title: Label
 var _progress: Label
 var _scroll: ScrollContainer
 var _map: Control
-var _route: AdventureRoute
 var _marker: GoldDiamond
 var _trophy: Control
 var _map_caption: Label
@@ -40,138 +39,6 @@ var _scroll_tween: Tween
 var _manual_scroll_epoch: int = 0
 var _programmatic_focus: bool = false
 var _reveal_level: int = 0
-
-
-class AdventureRoute extends Control:
-
-	const RouteArt := preload("res://scripts/ui/block_art.gd")
-
-	var points := PackedVector2Array()
-	var completed_count: int = 0
-	var tile_side: float = 38.0
-	var _view_top: float = 0.0
-	var _view_bottom: float = 1000.0
-
-	func set_visible_range(top: float, height: float) -> void:
-		_view_top = top - 128.0
-		_view_bottom = top + height + 128.0
-		queue_redraw()
-
-	func _draw() -> void:
-		# The map is long, but only the visible plant needs to build geometry.
-		for index in range(maxi(0, points.size() - 1)):
-			var start := points[index]
-			var finish := points[index + 1]
-			if maxf(start.y, finish.y) < _view_top or minf(start.y, finish.y) > _view_bottom:
-				continue
-			var curve := PackedVector2Array()
-			var wrap := PackedVector2Array()
-			for step in range(25):
-				var t := float(step) / 24.0
-				var blend := t * t * (3.0 - 2.0 * t)
-				var point := Vector2(lerpf(start.x, finish.x, blend), lerpf(start.y, finish.y, t))
-				curve.append(point)
-				var tangent := Vector2((finish.x - start.x) * 6.0 * t * (1.0 - t), finish.y - start.y).normalized()
-				var normal := Vector2(-tangent.y, tangent.x)
-				wrap.append(point + normal * sin((float(index) + t) * 2.6) * 11.0)
-			_draw_vine(curve)
-			# A smaller winding shoot crosses the thick, rounded main stem.
-			_draw_round_stroke(wrap, Color("#347d20"), 7.0, Vector2(1.0, 1.5))
-			_draw_round_stroke(wrap, Color("#a6e84e"), 4.0)
-			_draw_round_stroke(wrap, Color("#dbf88e"), 1.2, Vector2(-0.7, -0.7))
-			var center := (start + finish) * 0.5
-			var direction := -1.0 if index % 2 == 0 else 1.0
-			_draw_tendril(center + Vector2(direction * 4.0, -4.0), direction, 0.92 if index % 3 == 0 else 0.72)
-			_draw_leaf(center + Vector2(direction * 8.0, 0.0), direction, 48.0 + float(index % 3) * 5.0, 20.0, -direction * 4.0)
-			_draw_leaf(center + Vector2(-direction * 6.0, 14.0), -direction, 37.0 + float(index % 2) * 6.0, 16.0, direction * 4.0)
-			if index % 3 != 1:
-				_draw_leaf(curve[7] + Vector2(-direction * 3.0, -2.0), -direction, 30.0, 13.0, -direction * 2.0)
-		var font := get_theme_default_font()
-		for index in range(0, points.size(), 12):
-			var center := points[index]
-			if center.y < _view_top or center.y > _view_bottom:
-				continue
-			_draw_leaf(center + Vector2(-5.0, 15.0), -1.0, 56.0, 19.0, 6.0)
-			_draw_leaf(center + Vector2(5.0, 15.0), 1.0, 56.0, 19.0, -6.0)
-			var platform := Rect2(center + Vector2(-48.0, tile_side * 0.34), Vector2(96.0, 12.0))
-			draw_style_box(RouteArt.panel_style(Color("#72c735"), 6, Color("#b0ed65")), platform)
-			var caption := "第 %d 段旅程" % (floori(float(index) / 12.0) + 1)
-			var text_width := font.get_string_size(caption, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 15).x
-			draw_string(font, Vector2(center.x - text_width * 0.5, center.y + tile_side * 0.5 + 30.0), caption, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 15, Color("#e5f8bd"))
-
-	func _draw_vine(curve: PackedVector2Array) -> void:
-		_draw_round_stroke(curve, Color(0.04, 0.14, 0.12, 0.35), 35.0, Vector2(4.0, 5.0))
-		_draw_round_stroke(curve, Color("#246b20"), 31.0)
-		_draw_round_stroke(curve, Color("#3faa26"), 27.0)
-		_draw_round_stroke(curve, Color("#73d436"), 21.0, Vector2(-2.0, -1.0))
-		_draw_round_stroke(curve, Color("#adf061"), 8.0, Vector2(-6.0, -2.0))
-		_draw_round_stroke(curve, Color(0.88, 1.0, 0.64, 0.60), 1.8, Vector2(-8.0, -2.5))
-
-	func _draw_round_stroke(curve: PackedVector2Array, color: Color, width: float, offset: Vector2 = Vector2.ZERO) -> void:
-		if curve.size() < 2:
-			return
-		var shifted := PackedVector2Array()
-		for point in curve:
-			shifted.append(point + offset)
-		draw_polyline(shifted, color, width, true)
-		draw_circle(shifted[0], width * 0.5, color)
-		draw_circle(shifted[shifted.size() - 1], width * 0.5, color)
-
-	func _draw_tendril(root: Vector2, direction: float, scale_factor: float) -> void:
-		var curl := PackedVector2Array()
-		for step in range(13):
-			var t := float(step) / 12.0
-			curl.append(root + Vector2(direction * 35.0 * t, -24.0 * sin(t * PI * 0.5)) * scale_factor)
-		var curl_center := root + Vector2(direction * 35.0, -11.0) * scale_factor
-		for step in range(1, 29):
-			var t := float(step) / 28.0
-			var angle := -PI * 0.5 + direction * t * TAU * 1.12
-			var radius := lerpf(13.0, 2.5, t) * scale_factor
-			curl.append(curl_center + Vector2(cos(angle), sin(angle)) * radius)
-		_draw_round_stroke(curl, Color("#286f23"), 5.0, Vector2(1.2, 1.4))
-		_draw_round_stroke(curl, Color("#8de444"), 3.2)
-		_draw_round_stroke(curl, Color("#d1f98b"), 1.0, Vector2(-0.7, -0.7))
-
-	func _draw_leaf(root: Vector2, direction: float, length: float, half_width: float, bend: float) -> void:
-		var axis := Vector2(direction, -0.48).normalized()
-		var normal := Vector2(-axis.y, axis.x)
-		var upper := PackedVector2Array()
-		var lower := PackedVector2Array()
-		var vein := PackedVector2Array()
-		for step in range(13):
-			var t := float(step) / 12.0
-			var fullness := pow(maxf(0.0, sin(t * PI)), 0.86)
-			var center := root + axis * length * t + normal * sin(t * PI) * bend
-			vein.append(center)
-			upper.append(center + normal * half_width * fullness)
-			lower.append(center - normal * half_width * fullness * 0.80)
-		var outline := PackedVector2Array(upper)
-		for step in range(11, 0, -1):
-			outline.append(lower[step])
-		var shadow := PackedVector2Array()
-		for point in outline:
-			shadow.append(point + Vector2(2.0, 3.0))
-		draw_colored_polygon(shadow, Color(0.03, 0.22, 0.10, 0.32))
-		draw_colored_polygon(outline, Color("#61c62b"))
-		var lit_half := PackedVector2Array(upper)
-		for step in range(11, 0, -1):
-			lit_half.append(vein[step])
-		var shaded_half := PackedVector2Array(vein)
-		for step in range(11, 0, -1):
-			shaded_half.append(lower[step])
-		draw_colored_polygon(lit_half, Color("#a0ea4c") if normal.y < 0.0 else Color("#55b522"))
-		draw_colored_polygon(shaded_half, Color("#55b522") if normal.y < 0.0 else Color("#a0ea4c"))
-		var closed_outline := PackedVector2Array(outline)
-		closed_outline.append(outline[0])
-		draw_polyline(closed_outline, Color("#2d8522"), 1.5, true)
-		draw_polyline(vein, Color("#dcf99a"), 1.6, true)
-		for step in [4, 7, 9]:
-			draw_line(vein[step], upper[mini(11, step + 1)].lerp(vein[mini(11, step + 1)], 0.34), Color(0.81, 0.97, 0.49, 0.75), 1.0, true)
-			draw_line(vein[step], lower[mini(11, step + 1)].lerp(vein[mini(11, step + 1)], 0.34), Color(0.81, 0.97, 0.49, 0.62), 1.0, true)
-		var sheen := PackedVector2Array()
-		for step in range(3, 9):
-			sheen.append((upper[step] if normal.y < 0.0 else lower[step]).lerp(vein[step], 0.38))
-		draw_polyline(sheen, Color(0.88, 1.0, 0.64, 0.55), 2.4, true)
 
 
 class GoldDiamond extends Control:
@@ -227,11 +94,11 @@ class LevelTile extends Button:
 	var level_id: int = 1
 	var completed: bool = false
 	var selected: bool = false
-	var visual_side: float = 38.0
+	var visual_side: float = 32.0
 	var _number: Label
 
 	func _ready() -> void:
-		custom_minimum_size = Vector2(44.0, 44.0)
+		custom_minimum_size = Vector2(32.0, 32.0)
 		focus_mode = Control.FOCUS_ALL
 		mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 		text = str(level_id)
@@ -254,7 +121,7 @@ class LevelTile extends Button:
 	func refresh() -> void:
 		if is_instance_valid(_number):
 			_number.text = str(level_id)
-			_number.add_theme_font_size_override("font_size", clampi(roundi(visual_side * 0.45), 15, 19))
+			_number.add_theme_font_size_override("font_size", clampi(roundi(visual_side * 0.45), 13, 16))
 			_number.add_theme_color_override("font_color", Color("#273451") if selected else (Color("#efffff") if completed else Color("#91a6ce")))
 		queue_redraw()
 
@@ -413,20 +280,16 @@ func _build_controls() -> void:
 	# Reveal the marker with its tile, rather than letting native focus clip it.
 	_scroll.follow_focus = false
 	_scroll.mouse_filter = Control.MOUSE_FILTER_STOP
-	_scroll.get_v_scroll_bar().value_changed.connect(_update_route_view)
 	add_child(_scroll)
 	_map = Control.new()
 	_map.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_map.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_scroll.add_child(_map)
-	_route = AdventureRoute.new()
-	_route.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_map.add_child(_route)
 	_trophy = TrophyArt.new()
 	_trophy.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_map.add_child(_trophy)
 	_map_caption = _label(18, Color("#c8e9ff"))
-	_map_caption.text = "沿着藤蔓向上，点亮下一段旅程"
+	_map_caption.text = "逐关挑战，点亮你的方块地图"
 	_map.add_child(_map_caption)
 	_marker = GoldDiamond.new()
 	_marker.name = "SelectedLevelMarker"
@@ -489,12 +352,6 @@ func _rebuild_tiles() -> void:
 		tile.focus_entered.connect(_on_tile_focused.bind(level_id))
 		_map.add_child(tile)
 		_tiles[level_id] = tile
-	for level_id in _tiles:
-		var tile: LevelTile = _tiles[level_id]
-		if int(level_id) < _unlocked_level:
-			tile.focus_neighbor_top = tile.get_path_to(_tiles[int(level_id) + 1])
-		if int(level_id) > 1:
-			tile.focus_neighbor_bottom = tile.get_path_to(_tiles[int(level_id) - 1])
 	_layout_map()
 
 
@@ -531,58 +388,59 @@ func _layout_controls() -> void:
 func _layout_map() -> void:
 	if not is_instance_valid(_map):
 		return
-	# One climbing route keeps the next challenge above the current one. A
-	# chapter adds a breathing space, without packing future levels into a grid.
-	var content_width := maxf(160.0, _scroll.size.x - 24.0)
-	var available_width := minf(760.0, content_width - 24.0)
-	var visual_side := clampf(floorf(content_width * 0.060), 32.0, 42.0)
-	var tile_side := 44.0
-	var amplitude := maxf(18.0, (available_width - tile_side - 100.0) * 0.34)
-	var step_height := 76.0
-	var chapter_gap := 48.0
-	var chapter_count := floori(float(total_levels - 1) / 12.0)
-	var top_space := 222.0
-	var map_height := top_space + float(total_levels - 1) * step_height + float(chapter_count) * chapter_gap + tile_side + 108.0
+	# Restore the original ascending block tower, with compact square cells.
+	# Reserve scrollbar space so its appearance cannot clip the last column.
+	var content_width := maxf(56.0, _scroll.size.x - 24.0)
+	var available_width := minf(440.0, maxf(32.0, content_width - 24.0))
+	var columns := clampi(int((available_width + 4.0) / 40.0), 1, 11)
+	var tile_side := clampf(floorf((available_width - float(columns - 1) * 4.0) / float(columns)), 32.0, 36.0)
+	var pitch := tile_side + 4.0
+	var map_width := float(columns) * pitch - 4.0
+	var proportions := [1.0, 0.82, 0.73, 0.55, 0.55, 0.64, 0.73, 0.82, 0.73, 0.64, 0.55, 0.73, 0.64, 0.55, 0.36]
+	var rows: Array[Dictionary] = []
+	var first_level := 1
+	while first_level <= total_levels:
+		var row_index := rows.size()
+		var row_capacity := clampi(roundi(float(columns) * float(proportions[row_index % proportions.size()])), mini(3, columns), columns)
+		var count := mini(row_capacity, total_levels - first_level + 1)
+		rows.append({"first": first_level, "count": count})
+		first_level += count
+	var top_space := 190.0
+	var map_height := top_space + float(rows.size()) * pitch + 28.0
 	_map.custom_minimum_size = Vector2(0.0, map_height)
-	_route.position = Vector2.ZERO
-	_route.size = Vector2(content_width, map_height)
-	_route.tile_side = visual_side
-	_route.completed_count = highest_completed
-	_route.points.clear()
 	_trophy.position = Vector2((content_width - 124.0) * 0.5, 14.0)
 	_trophy.size = Vector2(124.0, 124.0)
-	_map_caption.position = Vector2(8.0, 152.0)
+	_map_caption.position = Vector2(8.0, 142.0)
 	_map_caption.size = Vector2(maxf(0.0, content_width - 16.0), 32.0)
 	_map_caption.add_theme_font_size_override("font_size", 18 if content_width >= 440.0 else 15)
-	for level_id in range(1, total_levels + 1):
-		var tile: LevelTile = _tiles.get(level_id)
-		if not is_instance_valid(tile):
-			continue
-		var chapter := floori(float(level_id - 1) / 12.0)
-		var phase := -PI * 0.5 + float(level_id - 1) * PI / 4.4
-		var center := Vector2(content_width * 0.5 + sin(phase) * amplitude,
-			top_space + float(total_levels - level_id) * step_height + float(chapter_count - chapter) * chapter_gap + tile_side * 0.5)
-		tile.position = center - Vector2.ONE * tile_side * 0.5
-		tile.size = Vector2.ONE * tile_side
-		tile.visual_side = visual_side
-		tile.refresh()
-		_route.points.append(center)
-	_route.queue_redraw()
+	var left := (content_width - map_width) * 0.5
+	for row_index in range(rows.size()):
+		var row: Dictionary = rows[row_index]
+		var count := int(row["count"])
+		var free_columns := columns - count
+		var stagger := 1 if row_index % 4 == 2 else 0
+		var offset_columns := clampi(floori(float(free_columns) * 0.5) + stagger, 0, free_columns)
+		var y := top_space + float(rows.size() - row_index - 1) * pitch
+		for index in range(count):
+			var tile: LevelTile = _tiles.get(int(row["first"]) + index)
+			if not is_instance_valid(tile):
+				continue
+			tile.position = Vector2(left + float(offset_columns + index) * pitch, y)
+			tile.size = Vector2.ONE * tile_side
+			tile.visual_side = tile_side - 4.0
+			tile.refresh()
 	_position_marker()
-	_update_route_view()
-
-
-func _update_route_view(_value: float = 0.0) -> void:
-	if is_instance_valid(_route) and is_instance_valid(_scroll):
-		_route.set_visible_range(float(_scroll.scroll_vertical), _scroll.size.y)
+	_schedule_reveal()
 
 
 func _position_marker() -> void:
 	var tile: LevelTile = _tiles.get(selected_level)
 	if not is_instance_valid(tile) or not is_instance_valid(_marker):
 		return
+	# A small badge at the tile's upper edge leaves both rows' numbers clear.
 	_marker.size = Vector2(34.0, 34.0)
-	_marker.position = Vector2(tile.position.x + tile.size.x * 0.5 - 17.0, tile.position.y - 32.0)
+	_marker.scale = Vector2.ONE * 0.65
+	_marker.position = Vector2(tile.position.x + tile.size.x * 0.5 - 11.05, tile.position.y - 12.0)
 
 
 func _select_level(level_id: int) -> void:
