@@ -1,6 +1,8 @@
 # Block Windows 发布说明
 
-更新：2026-10-15。本页保留第一阶段 `0.1.0` 导出记录；当前源码为 `0.4.0` 闯关地图与收集目标版本，尚未重新导出，旧包不包含新美术、模式和收集玩法。
+更新：2026-10-15。本页保留第一阶段 `0.1.0` 导出记录；当前源码为 `0.4.1` 地图比例与首两关教学推进版本，尚未重新导出，旧包不包含新美术、模式、收集玩法和首两关救援。
+
+本轮仅维护源码、用例与文档，并进行必要的轻量编译和静态审查；不执行测试、GUI 或完整自动验收，不生成新发布包。先由用户停止旧游戏后按 **F5** 验收 32–42px 可见关卡格、明亮植物及前两关推进，通过后再按本页流程导出新版本。
 
 目标为 Windows x86_64、鼠标操作，沿用 Forward Plus / D3D12。本机 `0.1.0` release/debug 已实际导出并打包，包完整性检查通过；独立 EXE、声音、存档与跨机运行仍待用户验收。真实检查结果见 [验收记录](Block-Blast-Godot-验收记录.md)。本轮未启动导出游戏或控制桌面验收。
 
@@ -11,7 +13,7 @@
 3. 使用 **Python 3.10 或更新版本**运行 `tools/export_windows.py`。脚本仅依赖 Python 标准库，不需要安装第三方包。
 4. 核对 `project.godot` 的 `application/config/version` 和 `export_presets.cfg` 的 `Windows Desktop` 预设。发布配置为 `release`，调试配置为 `debug`，架构均为 `x86_64`。
 
-Godot 默认 Windows 模板根目录为 `%APPDATA%\Godot\export_templates`，模板按引擎版本存放。本机默认目录未安装匹配模板；本轮已下载官方 4.7.2 模板包并核对 SHA512，Windows 模板提取到本地 `work/release-templates/4.7.2.stable`，该目录已通过预检并用于本轮导出，未安装到全局模板目录；使用时追加下文 `--templates-dir` 参数。
+Godot 默认 Windows 模板根目录为 `%APPDATA%\Godot\export_templates`，模板按引擎版本存放。本机默认目录未安装匹配模板；历史 `0.1.0` 发布阶段已下载官方 4.7.2 模板包并核对 SHA512，Windows 模板提取到本地 `work/release-templates/4.7.2.stable`，当时已通过预检并用于导出，未安装到全局模板目录；后续使用时追加下文 `--templates-dir` 参数。
 
 ## 推荐：一条命令导出并打包
 
@@ -56,7 +58,7 @@ build/windows/0.1.0/release/                  导出与打包输入目录
 dist/Block-0.1.0-windows-x86_64-release.zip   交付压缩包
 ```
 
-本轮已生成的 release ZIP 为 **42,205,896 字节**，debug ZIP 为 **38,531,861 字节**。两包 ZIP CRC、`build-info.json` 中的文件 SHA256 及 ZIP 旁 `.sha256` 校验均匹配。此结果证明导出与打包完成，不替代用户启动验收。
+历史 `0.1.0` release ZIP 为 **42,205,896 字节**，debug ZIP 为 **38,531,861 字节**。当时两包 ZIP CRC、`build-info.json` 中的文件 SHA256 及 ZIP 旁 `.sha256` 校验均匹配。此结果只证明历史版本导出与打包完成，不替代用户启动验收，也不表示存在 `0.4.1` 发布包。
 
 当前 release 包实际成员为 `Block.exe`、`Block.pck`、`build-info.json`、`START-HERE.txt`、`licenses/GODOT-LICENSE.txt`、`licenses/GODOT-COPYRIGHT.txt`；debug 包另外包含 `Block.console.exe`。本轮两包没有独立 DLL 或 `x86_64` 目录，使用 Windows 系统 D3D12。
 
@@ -100,5 +102,6 @@ New-Item -ItemType Directory -Force -Path "build/windows/manual-release"
 3. 音效、音乐、减少动画开关可用，窗口缩放后鼠标落点正确。
 4. 创造最高分或修改设置，正常退出再启动，记录能够读取。
 5. Game Over 标题、计分明细、“重新开始”和“返回菜单”可见可用。
+6. 若验收后续 `0.4.1` 包，核对关卡格大小与植物配色；前两关达到 368/392 分、必要时按认证各步模拟棋盘的普通→2→1 顺序救援（整组可提前含后续所需小块），分数来自实际操作；第 3 关起、自由和经典不出现此救援，收集目标与原失败规则有效。
 
 反馈时附上包版本、debug/release、Windows 版本、显卡/驱动，以及错误内容或截图。当前渲染基线为 Forward Plus / D3D12；触控、Compatibility 兼容方案和 P1 玩法扩展继续保留在后续范围。

@@ -1,6 +1,8 @@
 class_name GameState
 extends RefCounted
 
+const TutorialTrayBuilder = preload("res://scripts/rules/tutorial_tray_builder.gd")
+
 enum Status { PLAYING, GAME_OVER, LEVEL_COMPLETE }
 
 var rules_config: GameRulesConfig
@@ -27,6 +29,7 @@ var objective_type := "score"
 var target_cells: Dictionary = {}
 var target_total := 0
 var target_collected := 0
+var _tutorial_builder: TutorialTrayBuilder
 
 func _init(initial_seed: int = 0, board_size: int = 8, config: GameRulesConfig = null, setup: Dictionary = {}) -> void:
 	rules_config = config if config != null else GameRulesConfig.new()
@@ -54,7 +57,10 @@ func _init(initial_seed: int = 0, board_size: int = 8, config: GameRulesConfig =
 			if board.get_cell(cell.x, cell.y) >= 0:
 				target_cells[cell] = true
 		target_total = target_cells.size()
-	if _accept_initial_tray(setup):
+	if _uses_tutorial_supplier():
+		_tutorial_builder = TutorialTrayBuilder.new(rules_config)
+		_fill_tutorial_tray(rules_config.tray_count)
+	elif _accept_initial_tray(setup):
 		generation_diagnostics = setup.get("initial_diagnostics", {}).duplicate(true)
 		if mode == "adventure" and objective_type != "collect" and generator.candidate_samples > 1:
 			remaining_pieces = generator.generate_solvable_round(board, remaining_pieces)
@@ -135,15 +141,30 @@ func place_piece(piece_index: int, origin: Vector2i, color_id: int = 0) -> Dicti
 	total_moves += 1
 	remaining_pieces.remove_at(piece_index)
 	var round_refilled := false
+	var tray_adapted := false
 	if _objective_complete():
 		status = Status.LEVEL_COMPLETE
 	elif remaining_pieces.is_empty():
 		round_index += 1
-		remaining_pieces = generator.generate_solvable_round(board)
-		generation_diagnostics = generator.last_diagnostics.duplicate(true)
+		if _uses_tutorial_supplier():
+			_fill_tutorial_tray(rules_config.tray_count)
+		else:
+			remaining_pieces = generator.generate_solvable_round(board)
+			generation_diagnostics = generator.last_diagnostics.duplicate(true)
 		round_refilled = not remaining_pieces.is_empty()
 		if remaining_pieces.is_empty():
 			status = Status.GAME_OVER
+	elif _uses_tutorial_supplier():
+		# After a player's different choice, certify the whole remaining tray,
+		# not just one currently legal move. Only replace it when that path died.
+		var remaining_solution := generator.find_solution(board, remaining_pieces)
+		if remaining_solution.size() != remaining_pieces.size():
+			_fill_tutorial_tray(remaining_pieces.size(), remaining_pieces)
+			tray_adapted = true
+			if remaining_pieces.is_empty():
+				status = Status.GAME_OVER
+		else:
+			generator.last_solution.assign(remaining_solution)
 	elif not has_legal_move_for_any_remaining_piece():
 		status = Status.GAME_OVER
 	return {
@@ -165,6 +186,8 @@ func place_piece(piece_index: int, origin: Vector2i, color_id: int = 0) -> Dicti
 		"placed_cells": placed_cells,
 		"placed_color": color_id,
 		"round_refilled": round_refilled,
+		"tray_adapted": tray_adapted,
+		"tutorial": _uses_tutorial_supplier(),
 		"generation_diagnostics": generation_diagnostics.duplicate(true),
 		"level_complete": status == Status.LEVEL_COMPLETE,
 		"collected_targets": collected_targets,
@@ -185,6 +208,8 @@ func _invalid_move_result(reason: String) -> Dictionary:
 		"last_clear_points": last_clear_points,
 		"last_clear_lines": last_clear_lines,
 		"gained": 0,
+		"tray_adapted": false,
+		"tutorial": _uses_tutorial_supplier(),
 		"score": scoring.score if scoring != null else 0,
 		"combo": scoring.combo if scoring != null else 0,
 		"collected_targets": [],
@@ -193,6 +218,18 @@ func _invalid_move_result(reason: String) -> Dictionary:
 		"target_collected": target_collected,
 		"target_remaining": target_cells.size(),
 	}
+
+func _uses_tutorial_supplier() -> bool:
+	return mode == "adventure" and objective_type == "score" and (level_id == 1 or level_id == 2)
+
+func _fill_tutorial_tray(count: int, preferred_pieces: Array[PieceData] = []) -> void:
+	var supplied := _tutorial_builder.build(board, count, preferred_pieces)
+	remaining_pieces.assign(supplied["pieces"])
+	generator.last_solution.assign(supplied["solution"])
+	generation_diagnostics = supplied["diagnostics"].duplicate(true)
+	generation_diagnostics["seed"] = generator.seed
+	generation_diagnostics["round"] = round_index
+	generator.last_diagnostics = generation_diagnostics.duplicate(true)
 
 func _objective_complete() -> bool:
 	if mode != "adventure":

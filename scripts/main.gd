@@ -226,6 +226,10 @@ func _handle_release(position: Vector2) -> void:
 	input_locked = true
 	var result: Dictionary = game.place_piece(index, origin, _piece_color_id(piece))
 	if bool(result.get("ok", false)):
+		if bool(result.get("tray_adapted", false)):
+			# Tutorial adaptation happens after the legal move. Keep the visual
+			# tray paired with the new instances before their colors are synced.
+			pending_tray = game.remaining_pieces.duplicate()
 		var next_order := placement_sequence + 1
 		var placed_cells: Array[Vector2i] = result["placed_cells"]
 		var next_orders := _orders_with_placement(placed_cells, next_order)

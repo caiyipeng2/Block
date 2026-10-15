@@ -5,6 +5,7 @@ var failures := 0
 
 func _initialize() -> void:
 	_test_score_modes()
+	_test_tutorial_adaptation()
 	_test_collection_progress()
 	_test_crossing_collection()
 	if failures == 0:
@@ -47,6 +48,52 @@ func _test_score_modes() -> void:
 	var classic := GameState.new(19, 8, config, free_setup)
 	classic.place_piece(0, Vector2i.ZERO, 0)
 	_check(not classic.is_level_complete() and classic.target_score == 0, "经典模式不受目标限制")
+
+func _isolated_holes_setup(mode: String = "adventure", level_id: int = 1) -> Dictionary:
+	var initial: Array[Dictionary] = []
+	for y in range(8):
+		for x in range(8):
+			if (x + y) % 2 == 1:
+				initial.append({"x": x, "y": y, "color": 0})
+	return {"mode": mode, "level_id": level_id, "objective_type": "score", "target_score": 10000, "initial_cells": initial}
+
+func _test_tutorial_adaptation() -> void:
+	var config := GameRulesConfig.new()
+	var first := GameState.new(31, 8, config, _isolated_holes_setup())
+	_check(not first.is_game_over() and first.remaining_pieces.size() == 3, "第一关孤立空洞残局仍可供应完整托盘")
+	_check(bool(first.generation_diagnostics.get("tutorial", false)), "前两关供应诊断标记为教学保底")
+	_check(first.scoring.score == 0 and first.board.get_cell(0, 0) == -1, "供块不改棋盘也不赠送分数")
+	for piece in first.remaining_pieces:
+		_check(piece.cell_count() == 1 and not piece.is_valid_for_config(config), "孤立孔使用内部单格救援且不放宽全局形状规则")
+	var retained := first.remaining_pieces.duplicate()
+	var ordinary_move := first.place_piece(0, Vector2i.ZERO, 1)
+	_check(int(ordinary_move["placement_points"]) == 10 and int(ordinary_move["clear_points"]) == 0, "单格救援按实际一格计10分")
+	_check(not bool(ordinary_move["tray_adapted"]) and first.remaining_pieces[0] == retained[1] and first.remaining_pieces[1] == retained[2], "剩余托盘仍有完整路径时不换块")
+	var second := GameState.new(32, 8, config, _isolated_holes_setup("adventure", 2))
+	var rescue := second.remaining_pieces[0]
+	var line := PieceData.new(Vector2i.ZERO, [Vector2i.ZERO, Vector2i(1, 0), Vector2i(2, 0)])
+	var square := PieceData.new(Vector2i.ZERO, [Vector2i.ZERO, Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1)])
+	second.remaining_pieces = [rescue, line, square]
+	var adapted := second.place_piece(0, Vector2i.ZERO, 2)
+	_check(bool(adapted["tray_adapted"]) and second.remaining_pieces.size() == 2 and not second.is_game_over(), "第二关落子后堵死的剩余两块自动适配且不提前结束")
+	_check(second.generator.find_solution(second.board, second.remaining_pieces).size() == 2, "适配后的剩余组具有真实完整放置路径")
+	_check(second.scoring.score == 10 and second.round_index == 0, "剩余组适配不送分也不推进回合号")
+	_check(second.board.get_cell(0, 0) == 2 and second.board.get_cell(2, 0) == -1, "适配保留玩家落子且不填未操作的空格")
+	var pair_setup := _isolated_holes_setup()
+	var pair_initial: Array[Dictionary] = []
+	for entry: Dictionary in pair_setup["initial_cells"]:
+		if int(entry["x"]) != 1 or int(entry["y"]) != 0:
+			pair_initial.append(entry)
+	pair_initial.append({"x": 2, "y": 0, "color": 0})
+	pair_setup["initial_cells"] = pair_initial
+	var paired := GameState.new(34, 8, config, pair_setup)
+	_check(paired.remaining_pieces[0].cell_count() == 2, "只有二格可用时先使用二格救援")
+	var pair_move := paired.place_piece(0, Vector2i.ZERO, 1)
+	_check(int(pair_move["placement_points"]) == 20 and int(pair_move["clear_points"]) == 0, "二格救援按实际两格计20分")
+	for mode in ["free", "classic", "adventure"]:
+		var level_id := 3 if mode == "adventure" else 1
+		var ordinary := GameState.new(33, 8, config, _isolated_holes_setup(mode, level_id))
+		_check(not bool(ordinary.generation_diagnostics.get("tutorial", false)) and ordinary.is_game_over(), "自由经典和第三关不引入教学救援：" + mode)
 
 func _collection_setup() -> Dictionary:
 	var line := PieceData.new(Vector2i.ZERO, [Vector2i.ZERO, Vector2i(1, 0), Vector2i(2, 0)])
