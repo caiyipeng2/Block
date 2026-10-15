@@ -8,6 +8,7 @@ const MoveFeedbackScript := preload("res://scripts/ui/move_feedback.gd")
 const GameplayControlsScript := preload("res://scripts/ui/gameplay_controls.gd")
 const ModeCatalog := preload("res://scripts/modes/mode_catalog.gd")
 const LevelSelectScript := preload("res://scripts/ui/level_select.gd")
+const MainMenuScript := preload("res://scripts/ui/main_menu.gd")
 
 signal quit_requested
 
@@ -108,7 +109,7 @@ func _ready() -> void:
 	get_window().focus_exited.connect(_on_window_focus_lost)
 	_layout_controls()
 	_refresh_controls()
-	menu_controls.get_node("StartButton").grab_focus()
+	menu_controls.present(true, _reduced_motion())
 	queue_redraw()
 
 func _process(delta: float) -> void:
@@ -130,6 +131,9 @@ func _process(delta: float) -> void:
 
 func _input(event: InputEvent) -> void:
 	if exiting:
+		return
+	if screen == "menu" and menu_controls.consume_opening_input(event):
+		get_viewport().set_input_as_handled()
 		return
 	if is_instance_valid(level_config_dialog) and level_config_dialog.visible:
 		return
@@ -178,16 +182,7 @@ func _handle_press(position: Vector2) -> void:
 	if exiting or input_locked or _objective_intro_open() or not confirmation_action.is_empty():
 		return
 	if screen == "menu":
-		if _menu_start_button_rect().has_point(position):
-			_start_game("free")
-		elif _menu_classic_button_rect().has_point(position):
-			_start_game("classic")
-		elif _menu_adventure_button_rect().has_point(position):
-			_open_levels()
-		elif _menu_settings_button_rect().has_point(position):
-			_show_settings()
-		elif _menu_exit_button_rect().has_point(position):
-			_request_quit()
+		# Native menu buttons own their input and animated bounds.
 		return
 	if screen == "settings":
 		if _settings_sound_rect().has_point(position):
@@ -641,6 +636,8 @@ func _toggle_pause() -> void:
 
 func _on_window_focus_lost() -> void:
 	_cancel_drag()
+	if screen == "menu":
+		menu_controls.finish_opening()
 	if _objective_intro_open():
 		return
 	if screen == "game" and confirmation_action.is_empty():
@@ -727,8 +724,7 @@ func _show_menu() -> void:
 	screen = "menu"
 	_play_feedback("click")
 	_refresh_controls()
-	menu_controls.get_node("StartButton").grab_focus()
-	_fade_controls(menu_controls)
+	menu_controls.present(false, _reduced_motion())
 	queue_redraw()
 
 func _play_feedback(kind: String) -> void:
@@ -743,6 +739,7 @@ func _request_quit() -> void:
 	if exiting:
 		return
 	exiting = true
+	menu_controls.finish_opening()
 	_clear_confirmation()
 	_cancel_drag()
 	_reset_visual_feedback()
@@ -904,15 +901,15 @@ func _stored_high_score() -> int:
 	return int(save_data.get("classic_high_score" if game_mode == "classic" else "high_score", 0))
 
 func _create_menu_controls() -> void:
-	menu_controls = Control.new()
+	menu_controls = MainMenuScript.new()
 	menu_controls.name = "MenuControls"
 	menu_controls.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(menu_controls)
-	_add_button(menu_controls, "StartButton", "自由模式", rules_config.primary_color, _start_game.bind("free"))
-	_add_button(menu_controls, "ClassicButton", "经典模式", Color("#4477f3"), _start_game.bind("classic"))
-	_add_button(menu_controls, "AdventureButton", "闯关模式", Color("#52ce42"), _open_levels)
-	_add_button(menu_controls, "SettingsButton", "设置", rules_config.secondary_color, _show_settings)
-	_add_button(menu_controls, "ExitButton", "退出游戏", Color("#294576"), _request_quit)
+	menu_controls.free_requested.connect(_start_game.bind("free"))
+	menu_controls.classic_requested.connect(_start_game.bind("classic"))
+	menu_controls.adventure_requested.connect(_open_levels)
+	menu_controls.settings_requested.connect(_show_settings)
+	menu_controls.quit_requested.connect(_request_quit)
 	settings_controls = Control.new()
 	settings_controls.name = "SettingsControls"
 	settings_controls.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -995,11 +992,8 @@ func _layout_controls() -> void:
 	level_select.size = size
 	move_feedback.position = Vector2.ZERO
 	move_feedback.size = size
-	_set_control_rect(menu_controls.get_node("StartButton"), _menu_start_button_rect())
-	_set_control_rect(menu_controls.get_node("ClassicButton"), _menu_classic_button_rect())
-	_set_control_rect(menu_controls.get_node("AdventureButton"), _menu_adventure_button_rect())
-	_set_control_rect(menu_controls.get_node("SettingsButton"), _menu_settings_button_rect())
-	_set_control_rect(menu_controls.get_node("ExitButton"), _menu_exit_button_rect())
+	menu_controls.position = Vector2.ZERO
+	menu_controls.size = size
 	_set_control_rect(setting_controls["sound_enabled"], _settings_sound_rect())
 	_set_control_rect(setting_controls["music_enabled"], _settings_music_rect())
 	_set_control_rect(setting_controls["reduced_motion"], _settings_motion_rect())
@@ -1015,6 +1009,7 @@ func _set_control_rect(control: Control, rect: Rect2) -> void:
 func _refresh_controls() -> void:
 	if menu_controls == null:
 		return
+	menu_controls.set_profile(maxi(int(save_data.get("high_score", 0)), int(save_data.get("classic_high_score", 0))), save_status_text, _reduced_motion())
 	menu_controls.visible = screen == "menu"
 	settings_controls.visible = screen == "settings"
 	level_select.visible = screen == "levels"
@@ -1183,25 +1178,6 @@ func _tray_piece_origin(index: int, piece: PieceData) -> Vector2:
 func _floating_origin(position: Vector2) -> Vector2:
 	return position - drag_grab_offset * _cell_size()
 
-func _menu_start_button_rect() -> Rect2:
-	return Rect2(Vector2(size.x * 0.5 - minf(150.0, (size.x - 64.0) * 0.5), size.y * 0.5 - 68.0), Vector2(minf(300.0, size.x - 64.0), 56.0))
-
-func _menu_classic_button_rect() -> Rect2:
-	var start := _menu_start_button_rect()
-	return Rect2(start.position + Vector2(0, 74), start.size)
-
-func _menu_adventure_button_rect() -> Rect2:
-	var start := _menu_start_button_rect()
-	return Rect2(start.position + Vector2(0, 148), start.size)
-
-func _menu_settings_button_rect() -> Rect2:
-	var start := _menu_start_button_rect()
-	return Rect2(start.position + Vector2(0, 222), Vector2(start.size.x, 52))
-
-func _menu_exit_button_rect() -> Rect2:
-	var start := _menu_start_button_rect()
-	return Rect2(start.position + Vector2(0, 292), Vector2(start.size.x, 44))
-
 func _settings_panel_rect() -> Rect2:
 	var panel_size := Vector2(minf(470.0, size.x - 40.0), 530.0)
 	return Rect2((size - panel_size) * 0.5, panel_size)
@@ -1273,7 +1249,6 @@ func _update_drag_preview() -> void:
 func _draw() -> void:
 	_draw_background()
 	if screen == "menu":
-		_draw_menu()
 		return
 	if screen == "settings":
 		_draw_settings()
@@ -1286,23 +1261,6 @@ func _draw() -> void:
 
 func _draw_background() -> void:
 	Art.draw_background(self, Rect2(Vector2.ZERO, size))
-
-func _draw_menu() -> void:
-	var center := size * 0.5
-	var emblem_unit := minf(36.0, size.x * 0.075)
-	var emblem_origin := Vector2(center.x - emblem_unit * 1.5, center.y - 300.0)
-	var emblem_cells := [Vector2i(0, 0), Vector2i(0, 1), Vector2i(1, 1), Vector2i(2, 1)]
-	for index in range(emblem_cells.size()):
-		var emblem_color := rules_config.primary_color if rules_config.palette.is_empty() else rules_config.palette[index % rules_config.palette.size()]
-		Art.draw_block(self, Rect2(emblem_origin + Vector2(emblem_cells[index]) * emblem_unit, Vector2.ONE * (emblem_unit - 2.0)), emblem_color)
-	_draw_centered_text("BLOCK BLAST", center.y - 190.0, mini(52, int(size.x * 0.13)), Color("#e5fbff"))
-	_draw_centered_text("放下方块，腾出更多可能", center.y - 151.0, 18, Color("#b9ceec"))
-	var best := "最高分  %d" % int(save_data.get("high_score", 0))
-	_draw_centered_text(best, center.y - 106.0, 21, Color("#ffd154"))
-	Art.draw_icon(self, "crown", Rect2(Vector2(center.x - 115.0, center.y - 133.0), Vector2(26, 26)), Color("#ffd154"))
-	_draw_centered_text("自由探索 · 经典挑战 · 逐关冒险", minf(center.y + 302.0, size.y - 22.0), 14, Color("#a8c1e5"))
-	if not save_status_text.is_empty():
-		_draw_centered_text(save_status_text, size.y - 5.0, 12, Color("#ffbd9c"))
 
 func _draw_settings() -> void:
 	var panel := _settings_panel_rect()

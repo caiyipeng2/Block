@@ -25,6 +25,7 @@ func _run_tests() -> void:
 	_check(main.is_node_ready(), "测试在真实 ready 生命周期之后执行")
 	_equal(main.screen, "menu", "启动显示主菜单")
 	_check(main.save_data.has("sound_enabled"), "场景加载完整设置")
+	await _test_menu_presentation(main)
 	var settings_button: Button = main.get_node_or_null("MenuControls/SettingsButton")
 	var exit_button: Button = main.get_node_or_null("MenuControls/ExitButton")
 	_check(settings_button != null and settings_button.visible, "主菜单显示可聚焦的设置按钮")
@@ -65,6 +66,7 @@ func _run_tests() -> void:
 	escape.pressed = true
 	main._input(escape)
 	_equal(main.screen, "menu", "Esc 关闭设置而不退出游戏")
+	main.menu_controls.finish_opening()
 	main.get_node("MenuControls/StartButton").pressed.emit()
 	_equal(main.screen, "game", "主菜单开始按钮进入游戏")
 	main.game.board.set_cell(0, 0, 2)
@@ -84,6 +86,7 @@ func _run_tests() -> void:
 	main._confirm_action()
 	_equal(main.screen, "menu", "常驻返回菜单按钮可用")
 	_equal(main.game, null, "返回菜单清理当前局")
+	main.menu_controls.finish_opening()
 	_test_retry_failure_lifecycle(main)
 	# A completed game locks the board while gems arrive, but its result
 	# screen must release the primary and secondary navigation buttons.
@@ -137,6 +140,83 @@ func _run_tests() -> void:
 	reloaded.free()
 	await create_timer(0.5).timeout
 	_finish()
+
+func _test_menu_presentation(main) -> void:
+	var menu: Control = main.menu_controls
+	_check(menu != null and menu == main.get_node_or_null("MenuControls"), "原生主菜单保留 MenuControls 入口")
+	if menu == null:
+		return
+	var definitions := [
+		["AdventureButton", "adventure", "闯关模式"],
+		["ClassicButton", "classic", "经典模式"],
+		["StartButton", "free", "自由模式"],
+	]
+	var buttons: Array[Button] = []
+	for definition: Array in definitions:
+		var button: Button = menu.get_node_or_null(NodePath(definition[0]))
+		_check(button != null, "%s 保留原生节点路径" % definition[0])
+		if button == null:
+			continue
+		buttons.append(button)
+		_equal(button.text, definition[2], "%s 使用中文模式名称" % definition[0])
+		_equal(button.get("mode_kind"), definition[1], "%s 图标由对应模式配置驱动" % definition[0])
+		_check(button.has_method("_draw_mode_icon"), "%s 提供原生绘制模式图标" % definition[0])
+		_check(not str(button.get("subtitle_text")).is_empty(), "%s 保留模式说明" % definition[0])
+		_equal(button.focus_mode, Control.FOCUS_ALL, "%s 保留键盘聚焦" % definition[0])
+	# Only the first actual presentation may be an opening. Do not override its
+	# private latch or wait for wall-clock animations just to exercise a skip.
+	if menu.is_opening():
+		var skip_press := InputEventMouseButton.new()
+		skip_press.button_index = MOUSE_BUTTON_LEFT
+		skip_press.pressed = true
+		if not buttons.is_empty():
+			skip_press.position = buttons[0].get_global_rect().get_center()
+		main._input(skip_press)
+		_check(not menu.is_opening(), "主入口优先消费点击并结束开屏")
+		_equal(main.screen, "menu", "跳过点击不穿透到模式选择")
+		_equal(main.game, null, "跳过点击不会创建游戏")
+		var skip_release := InputEventMouseButton.new()
+		skip_release.button_index = MOUSE_BUTTON_LEFT
+		skip_release.pressed = false
+		skip_release.position = skip_press.position
+		_check(menu.consume_opening_input(skip_release), "跳过点击对应的释放也被消费")
+		_equal(main.screen, "menu", "跳过释放后仍停留主菜单")
+		_equal(main.game, null, "跳过释放不会启动关卡")
+	menu.finish_opening()
+	for button: Button in buttons:
+		_check(not button.disabled and button.visible, "%s 演出结束后恢复可用" % button.name)
+		_equal(button.modulate.a, 1.0, "%s 演出结束后完全显示" % button.name)
+		_equal(button.scale, Vector2.ONE, "%s 演出结束后恢复原生尺度" % button.name)
+	for button_name in ["SettingsButton", "ExitButton"]:
+		var button: Button = menu.get_node_or_null(NodePath(button_name))
+		_check(button != null and not button.disabled, "%s 演出结束后可用" % button_name)
+	menu.present(true, false)
+	_check(not menu.is_opening(), "已展示的菜单不会因再次 present 重播开屏")
+	main._show_menu()
+	_check(not menu.is_opening(), "返回菜单只播放短过渡，不重播开屏")
+	var reduced_motion_before := bool(main.save_data.get("reduced_motion", false))
+	main._set_setting("reduced_motion", true)
+	_check(not menu.is_opening(), "减少动画立即结束菜单演出")
+	for button: Button in buttons:
+		_check(not button.disabled and is_equal_approx(button.modulate.a, 1.0), "%s 减少动画不残留禁用或透明状态" % button.name)
+	# Exercise compact layout without taking screenshots or relying on font pixels.
+	var menu_size_before := menu.size
+	menu.size = Vector2(720.0, 560.0)
+	await process_frame
+	_check(not menu.is_opening(), "菜单改尺寸不会重播开屏")
+	for index in range(buttons.size()):
+		var button: Button = buttons[index]
+		_check(not button.disabled and is_equal_approx(button.modulate.a, 1.0), "%s 改尺寸后保持完整可用" % button.name)
+		var button_rect := button.get_rect()
+		_check(Rect2(Vector2.ZERO, menu.size).encloses(button_rect), "%s 紧凑布局仍在菜单范围内" % button.name)
+		if index > 0:
+			_check(not buttons[index - 1].get_rect().intersects(button_rect), "紧凑布局相邻模式按钮不重叠")
+	menu.size = menu_size_before
+	await process_frame
+	main._set_setting("reduced_motion", reduced_motion_before)
+	menu.finish_opening()
+	_equal(main.screen, "menu", "菜单表现检查结束仍停留主菜单")
+	_equal(main.game, null, "菜单表现检查不创建游戏局面")
 
 func _test_retry_failure_lifecycle(main) -> void:
 	# This fixture only uses the test's isolated save_path. Two legal moves
