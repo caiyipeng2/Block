@@ -7,6 +7,7 @@ signal restart_requested
 signal menu_requested
 signal resume_requested
 signal settings_requested
+signal open_settings_requested
 signal next_level_requested
 signal levels_requested
 signal objective_intro_dismissed
@@ -22,7 +23,7 @@ const MIN_BUTTON_HEIGHT := 52.0
 const GOLD := Color("#ffd05a")
 const AQUA := Color("#73f8e4")
 const MUTED := Color("#aec3eb")
-const TARGET_KINDS := ["red_star", "gold_gem"]
+const TARGET_KINDS := ["blue_diamond", "gold_gem", "yellow_star", "red_star"]
 
 var _mode := MODE_HIDDEN
 var _stats: Dictionary = {}
@@ -46,11 +47,15 @@ var _settings_button: Button
 var _pause_button: Button
 var _playing_restart_button: Button
 var _playing_menu_button: Button
+var _collect_navigation: Control
+var _collect_back_button: Button
+var _collect_settings_button: Button
 var _crown_rect := Rect2()
 var _progress_track := Rect2()
 var _current_badge := Rect2()
 var _goal_badge := Rect2()
 var _overlay_root: Control
+var _card_viewport: ScrollContainer
 var _scrim: ColorRect
 var _card: PanelContainer
 var _overlay_box: VBoxContainer
@@ -61,6 +66,8 @@ var _overlay_best: Label
 var _overlay_stats: Label
 var _new_record_label: Label
 var _overlay_buttons: HBoxContainer
+var _overlay_secondary_buttons: HBoxContainer
+var _overlay_settings_button: Button
 var _resume_button: Button
 var _overlay_restart_button: Button
 var _overlay_menu_button: Button
@@ -84,6 +91,16 @@ var _intro_targets: Control
 var _intro_start_button: Button
 var _intro_stats: Dictionary = {}
 var _intro_tween: Tween
+var _intro_effects: Control
+var _intro_skip_hint: Label
+var _intro_flight_progress := -1.0
+var _entry_progress := -1.0
+var _intro_epoch := 0
+var _target_pulses: Dictionary = {}
+var _victory_progress := 1.0
+var _victory_tween: Tween
+var _victory_confetti: Control
+var _victory_particles: Array[Dictionary] = []
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -96,11 +113,25 @@ func _exit_tree() -> void:
 	hide_objective_intro()
 	_stop_score_animation()
 	_stop_overlay_animation()
+	_stop_victory_animation()
 	clear_notice()
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_RESIZED and _configured:
+		_target_pulses.clear()
+		_stop_victory_animation()
 		_layout_controls()
+
+func _process(delta: float) -> void:
+	if _target_pulses.is_empty():
+		return
+	for kind: String in _target_pulses.keys():
+		var next := maxf(float(_target_pulses[kind]) - delta / 0.32, 0.0)
+		if next <= 0.0:
+			_target_pulses.erase(kind)
+		else:
+			_target_pulses[kind] = next
+	queue_redraw()
 
 func _draw() -> void:
 	if _configured and _mode == MODE_PLAYING:
@@ -126,8 +157,8 @@ func _objective_current() -> int:
 
 func _target_count(source: Dictionary, field: String, kind: String) -> int:
 	var counts: Variant = source.get(field, {})
-	if counts is Dictionary and counts.has(kind):
-		return maxi(0, int(counts[kind]))
+	if counts is Dictionary and source.has(field):
+		return maxi(0, int(counts.get(kind, 0)))
 	if field == "remaining_counts":
 		if kind == "red_star" and not source.has("target_counts") and source.has("target_remaining"):
 			return maxi(0, int(source["target_remaining"]))
@@ -151,10 +182,29 @@ func _active_target_kinds(source: Dictionary) -> Array[String]:
 	return kinds
 
 func _remaining_count(kind: String) -> int:
-	var counts: Variant = _stats.get("remaining_counts", {})
+	# The owner advances this presentation dictionary only when flights arrive.
+	var counts: Variant = _stats.get("display_remaining_counts", _stats.get("remaining_counts", {}))
 	if counts is Dictionary and counts.has(kind):
 		return maxi(0, int(counts[kind]))
 	return maxi(0, _target_count(_stats, "target_counts", kind) - _target_count(_stats, "collected_counts", kind))
+
+## Counts stay owned by the caller; this API provides arrival feedback only.
+func notify_target_arrival(kind: String, counted: bool = true) -> void:
+	if not counted or not _is_collect_objective() or bool(_stats.get("reduced_motion", false)):
+		return
+	_target_pulses[kind] = 1.0
+	queue_redraw()
+
+func apply_target_arrival(kind: String, counted: bool = true) -> void:
+	notify_target_arrival(kind, counted)
+
+func sync_target_display() -> void:
+	# The latest set_mode stats already carry the owner's synchronized counts.
+	_target_pulses.clear()
+	queue_redraw()
+
+func reset_target_display() -> void:
+	sync_target_display()
 
 func _target_summary(source: Dictionary, remaining: bool = false) -> String:
 	var parts := PackedStringArray()
@@ -171,9 +221,25 @@ func _draw_collect_targets() -> void:
 		var rect: Rect2 = _objective_rects.get(kind, Rect2())
 		if rect.size.x <= 0.0:
 			continue
-		BlockArt.draw_target_marker(self, rect, 1.0, 1.0, kind)
+		var pulse := float(_target_pulses.get(kind, 0.0))
+		var scale_factor := 1.0 + sin(pulse * PI) * 0.16
+		var marker_rect := Rect2(rect.get_center() - rect.size * scale_factor * 0.5, rect.size * scale_factor)
+		if pulse > 0.0:
+			draw_circle(rect.get_center(), rect.size.x * (0.55 + (1.0 - pulse) * 0.3), Color(0.65, 0.95, 1.0, pulse * 0.16))
+		BlockArt.draw_target_marker(self, marker_rect, 1.0, 1.0 + pulse * 0.5, kind)
 		var count_rect := Rect2(rect.get_center().x - 35.0, rect.end.y + 1.0, 70.0, 24.0)
-		_draw_centered_text(self, str(_remaining_count(kind)), count_rect, 22, Color.WHITE)
+		if _remaining_count(kind) <= 0:
+			_draw_check(self, count_rect.get_center(), 9.0, 1.0)
+		else:
+			_draw_centered_text(self, str(_remaining_count(kind)), count_rect, 22, Color.WHITE)
+
+func _draw_check(canvas: CanvasItem, center: Vector2, side: float, opacity: float) -> void:
+	var points := PackedVector2Array([center + Vector2(-side * 0.70, 0.0), center + Vector2(-side * 0.12, side * 0.48), center + Vector2(side * 0.78, -side * 0.60)])
+	var shadow := PackedVector2Array()
+	for point in points:
+		shadow.append(point + Vector2(0.0, 1.5))
+	canvas.draw_polyline(shadow, Color(0.0, 0.20, 0.08, opacity), 5.5, true)
+	canvas.draw_polyline(points, Color(0.35, 1.0, 0.18, opacity), 3.5, true)
 
 func _draw_centered_text(canvas: CanvasItem, value: String, rect: Rect2, max_font_size: int, color: Color) -> void:
 	var font := _stats_label.get_theme_font("font")
@@ -229,10 +295,16 @@ func _draw_overlay_objective_badge() -> void:
 	var center := _overlay_objective_badge.size * 0.5
 	if _is_collect_objective():
 		var kinds := _active_target_kinds(_stats)
-		var spacing := 58.0
+		var victory := _mode == MODE_LEVEL_COMPLETE
+		var spacing := minf(112.0 if victory else 64.0, _overlay_objective_badge.size.x / float(maxi(kinds.size(), 1)))
+		var marker_side := minf(76.0 if victory else 48.0, spacing * 0.80)
 		for index in range(kinds.size()):
-			var marker_center := center + Vector2((float(index) - float(kinds.size() - 1) * 0.5) * spacing, 0.0)
-			BlockArt.draw_target_marker(_overlay_objective_badge, Rect2(marker_center - Vector2.ONE * 24.0, Vector2.ONE * 48.0), 1.0, 1.0, kinds[index])
+			var reveal := clampf((_victory_progress - float(index) * 0.12) / 0.34, 0.0, 1.0) if victory else 1.0
+			var marker_center := center + Vector2((float(index) - float(kinds.size() - 1) * 0.5) * spacing, -10.0 if victory else 0.0)
+			var visual_side := marker_side * (0.82 + reveal * 0.18)
+			BlockArt.draw_target_marker(_overlay_objective_badge, Rect2(marker_center - Vector2.ONE * visual_side * 0.5, Vector2.ONE * visual_side), 1.0, 1.0 + (1.0 - reveal) * 0.7, kinds[index])
+			if victory:
+				_draw_check(_overlay_objective_badge, marker_center + Vector2(0.0, marker_side * 0.5 + 10.0), 12.0, reveal)
 	else:
 		_overlay_objective_badge.draw_circle(center, 25.0, Color("#293660"))
 		BlockArt.draw_icon(_overlay_objective_badge, "crown", Rect2(center - Vector2.ONE * 20.0, Vector2.ONE * 40.0), GOLD)
@@ -292,22 +364,31 @@ func show_objective_intro(stats: Dictionary, reduced_motion: bool = false) -> vo
 	_layout_objective_intro()
 	_intro_targets.queue_redraw()
 	_intro_card.queue_redraw()
-	_intro_start_button.grab_focus()
-	_ensure_intro_start_visible.call_deferred()
+	_intro_root.grab_focus()
+	var epoch := _intro_epoch
 	if reduced_motion:
+		_accept_intro_if_epoch.call_deferred(epoch)
 		return
 	_intro_card.pivot_offset = _intro_card.size * 0.5
 	_intro_card.scale = Vector2.ONE * 0.94
 	_intro_card.modulate.a = 0.0
 	_intro_scrim.modulate.a = 0.0
-	_intro_tween = create_tween().set_parallel(true)
+	_intro_tween = create_tween()
 	_intro_tween.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
 	_intro_tween.tween_property(_intro_card, "scale", Vector2.ONE, 0.20).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	_intro_tween.tween_property(_intro_card, "modulate:a", 1.0, 0.20)
-	_intro_tween.tween_property(_intro_scrim, "modulate:a", 1.0, 0.20)
-	_intro_tween.chain().tween_callback(func() -> void: _intro_tween = null)
+	_intro_tween.parallel().tween_property(_intro_card, "modulate:a", 1.0, 0.20)
+	_intro_tween.parallel().tween_property(_intro_scrim, "modulate:a", 1.0, 0.20)
+	_intro_tween.tween_interval(0.80)
+	_intro_tween.tween_callback(_begin_intro_flight)
+	_intro_tween.tween_method(_set_intro_flight_progress, 0.0, 1.0, 0.48)
+	_intro_tween.parallel().tween_property(_intro_card, "modulate:a", 0.0, 0.30)
+	_intro_tween.parallel().tween_property(_intro_scrim, "modulate:a", 0.0, 0.34)
+	_intro_tween.tween_callback(_begin_board_entry)
+	_intro_tween.tween_method(_set_entry_progress, 0.0, 1.0, 0.70).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+	_intro_tween.tween_callback(_complete_intro_sequence)
 
 func hide_objective_intro() -> void:
+	_intro_epoch += 1
 	_stop_intro_animation()
 	if is_instance_valid(_intro_root):
 		_intro_root.visible = false
@@ -315,6 +396,8 @@ func hide_objective_intro() -> void:
 		_intro_start_button.release_focus()
 	_intro_stats.clear()
 	_set_intro_action_lock(false)
+	if is_instance_valid(_intro_root):
+		_intro_root.release_focus()
 
 func is_objective_intro_visible() -> bool:
 	return is_instance_valid(_intro_root) and _intro_root.visible
@@ -335,10 +418,45 @@ func _restore_objective_focus() -> void:
 	_grab_first_focus()
 	_focus_pending = false
 
+func _accept_intro_if_epoch(epoch: int) -> void:
+	if epoch == _intro_epoch:
+		accept_objective_intro()
+
+func _complete_intro_sequence() -> void:
+	_intro_tween = null
+	accept_objective_intro()
+
+func _begin_intro_flight() -> void:
+	_intro_targets.visible = false
+	_intro_flight_progress = 0.0
+	_intro_effects.queue_redraw()
+
+func _set_intro_flight_progress(progress: float) -> void:
+	_intro_flight_progress = progress
+	_intro_effects.queue_redraw()
+
+func _begin_board_entry() -> void:
+	_intro_flight_progress = -1.0
+	_entry_progress = 0.0
+	_intro_scroll.visible = false
+	_intro_effects.queue_redraw()
+
+func _set_entry_progress(progress: float) -> void:
+	_entry_progress = progress
+	_intro_effects.queue_redraw()
+
 func _stop_intro_animation() -> void:
 	if is_instance_valid(_intro_tween):
 		_intro_tween.kill()
 	_intro_tween = null
+	_intro_flight_progress = -1.0
+	_entry_progress = -1.0
+	if is_instance_valid(_intro_targets):
+		_intro_targets.visible = true
+	if is_instance_valid(_intro_scroll):
+		_intro_scroll.visible = true
+	if is_instance_valid(_intro_effects):
+		_intro_effects.queue_redraw()
 	if is_instance_valid(_intro_card):
 		_intro_card.scale = Vector2.ONE
 		_intro_card.modulate = Color.WHITE
@@ -349,12 +467,12 @@ func _set_intro_action_lock(locked: bool) -> void:
 	if not is_instance_valid(_pause_button):
 		return
 	_pause_button.disabled = locked
-	for button: Button in [_settings_button, _playing_restart_button, _playing_menu_button]:
+	for button: Button in [_settings_button, _playing_restart_button, _playing_menu_button, _collect_back_button, _collect_settings_button]:
 		button.disabled = locked or bool(_stats.get("input_locked", false))
 
 ## Objective stats: objective_type (score/collect), target_total,
 ## target_collected/target_remaining, plus dictionaries target_counts,
-## collected_counts/remaining_counts keyed by red_star/gold_gem.
+## collected_counts/remaining_counts and display_remaining_counts keyed by kind.
 func set_mode(mode: String, stats: Dictionary = {}) -> void:
 	var next_mode := mode if mode in [MODE_HIDDEN, MODE_PLAYING, MODE_PAUSED, MODE_GAME_OVER, MODE_LEVEL_COMPLETE] else MODE_HIDDEN
 	var mode_changed := next_mode != _mode
@@ -365,6 +483,8 @@ func set_mode(mode: String, stats: Dictionary = {}) -> void:
 	_apply_state(mode_changed)
 
 func header_height() -> float:
+	if _is_collect_objective():
+		return clampf(size.y * 0.15, 132.0 if size.y > size.x else 116.0, 180.0)
 	var height := clampf(size.y * 0.18, 148.0, 210.0)
 	if size.y > size.x:
 		height = clampf(size.y * 0.20, 210.0, 560.0)
@@ -382,6 +502,8 @@ func get_restart_rect() -> Rect2:
 func get_menu_rect() -> Rect2:
 	if _mode in [MODE_PAUSED, MODE_GAME_OVER, MODE_LEVEL_COMPLETE]:
 		return _local_button_rect(_overlay_menu_button)
+	if _is_collect_objective():
+		return _local_button_rect(_collect_back_button)
 	return _local_button_rect(_playing_menu_button)
 
 ## A single short, non-blocking notice; later notices replace earlier ones.
@@ -463,6 +585,20 @@ func _build_controls() -> void:
 	_playing_menu_button = _new_icon_button("MenuButton", "home", "返回菜单")
 	_playing_menu_button.pressed.connect(_on_menu_pressed)
 	_playing_buttons.add_child(_playing_menu_button)
+	_collect_navigation = Control.new()
+	_collect_navigation.name = "CollectionNavigation"
+	_collect_navigation.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_playing_root.add_child(_collect_navigation)
+	_collect_back_button = _new_icon_button("BackButton", "back", "返回选关")
+	_collect_back_button.pressed.connect(func() -> void:
+		if not _collect_back_button.disabled:
+			menu_requested.emit())
+	_collect_navigation.add_child(_collect_back_button)
+	_collect_settings_button = _new_icon_button("SettingsButton", "gear", "暂停与设置")
+	_collect_settings_button.pressed.connect(func() -> void:
+		if not _collect_settings_button.disabled:
+			settings_requested.emit())
+	_collect_navigation.add_child(_collect_settings_button)
 
 	_overlay_root = Control.new()
 	_overlay_root.name = "StateOverlay"
@@ -475,10 +611,20 @@ func _build_controls() -> void:
 	_scrim.mouse_filter = Control.MOUSE_FILTER_STOP
 	_scrim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_overlay_root.add_child(_scrim)
+	_card_viewport = ScrollContainer.new()
+	_card_viewport.name = "CardViewport"
+	_card_viewport.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_card_viewport.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	_card_viewport.follow_focus = true
+	_card_viewport.mouse_filter = Control.MOUSE_FILTER_STOP
+	_card_viewport.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+	_overlay_root.add_child(_card_viewport)
 	_card = PanelContainer.new()
 	_card.name = "Card"
 	_card.mouse_filter = Control.MOUSE_FILTER_STOP
-	_overlay_root.add_child(_card)
+	_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_card.resized.connect(_on_card_resized)
+	_card_viewport.add_child(_card)
 	_overlay_box = VBoxContainer.new()
 	_overlay_box.name = "Content"
 	_overlay_box.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -533,6 +679,22 @@ func _build_controls() -> void:
 	_overlay_menu_button.tooltip_text = "返回菜单"
 	_overlay_menu_button.pressed.connect(_on_menu_pressed)
 	_overlay_buttons.add_child(_overlay_menu_button)
+	_overlay_secondary_buttons = HBoxContainer.new()
+	_overlay_secondary_buttons.name = "SecondaryActions"
+	_overlay_secondary_buttons.alignment = BoxContainer.ALIGNMENT_CENTER
+	_overlay_secondary_buttons.add_theme_constant_override("separation", 10)
+	_overlay_box.add_child(_overlay_secondary_buttons)
+	_overlay_settings_button = _new_button("SettingsButton", "设置")
+	_overlay_settings_button.pressed.connect(func() -> void:
+		if not _overlay_settings_button.disabled:
+			open_settings_requested.emit())
+	_overlay_secondary_buttons.add_child(_overlay_settings_button)
+	_victory_confetti = Control.new()
+	_victory_confetti.name = "VictoryConfetti"
+	_victory_confetti.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_victory_confetti.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_victory_confetti.draw.connect(_draw_victory_confetti)
+	_overlay_root.add_child(_victory_confetti)
 	_notice = PanelContainer.new()
 	_notice.name = "Notice"
 	_notice.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -549,6 +711,7 @@ func _build_objective_intro() -> void:
 	_intro_root = Control.new()
 	_intro_root.name = "ObjectiveIntro"
 	_intro_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_intro_root.focus_mode = Control.FOCUS_ALL
 	_intro_root.z_index = 30
 	_intro_root.visible = false
 	add_child(_intro_root)
@@ -556,10 +719,12 @@ func _build_objective_intro() -> void:
 	_intro_scrim.name = "Scrim"
 	_intro_scrim.color = Color(0.025, 0.045, 0.105, 0.78)
 	_intro_scrim.mouse_filter = Control.MOUSE_FILTER_STOP
+	_intro_scrim.gui_input.connect(_on_intro_gui_input)
 	_intro_root.add_child(_intro_scrim)
 	_intro_scroll = ScrollContainer.new()
 	_intro_scroll.name = "RibbonViewport"
 	_intro_scroll.mouse_filter = Control.MOUSE_FILTER_STOP
+	_intro_scroll.gui_input.connect(_on_intro_gui_input)
 	_intro_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_intro_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 	_intro_scroll.follow_focus = true
@@ -568,7 +733,8 @@ func _build_objective_intro() -> void:
 	_intro_card = Control.new()
 	_intro_card.name = "Ribbon"
 	_intro_card.mouse_filter = Control.MOUSE_FILTER_STOP
-	_intro_card.custom_minimum_size = Vector2(0.0, 390.0)
+	_intro_card.custom_minimum_size = Vector2(0.0, 260.0)
+	_intro_card.gui_input.connect(_on_intro_gui_input)
 	_intro_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_intro_card.draw.connect(_draw_intro_ribbon)
 	_intro_scroll.add_child(_intro_card)
@@ -592,9 +758,28 @@ func _build_objective_intro() -> void:
 	_intro_targets.draw.connect(_draw_intro_targets)
 	_intro_card.add_child(_intro_targets)
 	_intro_start_button = _new_button("StartChallengeButton", "开始挑战")
+	_intro_start_button.visible = false
 	_intro_start_button.pressed.connect(accept_objective_intro)
 	_intro_card.add_child(_intro_start_button)
+	_intro_skip_hint = _new_label("SkipHint", 12)
+	_intro_skip_hint.text = "点击或按任意确认键跳过"
+	_intro_skip_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_intro_skip_hint.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_intro_card.add_child(_intro_skip_hint)
 	_intro_card.resized.connect(_layout_objective_intro_content)
+	_intro_effects = Control.new()
+	_intro_effects.name = "IntroductionEffects"
+	_intro_effects.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_intro_effects.draw.connect(_draw_intro_effects)
+	_intro_root.add_child(_intro_effects)
+
+func _on_intro_gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		_intro_root.accept_event()
+		accept_objective_intro()
+
+func _on_card_resized() -> void:
+	_card.pivot_offset = _card.size * 0.5
 
 func _draw_intro_ribbon() -> void:
 	var width := _intro_card.size.x
@@ -612,14 +797,47 @@ func _draw_intro_ribbon() -> void:
 func _draw_intro_targets() -> void:
 	var kinds := _active_target_kinds(_intro_stats)
 	var slot_width := minf(156.0, _intro_targets.size.x / float(kinds.size()))
-	var icon_side := minf(72.0, slot_width * 0.58)
+	var icon_side := minf(60.0, slot_width * 0.58)
 	for index in range(kinds.size()):
 		var kind := kinds[index]
 		var center_x := _intro_targets.size.x * 0.5 + (float(index) - float(kinds.size() - 1) * 0.5) * slot_width
 		var icon_rect := Rect2(center_x - icon_side * 0.5, 0.0, icon_side, icon_side)
 		BlockArt.draw_target_marker(_intro_targets, icon_rect, 1.0, 1.0, kind)
-		_draw_centered_text(_intro_targets, str(_target_count(_intro_stats, "target_counts", kind)), Rect2(center_x - slot_width * 0.5 + 4.0, icon_side + 2.0, slot_width - 8.0, 38.0), 34, Color.WHITE)
-		_draw_centered_text(_intro_targets, BlockArt.target_name(kind), Rect2(center_x - slot_width * 0.5 + 4.0, icon_side + 42.0, slot_width - 8.0, 22.0), 16, Color("#d9ebff"))
+		_draw_centered_text(_intro_targets, str(_target_count(_intro_stats, "target_counts", kind)), Rect2(center_x - slot_width * 0.5 + 4.0, icon_side + 2.0, slot_width - 8.0, 30.0), 28, Color.WHITE)
+		_draw_centered_text(_intro_targets, BlockArt.target_name(kind), Rect2(center_x - slot_width * 0.5 + 4.0, icon_side + 34.0, slot_width - 8.0, 18.0), 13, Color("#d9ebff"))
+
+func _draw_intro_effects() -> void:
+	if not is_objective_intro_visible():
+		return
+	if _intro_flight_progress >= 0.0:
+		var kinds := _active_target_kinds(_intro_stats)
+		var slot_width := minf(156.0, _intro_targets.size.x / float(kinds.size()))
+		var icon_side := minf(60.0, slot_width * 0.58)
+		var target_origin := _intro_targets.global_position - _intro_effects.global_position
+		for index in range(kinds.size()):
+			var progress := clampf((_intro_flight_progress - float(index) * 0.08) / 0.84, 0.0, 1.0)
+			var start := target_origin + Vector2(_intro_targets.size.x * 0.5 + (float(index) - float(kinds.size() - 1) * 0.5) * slot_width, icon_side * 0.5)
+			var destination := objective_target(kinds[index])
+			var eased := progress * progress * (3.0 - 2.0 * progress)
+			var point := start.lerp(destination, eased) - Vector2(0.0, sin(progress * PI) * 34.0)
+			var side := lerpf(icon_side, 34.0, eased)
+			BlockArt.draw_target_marker(_intro_effects, Rect2(point - Vector2.ONE * side * 0.5, Vector2.ONE * side), 1.0 - clampf((progress - 0.94) / 0.06, 0.0, 1.0), 1.4, kinds[index])
+	if _entry_progress >= 0.0:
+		var field := _effective_playfield()
+		var side := field.size.x / 8.0
+		var filling := clampf(_entry_progress / 0.40, 0.0, 1.0)
+		var wiping := clampf((_entry_progress - 0.40) / 0.60, 0.0, 1.0)
+		for row in range(8):
+			for column in range(8):
+				var delay := float(column + row) / 14.0
+				var reveal := clampf(wiping * 2.0 - delay, 0.0, 1.0)
+				if reveal >= 1.0:
+					continue
+				var rect := Rect2(field.position + Vector2(column, row) * side + Vector2.ONE, Vector2.ONE * maxf(side - 2.0, 1.0))
+				_intro_effects.draw_rect(rect, Color(0.07, 0.11, 0.22, 1.0 - reveal))
+				if filling >= delay:
+					var color := Color("#5bd33d") if column < 4 else Color("#4979e8")
+					BlockArt.draw_block(_intro_effects, rect, color, 1.0 - reveal, 0.1)
 
 func _layout_objective_intro() -> void:
 	if not is_instance_valid(_intro_root):
@@ -629,14 +847,15 @@ func _layout_objective_intro() -> void:
 	_intro_scrim.position = Vector2.ZERO
 	_intro_scrim.size = size
 	var width := minf(680.0, maxf(size.x - 24.0, 1.0))
-	var viewport_height := minf(390.0, maxf(size.y - 24.0, 1.0))
+	var viewport_height := minf(260.0, maxf(size.y - 24.0, 1.0))
 	_intro_scroll.size = Vector2(width, viewport_height)
 	_intro_scroll.position = Vector2((size.x - width) * 0.5, maxf(12.0, (size.y - viewport_height) * 0.5))
 	# ScrollContainer owns the content width; its viewport stays within the window.
 	_intro_scroll.queue_sort()
 	_layout_objective_intro_content()
-	if is_objective_intro_visible() and viewport_height < 390.0:
-		_ensure_intro_start_visible.call_deferred()
+	_intro_effects.position = Vector2.ZERO
+	_intro_effects.size = size
+	_intro_effects.queue_redraw()
 
 func _layout_objective_intro_content() -> void:
 	if not is_instance_valid(_intro_start_button):
@@ -644,26 +863,24 @@ func _layout_objective_intro_content() -> void:
 	var width := _intro_card.size.x
 	_intro_card.pivot_offset = _intro_card.size * 0.5
 	var inner_width := maxf(width - 64.0, 1.0)
-	_intro_title.position = Vector2(32.0, 12.0)
-	_intro_title.size = Vector2(inner_width, 42.0)
-	_intro_title.add_theme_font_size_override("font_size", 26 if width < 360.0 else 32)
-	_intro_subtitle.position = Vector2(32.0, 54.0)
+	_intro_title.position = Vector2(32.0, 6.0)
+	_intro_title.size = Vector2(inner_width, 36.0)
+	_intro_title.add_theme_font_size_override("font_size", 24 if width < 360.0 else 28)
+	_intro_subtitle.position = Vector2(32.0, 42.0)
 	_intro_subtitle.size = Vector2(inner_width, 28.0)
-	_intro_subtitle.add_theme_font_size_override("font_size", 15 if width < 360.0 else 18)
-	_intro_targets.position = Vector2(32.0, 100.0)
-	_intro_targets.size = Vector2(inner_width, 140.0)
-	_intro_description.position = Vector2(32.0, 254.0)
-	_intro_description.size = Vector2(inner_width, 50.0)
-	_intro_description.add_theme_font_size_override("font_size", 14 if width < 360.0 else 16)
+	_intro_subtitle.add_theme_font_size_override("font_size", 14 if width < 360.0 else 16)
+	_intro_targets.position = Vector2(32.0, 86.0)
+	_intro_targets.size = Vector2(inner_width, 112.0)
+	_intro_description.position = Vector2(32.0, 204.0)
+	_intro_description.size = Vector2(inner_width, 32.0)
+	_intro_description.add_theme_font_size_override("font_size", 12 if width < 360.0 else 14)
 	var button_width := minf(320.0, inner_width)
 	_intro_start_button.position = Vector2((width - button_width) * 0.5, 320.0)
 	_intro_start_button.size = Vector2(button_width, 52.0)
+	_intro_skip_hint.position = Vector2(32.0, 238.0)
+	_intro_skip_hint.size = Vector2(inner_width, 18.0)
 	_intro_card.queue_redraw()
 	_intro_targets.queue_redraw()
-
-func _ensure_intro_start_visible() -> void:
-	if is_objective_intro_visible() and is_instance_valid(_intro_start_button):
-		_intro_scroll.ensure_control_visible(_intro_start_button)
 
 func _new_label(node_name: String, font_size: int) -> Label:
 	var label := Label.new()
@@ -719,11 +936,13 @@ func _apply_theme() -> void:
 	_style_button(_next_level_button, GOLD, Color("#213759"))
 	_style_button(_overlay_restart_button, GOLD, Color("#213759"))
 	_style_button(_overlay_menu_button, Color("#2c4677"), _text)
+	_style_button(_overlay_settings_button, Color("#2c4677"), _text)
 	_style_button(_intro_start_button, GOLD, Color("#213759"))
 	_intro_title.add_theme_color_override("font_color", Color.WHITE)
 	_intro_subtitle.add_theme_color_override("font_color", Color("#d8e9ff"))
 	_intro_description.add_theme_color_override("font_color", Color("#e2edff"))
-	for button: Button in [_settings_button, _pause_button, _playing_restart_button, _playing_menu_button]:
+	_intro_skip_hint.add_theme_color_override("font_color", Color("#b7d4fa"))
+	for button: Button in [_settings_button, _pause_button, _playing_restart_button, _playing_menu_button, _collect_back_button, _collect_settings_button]:
 		button.set("icon_color", _text)
 		button.queue_redraw()
 
@@ -783,33 +1002,44 @@ func _apply_state(mode_changed: bool) -> void:
 		_focus_pending = true
 		_stop_score_animation()
 		_stop_overlay_animation()
+		_stop_victory_animation()
 		clear_notice()
 	if not _configured:
 		return
 	_update_texts(mode_changed)
 	if bool(_stats.get("reduced_motion", false)):
 		_stop_overlay_animation()
+		_stop_victory_animation()
+		_target_pulses.clear()
+		if is_objective_intro_visible():
+			_accept_intro_if_epoch.call_deferred(_intro_epoch)
 	var intro_visible := is_objective_intro_visible()
 	var input_locked := bool(_stats.get("input_locked", false)) or intro_visible
 	# A paused feedback animation must always be resumable.
 	_pause_button.disabled = intro_visible
 	_resume_button.disabled = false
 	_next_level_button.disabled = input_locked or not bool(_stats.get("has_next_level", false))
-	for button: Button in [_settings_button, _playing_restart_button, _playing_menu_button, _overlay_restart_button, _overlay_menu_button]:
+	for button: Button in [_settings_button, _playing_restart_button, _playing_menu_button, _overlay_restart_button, _overlay_menu_button, _overlay_settings_button, _collect_back_button, _collect_settings_button]:
 		button.disabled = input_locked
 	_playing_root.visible = _mode == MODE_PLAYING
 	_overlay_root.visible = _mode in [MODE_PAUSED, MODE_GAME_OVER, MODE_LEVEL_COMPLETE]
 	_scrim.visible = _overlay_root.visible
 	_card.visible = _overlay_root.visible
+	_card_viewport.visible = _overlay_root.visible
 	_resume_button.visible = _mode == MODE_PAUSED
 	_next_level_button.visible = _mode == MODE_LEVEL_COMPLETE
 	_overlay_restart_button.visible = _overlay_root.visible
 	_overlay_menu_button.visible = _overlay_root.visible
+	_configure_overlay_actions()
 	_new_record_label.visible = _mode in [MODE_GAME_OVER, MODE_LEVEL_COMPLETE]
 	_overlay_objective_badge.visible = _mode == MODE_LEVEL_COMPLETE
 	_overlay_objective_badge.queue_redraw()
 	_title_label.visible = not _is_adventure()
-	_goal_label.visible = _is_adventure()
+	_goal_label.visible = _is_adventure() and not _is_collect_objective()
+	_mode_label.visible = not _is_collect_objective()
+	_detail_label.visible = not _is_collect_objective()
+	_playing_buttons.visible = not _is_collect_objective()
+	_collect_navigation.visible = _is_collect_objective()
 	# Adventure digits are drawn on the same canvas as their circular caps.
 	_stats_label.visible = not _is_adventure()
 	_goal_score_label.visible = false
@@ -817,14 +1047,45 @@ func _apply_state(mode_changed: bool) -> void:
 	_layout_controls()
 	if _focus_pending:
 		if _mode == MODE_HIDDEN:
-			for button: Button in [_settings_button, _pause_button, _playing_restart_button, _playing_menu_button, _resume_button, _overlay_restart_button, _overlay_menu_button, _next_level_button]:
+			for button: Button in [_settings_button, _pause_button, _playing_restart_button, _playing_menu_button, _resume_button, _overlay_restart_button, _overlay_menu_button, _next_level_button, _overlay_settings_button, _collect_back_button, _collect_settings_button]:
 				button.release_focus()
 		else:
 			_grab_first_focus()
 		_focus_pending = false
 	if mode_changed and _overlay_root.visible:
 		_animate_overlay_entrance()
+		if _mode == MODE_LEVEL_COMPLETE and _is_collect_objective():
+			_start_victory_animation()
 	queue_redraw()
+
+func _configure_overlay_actions() -> void:
+	var collect_victory := _is_collect_objective() and _mode == MODE_LEVEL_COMPLETE
+	var target_parent: Node = _overlay_secondary_buttons if collect_victory else _overlay_buttons
+	for button: Button in [_overlay_restart_button, _overlay_menu_button]:
+		if button.get_parent() != target_parent:
+			button.reparent(target_parent)
+	_overlay_settings_button.visible = _is_collect_objective() and _mode == MODE_PAUSED
+	_overlay_secondary_buttons.visible = collect_victory or _overlay_settings_button.visible
+	_overlay_score.visible = not collect_victory
+	_style_button(_next_level_button, Color("#36cf23"), Color.WHITE)
+	_style_button(_overlay_restart_button, Color("#294775") if collect_victory else GOLD, _text if collect_victory else Color("#213759"))
+	for button: Button in [_overlay_restart_button, _overlay_menu_button]:
+		button.custom_minimum_size.y = 40.0 if collect_victory else MIN_BUTTON_HEIGHT
+		button.add_theme_font_size_override("font_size", 15 if collect_victory else 17)
+	if collect_victory:
+		var clear_panel := StyleBoxEmpty.new()
+		clear_panel.set_content_margin_all(20.0)
+		_card.add_theme_stylebox_override("panel", clear_panel)
+		_overlay_title.add_theme_font_size_override("font_size", 42)
+		_overlay_title.add_theme_color_override("font_color", AQUA)
+		_overlay_box.move_child(_overlay_title, 0)
+		_overlay_box.move_child(_overlay_objective_badge, 1)
+	else:
+		_card.add_theme_stylebox_override("panel", _card_box())
+		_overlay_title.add_theme_font_size_override("font_size", 24)
+		_overlay_title.add_theme_color_override("font_color", _text)
+		_overlay_box.move_child(_overlay_objective_badge, 0)
+		_overlay_box.move_child(_overlay_title, 1)
 
 func _update_texts(mode_changed: bool) -> void:
 	var score := int(_stats.get("score", 0))
@@ -853,7 +1114,7 @@ func _update_texts(mode_changed: bool) -> void:
 		_detail_label.text += "  ·  连击 ×%d" % combo
 	if collect:
 		_detail_label.text = "总分 %d  ·  " % score + _detail_label.text
-	_overlay_title.text = "目标完成" if _mode == MODE_LEVEL_COMPLETE else ("已暂停" if _mode == MODE_PAUSED else ("第 %d 关未通过" % level_id if adventure else "游戏结束"))
+	_overlay_title.text = ("Well Done!" if collect else "目标完成") if _mode == MODE_LEVEL_COMPLETE else ("已暂停" if _mode == MODE_PAUSED else ("第 %d 关未通过" % level_id if adventure else "游戏结束"))
 	_overlay_score.text = "%d / %d" % [collected, target_total] if collect and _mode == MODE_LEVEL_COMPLETE else str(score)
 	if collect:
 		_overlay_best.text = "第 %d 关  ·  总分 %d" % [level_id, score] if _mode == MODE_LEVEL_COMPLETE else "剩余  " + _target_summary(_stats, true)
@@ -864,7 +1125,7 @@ func _update_texts(mode_changed: bool) -> void:
 	else:
 		_overlay_stats.text = "消除 %d 行/列   ·   完成 %d 回合\n最近放置 +%d   消除 +%d   ·   %d 线" % [total_cleared, round_index + 1, placement_points, clear_points, clear_lines]
 	if collect and _mode == MODE_LEVEL_COMPLETE:
-		_overlay_stats.text = _target_summary(_stats) + "\n消除 %d 行/列  ·  完成 %d 回合" % [total_cleared, round_index + 1]
+		_overlay_stats.text = "全部目标已完成\n消除 %d 行/列  ·  完成 %d 回合" % [total_cleared, round_index + 1]
 	if _mode == MODE_LEVEL_COMPLETE:
 		if bool(_stats.get("save_failed", false)):
 			_new_record_label.text = "进度保存失败，本次运行已解锁"
@@ -932,6 +1193,63 @@ func _stop_overlay_animation() -> void:
 		_card.modulate = Color.WHITE
 	if is_instance_valid(_scrim):
 		_scrim.modulate = Color.WHITE
+
+func _start_victory_animation() -> void:
+	_stop_victory_animation()
+	if bool(_stats.get("reduced_motion", false)):
+		return
+	_victory_progress = 0.0
+	var random := RandomNumberGenerator.new()
+	random.seed = Time.get_ticks_usec()
+	var colors := [GOLD, AQUA, Color("#fb5f7a"), Color("#a67cf1"), Color("#8fed4d")]
+	for index in range(72):
+		_victory_particles.append({
+			"origin": Vector2(random.randf_range(size.x * 0.20, size.x * 0.80), random.randf_range(size.y * 0.13, size.y * 0.30)),
+			"velocity": Vector2(random.randf_range(-130.0, 130.0), random.randf_range(-90.0, 15.0)),
+			"color": colors[index % colors.size()],
+			"side": random.randf_range(4.0, 8.0),
+			"angle": random.randf_range(-PI, PI),
+		})
+	_victory_tween = create_tween()
+	_victory_tween.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	_victory_tween.tween_method(_set_victory_progress, 0.0, 1.0, 1.65)
+	_victory_tween.tween_callback(func() -> void:
+		_victory_tween = null
+		_victory_particles.clear()
+		_victory_confetti.queue_redraw())
+
+func _set_victory_progress(progress: float) -> void:
+	_victory_progress = progress
+	_overlay_objective_badge.queue_redraw()
+	_victory_confetti.queue_redraw()
+
+func _stop_victory_animation() -> void:
+	if is_instance_valid(_victory_tween):
+		_victory_tween.kill()
+	_victory_tween = null
+	_victory_progress = 1.0
+	_victory_particles.clear()
+	if is_instance_valid(_overlay_objective_badge):
+		_overlay_objective_badge.queue_redraw()
+	if is_instance_valid(_victory_confetti):
+		_victory_confetti.queue_redraw()
+
+func _draw_victory_confetti() -> void:
+	if _mode != MODE_LEVEL_COMPLETE or not _is_collect_objective():
+		return
+	var elapsed := _victory_progress * 1.65
+	for particle: Dictionary in _victory_particles:
+		var origin: Vector2 = particle["origin"]
+		var velocity: Vector2 = particle["velocity"]
+		var point := origin + velocity * elapsed + Vector2(0.0, elapsed * elapsed * 190.0)
+		var color: Color = particle["color"]
+		color.a = 1.0 - clampf((_victory_progress - 0.66) / 0.34, 0.0, 1.0)
+		var angle := float(particle["angle"]) + elapsed * 4.0
+		var side := float(particle["side"])
+		var vertices := PackedVector2Array()
+		for corner in [Vector2(-0.5, -1.0), Vector2(0.5, -1.0), Vector2(0.5, 1.0), Vector2(-0.5, 1.0)]:
+			vertices.append(point + corner.rotated(angle) * side)
+		_victory_confetti.draw_colored_polygon(vertices, color)
 
 func _layout_controls() -> void:
 	if not _configured:
@@ -1015,10 +1333,29 @@ func _layout_controls() -> void:
 	_detail_label.position = Vector2(stage_left, detail_y)
 	_detail_label.size = Vector2(stage_width, 24.0)
 	_detail_label.add_theme_font_size_override("font_size", 12 if narrow else (clampi(int(stage_width * 0.018), 14, 22) if portrait else 14))
+	if _is_collect_objective():
+		_layout_collect_hud(stage_left, stage_width)
 	_layout_overlay()
 	_layout_notice()
 	_layout_objective_intro()
 	queue_redraw()
+
+func _layout_collect_hud(stage_left: float, stage_width: float) -> void:
+	_collect_navigation.position = Vector2.ZERO
+	_collect_navigation.size = Vector2(size.x, header_height())
+	var navigation_side := 48.0
+	_collect_back_button.position = Vector2(stage_left, 12.0)
+	_collect_back_button.size = Vector2.ONE * navigation_side
+	_collect_settings_button.position = Vector2(stage_left + stage_width - navigation_side, 12.0)
+	_collect_settings_button.size = Vector2.ONE * navigation_side
+	var kinds := _active_target_kinds(_stats)
+	var target_side := clampf(stage_width * 0.075, 32.0, 52.0)
+	var spacing := minf(92.0, stage_width * 0.22)
+	var target_y := header_height() - target_side - 28.0
+	_objective_rects.clear()
+	for index in range(kinds.size()):
+		var center_x := stage_left + stage_width * 0.5 + (float(index) - float(kinds.size() - 1) * 0.5) * spacing
+		_objective_rects[kinds[index]] = Rect2(center_x - target_side * 0.5, target_y, target_side, target_side)
 
 func _badge_font(value: int, diameter: float) -> int:
 	var digit_count := maxi(1, str(maxi(0, value)).length())
@@ -1046,15 +1383,21 @@ func _layout_notice() -> void:
 	_notice.position = Vector2(field.get_center().x - width * 0.5, field.end.y + 28.0)
 
 func _layout_overlay() -> void:
-	_overlay_objective_badge.custom_minimum_size = Vector2(132.0 if _is_collect_objective() else 56.0, 56.0)
-	_overlay_title.custom_minimum_size = Vector2(0.0, 32.0)
+	var collect_victory := _is_collect_objective() and _mode == MODE_LEVEL_COMPLETE
+	_overlay_objective_badge.custom_minimum_size = Vector2(minf(330.0, maxf(size.x - 72.0, 96.0)) if collect_victory else (192.0 if _is_collect_objective() else 56.0), 116.0 if collect_victory else 56.0)
+	_overlay_title.custom_minimum_size = Vector2(0.0, 54.0 if collect_victory else 32.0)
+	if collect_victory:
+		_overlay_title.add_theme_font_size_override("font_size", 30 if size.x < 420.0 else 42)
 	_overlay_score.custom_minimum_size = Vector2(0.0, 78.0)
-	_overlay_best.custom_minimum_size = Vector2(0.0, 28.0)
-	_overlay_stats.custom_minimum_size = Vector2(0.0, 66.0)
+	_overlay_best.custom_minimum_size = Vector2(0.0, 24.0 if collect_victory else 28.0)
+	_overlay_best.add_theme_font_size_override("font_size", 16 if collect_victory else 18)
+	_overlay_stats.custom_minimum_size = Vector2(0.0, 42.0 if collect_victory else 66.0)
+	_overlay_stats.add_theme_font_size_override("font_size", 14 if collect_victory else 16)
 	_new_record_label.custom_minimum_size = Vector2(0.0, 24.0)
 	_overlay_buttons.custom_minimum_size = Vector2(0.0, MIN_BUTTON_HEIGHT)
+	_overlay_secondary_buttons.custom_minimum_size = Vector2(0.0, 40.0 if collect_victory else MIN_BUTTON_HEIGHT)
 	var card_width := minf(540.0 if _mode == MODE_LEVEL_COMPLETE else 480.0, maxf(size.x - 32.0, 240.0))
-	var card_height := 376.0 if _mode == MODE_PAUSED else (492.0 if _mode == MODE_LEVEL_COMPLETE else 428.0)
+	var card_height := (438.0 if _is_collect_objective() else 376.0) if _mode == MODE_PAUSED else (480.0 if collect_victory else (492.0 if _mode == MODE_LEVEL_COMPLETE else 428.0))
 	var short_labels := card_width < 420.0
 	_resume_button.text = "继续" if short_labels else "继续游戏"
 	_next_level_button.text = "下一关" if bool(_stats.get("has_next_level", false)) else "全部通关"
@@ -1063,8 +1406,11 @@ func _layout_overlay() -> void:
 	_overlay_menu_button.text = ("选关" if short_labels else "返回选关") if _is_adventure() else ("菜单" if short_labels else "返回菜单")
 	_overlay_restart_button.tooltip_text = "重玩本关" if _is_adventure() else "重新开始"
 	_overlay_menu_button.tooltip_text = "返回选关" if _is_adventure() else "返回菜单"
-	_card.size = Vector2(card_width, card_height)
-	_card.position = Vector2((size.x - card_width) * 0.5, maxf((size.y - card_height) * 0.5, 12.0))
+	var viewport_height := minf(card_height, maxf(size.y - 24.0, 1.0))
+	_card_viewport.size = Vector2(card_width, viewport_height)
+	_card_viewport.position = Vector2((size.x - card_width) * 0.5, maxf((size.y - viewport_height) * 0.5, 12.0))
+	_card.custom_minimum_size = Vector2(0.0, card_height)
+	_card_viewport.queue_sort()
 	_card.pivot_offset = _card.size * 0.5
 	# PanelContainer owns Content and its margins; do not preset child anchors.
 
@@ -1073,7 +1419,7 @@ func _grab_first_focus() -> void:
 		return
 	var first: Button
 	if _mode == MODE_PLAYING:
-		first = _pause_button
+		first = _collect_settings_button if _is_collect_objective() else _pause_button
 	elif _mode == MODE_PAUSED:
 		first = _resume_button
 	elif _mode == MODE_LEVEL_COMPLETE:
@@ -1083,6 +1429,11 @@ func _grab_first_focus() -> void:
 	if is_instance_valid(first) and not first.disabled and first.visible:
 		_focus_mode = _mode
 		first.grab_focus()
+		_ensure_overlay_focus_visible.call_deferred(first)
+
+func _ensure_overlay_focus_visible(button: Button) -> void:
+	if is_instance_valid(button) and is_instance_valid(_card_viewport) and _overlay_root.visible and button.is_inside_tree() and _card.is_ancestor_of(button):
+		_card_viewport.ensure_control_visible(button)
 
 func _local_button_rect(button: Button) -> Rect2:
 	if not is_instance_valid(button):

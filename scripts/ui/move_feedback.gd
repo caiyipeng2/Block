@@ -5,8 +5,11 @@ extends Control
 ## after finished so particle lifetime does not extend the input lock.
 signal finished
 signal shake_requested(strength: float, duration: float)
+signal target_arrived(kind: String, counted: bool)
+signal collections_settled
 
 const BlockArt = preload("res://scripts/ui/block_art.gd")
+const CollectionFlights = preload("res://scripts/ui/collection_flights.gd")
 const GOLD := Color("#ffdc57")
 const CYAN := Color("#a0f8ff")
 const OUTLINE := Color("#182a71")
@@ -64,18 +67,49 @@ var _score_label: Label
 var _score_origin := Vector2.ZERO
 var _score_target := Vector2.ZERO
 var _combo_label: Label
+var _combo_number: Label
+var _combo_root: Control
+var _combo_base_scale := 1.0
+var _collection_layer: Control
 var _accent_progress := 0.0
 var _particles: Array[Dictionary] = []
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ensure_collection_layer()
 
 func is_busy() -> bool:
 	return _busy
 
 func set_board_offset(offset: Vector2) -> void:
 	_board_offset = offset
+	if is_instance_valid(_collection_layer):
+		_collection_layer.set_board_offset(offset)
 	queue_redraw()
+
+func has_pending_collections() -> bool:
+	return is_instance_valid(_collection_layer) and _collection_layer.has_pending_collections()
+
+func finish_collections() -> void:
+	if is_instance_valid(_collection_layer):
+		_collection_layer.finish_collections()
+
+func _ensure_collection_layer() -> void:
+	if is_instance_valid(_collection_layer):
+		return
+	_collection_layer = CollectionFlights.new()
+	_collection_layer.name = "CollectionFlights"
+	_collection_layer.z_index = 2
+	add_child(_collection_layer)
+	_collection_layer.target_arrived.connect(_on_collection_target_arrived)
+	_collection_layer.collections_settled.connect(_on_collections_settled)
+	_collection_layer.set_paused(_paused)
+
+func _on_collection_target_arrived(kind: String, counted: bool) -> void:
+	target_arrived.emit(kind, counted)
+
+func _on_collections_settled() -> void:
+	collections_settled.emit()
 
 func play_move(
 		before_board: BoardRules,
@@ -89,7 +123,7 @@ func play_move(
 		reduced_motion: bool,
 		context: Dictionary = {}
 	) -> void:
-	reset()
+	reset_move()
 	if before_board == null or before_board.size <= 0:
 		_busy = true
 		_finish()
@@ -119,16 +153,17 @@ func play_move(
 		_clear_cells[coordinate] = true
 	_collect_clear_lines()
 	_busy = true
+	var placement_duration := clampf(durations.x, 0.06, 0.14)
+	_enqueue_collection_events(reduced_motion, placement_duration + FLASH_DURATION + SWEEP_DURATION)
 	queue_redraw()
 	if reduced_motion:
-		if gained > 0:
+		if gained > 0 and not _is_collection_presentation():
 			_start_score_float(true)
 		_finish()
 		return
-	if _clear_cells.is_empty() and gained > 0:
+	if _clear_cells.is_empty() and gained > 0 and not _is_collection_presentation():
 		_start_score_float(false)
 	# Blocking phase is bounded to .50s even if a resource is edited.
-	var placement_duration := clampf(durations.x, 0.06, 0.14)
 	# durations.y includes the flash and sweep, not just fragment dispersion.
 	var disperse_duration := clampf(durations.y - FLASH_DURATION - SWEEP_DURATION, 0.10, 0.20)
 	_tween = create_tween()
@@ -154,7 +189,7 @@ func play_rebound(
 		duration: float,
 		reduced_motion: bool
 	) -> void:
-	reset()
+	reset_move()
 	if piece == null or piece.cells.is_empty():
 		_busy = true
 		_finish()
@@ -177,6 +212,13 @@ func play_rebound(
 	_apply_paused_state()
 
 func reset() -> void:
+	reset_move()
+	if is_instance_valid(_collection_layer):
+		_collection_layer.reset()
+
+## Starting the next placement only clears its board snapshot and accents.
+## Previously collected gems keep flying and retain their arrival callbacks.
+func reset_move() -> void:
 	for tween in [_tween, _score_tween, _accent_tween]:
 		if tween != null:
 			tween.kill()
@@ -214,6 +256,8 @@ func reset() -> void:
 
 func set_paused(paused: bool) -> void:
 	_paused = paused
+	if is_instance_valid(_collection_layer):
+		_collection_layer.set_paused(paused)
 	_apply_paused_state()
 
 func _apply_paused_state() -> void:
@@ -246,7 +290,7 @@ func _set_rebound_progress(value: float) -> void:
 
 func _begin_clear() -> void:
 	_clear_started = true
-	if _gained > 0:
+	if _gained > 0 and not _is_collection_presentation():
 		_start_score_float(false)
 	if bool(_context.get("shake_enabled", true)):
 		var line_count := maxi(int(_context.get("clear_lines", _clear_rows.size() + _clear_columns.size())), 1)
@@ -302,6 +346,9 @@ func _score_anchor() -> Vector2:
 		result += _cell_center(coordinate)
 	return result / float(coordinates.size())
 
+func _is_collection_presentation() -> bool:
+	return str(_context.get("objective_type", "")) == "collect" or not bool(_context.get("score_flight_enabled", true))
+
 func _start_score_float(static_text: bool) -> void:
 	_score_label = _make_effect_label("+%d" % _gained, clampi(int(_cell_size * 0.55), 22, 38), GOLD, 4)
 	_score_origin = _score_anchor() + Vector2(0.0, -_cell_size * 0.30)
@@ -355,26 +402,48 @@ func _make_effect_label(text: String, font_size: int, color: Color, outline_size
 func _start_combo() -> void:
 	var combo := int(_context.get("combo", 0))
 	var line_count := int(_context.get("clear_lines", _clear_rows.size() + _clear_columns.size()))
-	if combo < 2 and line_count < 2:
+	var final_block := bool(_context.get("final_block", false))
+	if combo < 2 and line_count < 2 and not final_block:
 		return
-	var text := "Combo x%d" % combo if combo >= 2 else ("Double!" if line_count == 2 else "Multi Clear!")
-	_combo_label = _make_effect_label(text, clampi(int(_board_rect.size.x * 0.12), 28, 64), CYAN, 8)
+	var text := "Final Block!" if final_block else ("Combo" if combo >= 2 else ("Double!" if line_count == 2 else "Multi Clear!"))
+	var font_size := clampi(int(_board_rect.size.x * 0.105), 24, 58)
+	_combo_root = Control.new()
+	_combo_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_combo_root)
+	_combo_label = _make_effect_label(text, font_size, GOLD if final_block else CYAN, 7)
+	_combo_label.reparent(_combo_root)
 	var italic_font := SystemFont.new()
 	italic_font.font_names = PackedStringArray(["Arial", "Microsoft YaHei", "sans-serif"])
 	italic_font.font_italic = true
 	italic_font.font_weight = 800
 	_combo_label.add_theme_font_override("font", italic_font)
-	_combo_label.pivot_offset = _combo_label.get_minimum_size() * 0.5
-	_combo_label.position = _board_rect.get_center() - _combo_label.get_minimum_size() * 0.5
-	_combo_label.scale = Vector2.ONE * 0.75
-	_combo_label.rotation = deg_to_rad(-5.0)
+	var word_size := _combo_label.get_minimum_size()
+	var group_size := word_size
+	if combo >= 2 and not final_block:
+		_combo_number = _make_effect_label(str(combo), int(font_size * 1.45), GOLD, 9)
+		_combo_number.reparent(_combo_root)
+		_combo_number.add_theme_font_override("font", italic_font)
+		var number_size := _combo_number.get_minimum_size()
+		_combo_label.position = Vector2(0.0, maxf(number_size.y - word_size.y, 0.0) * 0.70)
+		_combo_number.position = Vector2(word_size.x + 4.0, 0.0)
+		group_size = Vector2(word_size.x + 4.0 + number_size.x, maxf(word_size.y, number_size.y))
+	_combo_root.size = group_size
+	_combo_root.pivot_offset = group_size * 0.5
+	_combo_base_scale = minf(1.0, maxf(_board_rect.size.x - 24.0, 1.0) / maxf(group_size.x, 1.0))
+	var anchor := _score_anchor() + Vector2(0.0, _cell_size * 0.78)
+	var half := group_size * _combo_base_scale * 0.5
+	anchor.x = clampf(anchor.x, _board_rect.position.x + half.x + 8.0, maxf(_board_rect.position.x + half.x + 8.0, _board_rect.end.x - half.x - 8.0))
+	anchor.y = clampf(anchor.y, _board_rect.position.y + half.y + 12.0, maxf(_board_rect.position.y + half.y + 12.0, _board_rect.end.y - half.y - 6.0))
+	_combo_root.position = anchor - group_size * 0.5
+	_combo_root.scale = Vector2.ONE * _combo_base_scale * 0.75
+	_combo_root.rotation = deg_to_rad(-4.0)
 
 func _set_accent_progress(progress: float) -> void:
 	_accent_progress = progress
-	if is_instance_valid(_combo_label):
+	if is_instance_valid(_combo_root):
 		var pop := clampf(progress / 0.20, 0.0, 1.0)
-		_combo_label.scale = Vector2.ONE * (0.75 + 0.25 * sin(pop * PI * 0.5) + 0.08 * sin(pop * PI))
-		_combo_label.modulate.a = 1.0 - clampf((progress - 0.60) / 0.40, 0.0, 1.0)
+		_combo_root.scale = Vector2.ONE * _combo_base_scale * (0.75 + 0.25 * sin(pop * PI * 0.5) + 0.08 * sin(pop * PI))
+		_combo_root.modulate.a = 1.0 - clampf((progress - 0.60) / 0.40, 0.0, 1.0)
 	queue_redraw()
 
 func _end_accents() -> void:
@@ -384,10 +453,12 @@ func _end_accents() -> void:
 	queue_redraw()
 
 func _remove_combo_label() -> void:
-	if is_instance_valid(_combo_label):
-		_combo_label.hide()
-		_combo_label.queue_free()
+	if is_instance_valid(_combo_root):
+		_combo_root.hide()
+		_combo_root.queue_free()
+	_combo_root = null
 	_combo_label = null
+	_combo_number = null
 
 func _spawn_particles() -> void:
 	var random := RandomNumberGenerator.new()
@@ -429,7 +500,6 @@ func _draw() -> void:
 				_draw_board_cell(coordinate, _color_for_id(_resolved_cell_color_id(coordinate)), block_scale, alpha, highlight)
 			_draw_clear_lines()
 	_draw_particles()
-	_draw_target_flights()
 
 func _draw_board_cell(coordinate: Vector2i, color: Color, block_scale: float, alpha: float, highlight: float) -> void:
 	if coordinate.x < 0 or coordinate.y < 0 or coordinate.x >= _board_size or coordinate.y >= _board_size:
@@ -444,22 +514,13 @@ func _draw_board_cell(coordinate: Vector2i, color: Color, block_scale: float, al
 	if _target_cells.has(coordinate):
 		BlockArt.draw_target_marker(self, block_rect, alpha, 1.0, _target_kind(_target_cells[coordinate]))
 
-func _draw_target_flights() -> void:
-	if not _dispersing or _accent_tween == null or _collected_target_events.is_empty():
+func _enqueue_collection_events(reduced_motion: bool, launch_delay: float) -> void:
+	if _collected_target_events.is_empty():
 		return
+	_ensure_collection_layer()
 	var fallback_destination: Vector2 = _context.get("objective_target", Vector2(_board_rect.get_center().x, _board_rect.position.y - 50.0))
 	var objective_targets: Dictionary = _context.get("objective_targets", {})
-	for index in range(_collected_target_events.size()):
-		var event := _collected_target_events[index]
-		var kind := _target_kind(event["kind"])
-		var destination: Vector2 = objective_targets.get(kind, fallback_destination)
-		var progress := clampf((_accent_progress - float(index % 4) * 0.025) / 0.90, 0.0, 1.0)
-		var origin := _cell_center(event["cell"])
-		var eased := progress * progress * (3.0 - 2.0 * progress)
-		var point := origin.lerp(destination, eased)
-		point.y -= sin(progress * PI) * minf(_cell_size * 0.9, 56.0)
-		var side := maxf(12.0, _cell_size * lerpf(0.95, 0.55, progress))
-		BlockArt.draw_target_marker(self, Rect2(point - Vector2.ONE * side * 0.5, Vector2.ONE * side), 1.0 - clampf((progress - 0.82) / 0.18, 0.0, 1.0), 1.5, kind)
+	_collection_layer.enqueue(_collected_target_events, _board_rect, _cell_size, objective_targets, fallback_destination, launch_delay, reduced_motion)
 
 func _capture_target_context(context: Dictionary) -> void:
 	var before_targets: Dictionary = context.get("target_cells", {})
@@ -477,11 +538,12 @@ func _capture_target_context(context: Dictionary) -> void:
 		if not coordinate is Vector2i or seen.has(coordinate):
 			continue
 		var kind := _target_kind(entry.get("kind", _target_cells.get(coordinate, "red_star"))) if entry is Dictionary else _target_kind(_target_cells.get(coordinate, "red_star"))
-		_collected_target_events.append({"cell": coordinate, "kind": kind})
+		var counted := bool(entry.get("counted", true)) if entry is Dictionary else true
+		_collected_target_events.append({"cell": coordinate, "kind": kind, "counted": counted})
 		seen[coordinate] = true
 
 func _target_kind(value: Variant) -> String:
-	return "gold_gem" if value is String and value == "gold_gem" else "red_star"
+	return str(value) if value is String and value in ["red_star", "gold_gem", "blue_diamond", "yellow_star"] else "red_star"
 
 func _draw_clear_lines() -> void:
 	if not _clear_started or _dispersing:
@@ -537,7 +599,12 @@ func _draw_rebound() -> void:
 	var unit := lerpf(_rebound_from_unit, _rebound_to_unit, _rebound_progress)
 	for local_cell in _rebound_piece.cells:
 		var cell_rect := Rect2(origin + Vector2(local_cell) * unit + Vector2.ONE, Vector2.ONE * maxf(unit - 2.0, 1.0))
-		BlockArt.draw_block(self, cell_rect, _rebound_color)
+		if _rebound_piece.targets.has(local_cell):
+			var kind := _target_kind(_rebound_piece.targets[local_cell])
+			BlockArt.draw_target_tile(self, cell_rect, 1.0, 0.0, kind)
+			BlockArt.draw_target_marker(self, cell_rect, 1.0, 1.0, kind)
+		else:
+			BlockArt.draw_block(self, cell_rect, _rebound_color)
 
 func _cell_center(coordinate: Vector2i) -> Vector2:
 	return _board_rect.position + (Vector2(coordinate) + Vector2.ONE * 0.5) * _cell_size

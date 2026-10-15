@@ -1,13 +1,15 @@
 extends RefCounted
 
+const CollectionTemplates = preload("res://scripts/modes/collection_templates.gd")
+const CollectionTraySupplier = preload("res://scripts/rules/collection_tray_supplier.gd")
 const FREE := "free"
 const CLASSIC := "classic"
 const ADVENTURE := "adventure"
 const MAX_LEVELS := 96
 const SETUP_ATTEMPTS := 8
 const LEVEL_SEED_BASE := 272912
-const COLLECTION_RECIPE_ATTEMPTS := 12
-const TARGET_KINDS := ["red_star", "gold_gem"]
+const TARGET_KINDS := ["blue_diamond", "gold_gem", "yellow_star", "red_star"]
+const TARGET_NAMES := {"blue_diamond": "蓝色宝石", "gold_gem": "金色宝石", "yellow_star": "黄星", "red_star": "红星"}
 
 static func display_name(mode: String) -> String:
 	match mode:
@@ -32,82 +34,127 @@ static func classic_setup(seed: int, config: GameRulesConfig) -> Dictionary:
 	return result
 
 static func level_setup(level_id: int, total_levels: int, config: GameRulesConfig) -> Dictionary:
-	var rules: GameRulesConfig = config if config != null else GameRulesConfig.new()
+	var base: GameRulesConfig = config if config != null else GameRulesConfig.new()
 	var count := maxi(1, total_levels)
 	var current := clampi(level_id, 1, count)
 	var ratio := float(current - 1) / float(maxi(1, count - 1))
 	var level_seed := LEVEL_SEED_BASE + current * 104729
-	var requested := roundi(lerpf(16.0, 43.0, ratio) * _board_scale(rules))
+	var requested := roundi(lerpf(16.0, 43.0, ratio) * _board_scale(base))
+	var objective := objective_config(current, count)
 	var result: Dictionary
 	if current <= 2:
-		result = _initial_setup(level_seed, rules, requested, ratio)
-		result["objective_type"] = "score"
+		result = _initial_setup(level_seed, base, requested, ratio)
 		result["target_cells"] = []
-		result["target_total"] = 0
 	else:
-		result = _collection_setup(level_seed, rules, requested, ratio, current, count)
-		result["objective_type"] = "collect"
+		result = _collection_setup(level_seed, collection_rules(base), current, objective, requested, collection_difficulty(current, count))
+	for field in objective:
+		result[field] = objective[field]
 	result["mode"] = ADVENTURE
 	result["level_id"] = current
 	result["level_seed"] = level_seed
-	result["difficulty_ratio"] = ratio
-	result["target_lines"] = 2 + floori(ratio * 8.0)
-	result["target_score"] = target_score_for_level(current, count) if current <= 2 else 0
-	result["candidate_samples"] = 1 + roundi(ratio * 11.0)
-	result["solution_count_cap"] = 8 - roundi(ratio * 6.0)
-	var objective := objective_config(current, count)
-	for field in ["target_counts", "difficulty_label", "description", "target_rows", "required_rounds"]:
-		result[field] = objective[field]
+	result["difficulty_ratio"] = collection_difficulty(current, count) if current >= 3 else ratio
+	result["candidate_samples"] = 1
+	result["solution_count_cap"] = 8
 	return result
+
+## This private copy keeps all other modes' 3–5 cell pool and strict combo
+## untouched. Geometry in collect rounds is ordinary configured 2–9 cell play.
+static func collection_rules(base: GameRulesConfig) -> GameRulesConfig:
+	var source: GameRulesConfig = base if base != null else GameRulesConfig.new()
+	var rules: GameRulesConfig = source.duplicate(true)
+	rules.min_piece_cells = 2
+	rules.max_piece_cells = 9
+	rules.combo_miss_tolerance = 2
+	var pool: Array = []
+	for count in range(2, 6):
+		var horizontal: Array[Vector2i] = []
+		var vertical: Array[Vector2i] = []
+		for coordinate in range(count):
+			horizontal.append(Vector2i(coordinate, 0))
+			vertical.append(Vector2i(0, coordinate))
+		pool.append(PieceData.new(Vector2i.ZERO, horizontal, "horizontal%d" % count))
+		pool.append(PieceData.new(Vector2i.ZERO, vertical, "vertical%d" % count))
+	for definition in source.shape_pool:
+		var piece: PieceData = null
+		if definition is ShapeDefinition:
+			piece = definition.to_piece()
+		elif definition is PieceData:
+			piece = definition.duplicate_piece()
+		elif definition is Dictionary:
+			piece = PieceData.new(Vector2i.ZERO, definition.get("cells", []), str(definition.get("shape_id", "")))
+		if piece != null and piece.is_valid_for_config(rules):
+			pool.append(piece)
+	pool.append(PieceData.new(Vector2i.ZERO, [Vector2i(0, 0), Vector2i(1, 0), Vector2i(1, 1), Vector2i(2, 1)], "zigzag4"))
+	pool.append(PieceData.new(Vector2i.ZERO, [Vector2i(0, 0), Vector2i(1, 1), Vector2i(2, 2)], "diagonal3"))
+	for dimensions in [Vector2i(2, 3), Vector2i(3, 2), Vector2i(3, 3)]:
+		var cells: Array[Vector2i] = []
+		for y in range(dimensions.y):
+			for x in range(dimensions.x):
+				cells.append(Vector2i(x, y))
+		pool.append(PieceData.new(Vector2i.ZERO, cells, "rectangle%dx%d" % [dimensions.x, dimensions.y]))
+	var unique_pool: Array = []
+	var seen: Dictionary = {}
+	for piece: PieceData in pool:
+		var minimum := piece.cells[0]
+		for cell in piece.cells:
+			minimum.x = mini(minimum.x, cell.x)
+			minimum.y = mini(minimum.y, cell.y)
+		var coordinates := PackedStringArray()
+		for cell in piece.cells:
+			coordinates.append("%d:%d" % [cell.x - minimum.x, cell.y - minimum.y])
+		coordinates.sort()
+		var key := ";".join(coordinates)
+		if not seen.has(key):
+			seen[key] = true
+			unique_pool.append(piece)
+	rules.shape_pool = unique_pool
+	return rules
 
 static func target_score_for_level(level_id: int, total_levels: int = MAX_LEVELS) -> int:
-	var count := maxi(1, total_levels)
-	var current := clampi(level_id, 1, count)
-	if current <= 2:
-		return 368 + 24 * (current - 1)
-	return 0
+	var current := clampi(level_id, 1, maxi(1, total_levels))
+	return 368 + 24 * (current - 1) if current <= 2 else 0
 
-## Read objective text without constructing or searching a level board.
+## Quotas are finite per-kind requirements. They are not a promise that all
+## markers fit on the initial board; later trays keep bringing marked cells.
 static func objective_config(level_id: int, total_levels: int = MAX_LEVELS) -> Dictionary:
-	var count := maxi(1, total_levels)
-	var current := clampi(level_id, 1, count)
-	var target_rows := _target_rows_for_level(current) if current >= 3 else 0
-	var target_total := _target_count_for_level(current, count) if current >= 3 else 0
-	var gold := roundi(float(target_total) * (0.25 + 0.05 * float(maxi(0, target_rows - 3))))
-	var target_counts := {"red_star": target_total - gold, "gold_gem": gold}
-	var result := {
+	var current := clampi(level_id, 1, maxi(1, total_levels))
+	var counts: Dictionary = {}
+	var total := _target_count_for_level(current)
+	var descriptions := PackedStringArray()
+	var kinds := _level_kinds(current)
+	if current >= 3:
+		var share := floori(float(total) / 3.0)
+		for index in range(kinds.size()):
+			counts[kinds[index]] = share + (1 if index < total % 3 else 0)
+			descriptions.append("%s %d 个" % [TARGET_NAMES[kinds[index]], counts[kinds[index]]])
+	return {
 		"objective_type": "score" if current <= 2 else "collect",
-		"target_score": target_score_for_level(current, count),
-		"target_total": target_total, "target_counts": target_counts,
-		"target_rows": target_rows, "required_rounds": ceili(float(target_rows) / 3.0),
+		"target_score": target_score_for_level(current, total_levels),
+		"target_total": total, "target_counts": counts,
+		"target_kinds": kinds if current >= 3 else [],
 		"difficulty_label": _difficulty_label(current),
+		"description": "目标 %d 分" % target_score_for_level(current, total_levels) if current <= 2 else " · ".join(descriptions),
 	}
-	result["description"] = "目标 %d 分" % int(result["target_score"]) if current <= 2 else "红星 %d 个 · 金色宝石 %d 个" % [target_counts["red_star"], target_counts["gold_gem"]]
-	return result
 
 static func objective_description(level_id: int, total_levels: int = MAX_LEVELS) -> String:
-	var objective := objective_config(level_id, total_levels)
-	return str(objective["description"])
+	return str(objective_config(level_id, total_levels)["description"])
 
-static func _target_count_for_level(level_id: int, total_levels: int) -> int:
-	var current := clampi(level_id, 1, maxi(1, total_levels))
-	for entry in [[96, 40], [72, 36], [48, 32], [36, 28], [24, 24], [18, 22], [12, 18], [9, 16], [6, 14], [5, 12], [4, 10], [3, 8]]:
-		if current >= int(entry[0]):
+static func collection_difficulty(level_id: int, total_levels: int = MAX_LEVELS) -> float:
+	return clampf(float(level_id - 3) / float(maxi(1, total_levels - 3)), 0.0, 1.0)
+
+static func _level_kinds(level_id: int) -> Array[String]:
+	var omitted := posmod(3 + floori(float(maxi(0, level_id - 3)) / 5.0), TARGET_KINDS.size())
+	var kinds: Array[String] = []
+	for index in range(TARGET_KINDS.size()):
+		if index != omitted:
+			kinds.append(TARGET_KINDS[index])
+	return kinds
+
+static func _target_count_for_level(level_id: int) -> int:
+	for entry in [[96, 120], [72, 108], [48, 96], [36, 84], [24, 72], [18, 66], [12, 60], [9, 48], [6, 42], [5, 36], [4, 30], [3, 24]]:
+		if level_id >= int(entry[0]):
 			return int(entry[1])
 	return 0
-
-static func _target_rows_for_level(level_id: int) -> int:
-	if level_id <= 5:
-		return 3
-	if level_id <= 11:
-		return 4
-	if level_id <= 17:
-		return 5
-	if level_id <= 35:
-		return 6
-	if level_id <= 71:
-		return 7
-	return 8
 
 static func _difficulty_label(level_id: int) -> String:
 	if level_id <= 2:
@@ -124,269 +171,37 @@ static func _difficulty_label(level_id: int) -> String:
 		return "专家"
 	return "大师"
 
-## Build a bounded, bottom-to-top route. A shape's top occupied row is the
-## current goal row; its other cells use work space opened by preceding rows.
-## The full route is replayed on the final initial board before accepting it.
-static func _collection_setup(seed: int, config: GameRulesConfig, requested: int, _difficulty: float, level_id: int, total_levels: int) -> Dictionary:
-	var objective := objective_config(level_id, total_levels)
-	var row_count: int = objective["target_rows"]
-	var pool := _shape_pool(config)
-	var line: PieceData = null
-	for piece in pool:
-		var bounds := _piece_bounds(piece)
-		if piece.cell_count() == 3 and bounds.size == Vector2i(3, 1):
-			line = piece
-			break
-	if config.tray_count != 3 or config.board_size < row_count or line == null:
-		return _invalid_collection(seed, requested, objective, "collection_route_incompatible_config")
-	var rng := RandomNumberGenerator.new()
-	rng.seed = seed
-	for _attempt in range(COLLECTION_RECIPE_ATTEMPTS):
-		var recipe := _collection_recipe(config.board_size, row_count, pool, line, rng, false)
-		var certified := _certify_collection_recipe(recipe, pool, config, objective, requested, seed)
-		if not certified.is_empty():
-			certified["initial_diagnostics"]["recipe_attempts"] = _attempt + 1
-			return certified
-	# Horizontal triples are an ordinary configured shape. This finite fallback
-	# guarantees a route without altering the board, shape rules, or goal count.
-	var fallback := _collection_recipe(config.board_size, row_count, pool, line, rng, true)
-	var certified := _certify_collection_recipe(fallback, pool, config, objective, requested, seed)
-	if certified.is_empty():
-		return _invalid_collection(seed, requested, objective, "collection_route_cannot_certify_targets")
-	certified["initial_diagnostics"]["recipe_attempts"] = COLLECTION_RECIPE_ATTEMPTS
-	certified["initial_diagnostics"]["fallback_used"] = true
-	return certified
-
-static func _collection_recipe(board_size: int, row_count: int, pool: Array[PieceData], line: PieceData, rng: RandomNumberGenerator, fallback: bool) -> Dictionary:
-	var board := BoardRules.new(board_size)
-	var initial: Array[Dictionary] = []
-	var pieces: Array[PieceData] = []
-	var solution: Array[Dictionary] = []
-	var used_shapes: Dictionary = {}
-	for index in range(row_count):
-		var y := board_size - 1 - index
-		var candidates: Array[Dictionary] = []
-		for pool_index in range(pool.size()):
-			var piece := pool[pool_index]
-			var bounds := _piece_bounds(piece)
-			if bounds.size.x > board_size or bounds.size.y > index + 1:
-				continue
-			if (fallback or index == 0) and piece != line:
-				continue
-			candidates.append({"piece": piece, "priority": float(used_shapes.get(piece.shape_id, 0)) * 10.0 + rng.randf()})
-		candidates.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["priority"] < b["priority"])
-		var chosen: Dictionary = {}
-		for candidate in candidates:
-			var piece: PieceData = candidate["piece"]
-			var bounds := _piece_bounds(piece)
-			var horizontal_order := _random_coordinates(board_size - bounds.size.x + 1, rng)
-			if fallback and row_count == board_size:
-				# The first two equal holes protect the first clear; subsequent
-				# holes cover every column, preventing an initially full column.
-				var left := 0 if index <= 1 else mini((index - 1) * 3, board_size - 3)
-				horizontal_order = [left]
-			for left in horizontal_order:
-				var origin := Vector2i(left - bounds.position.x, y - bounds.position.y)
-				var holes: Dictionary = {}
-				for cell in piece.cells:
-					if cell.y == bounds.position.y:
-						holes[origin.x + cell.x] = true
-				var next := board.duplicate_board()
-				var row_cells: Array[Dictionary] = []
-				for x in range(board_size):
-					if not holes.has(x):
-						next.set_cell(x, y, 0)
-						row_cells.append({"x": x, "y": y, "color": 0})
-				if not next.can_place(piece, origin):
-					continue
-				next.place(piece, origin, 0)
-				next.clear_full_lines()
-				chosen = {"piece": piece, "origin": origin, "board": next, "initial": row_cells}
-				break
-			if not chosen.is_empty():
-				break
-		if chosen.is_empty():
-			return {}
-		var piece: PieceData = chosen["piece"]
-		pieces.append(piece.duplicate_piece())
-		solution.append({"piece_index": index, "origin": chosen["origin"]})
-		initial.append_array(chosen["initial"])
-		board = chosen["board"]
-		used_shapes[piece.shape_id] = int(used_shapes.get(piece.shape_id, 0)) + 1
-	return {"initial_cells": initial, "pieces": pieces, "solution": solution, "goal_rows": row_count}
-
-static func _certify_collection_recipe(recipe: Dictionary, pool: Array[PieceData], config: GameRulesConfig, objective: Dictionary, requested: int, seed: int) -> Dictionary:
-	if recipe.is_empty():
-		return {}
-	var board := BoardRules.new(config.board_size)
-	var initial_remaining: Dictionary = {}
-	var initial_cells: Array[Dictionary] = []
-	var color_offset := posmod(seed, maxi(1, config.palette.size()))
-	for entry: Dictionary in recipe["initial_cells"]:
-		var color := (floori(float(entry["x"]) / 2.0) + floori(float(entry["y"]) / 2.0) + color_offset) % maxi(1, config.palette.size())
-		var cell := Vector2i(int(entry["x"]), int(entry["y"]))
-		board.set_cell(cell.x, cell.y, color)
-		initial_remaining[cell] = true
-		initial_cells.append({"x": cell.x, "y": cell.y, "color": color})
+static func _collection_setup(seed: int, rules: GameRulesConfig, level_id: int, objective: Dictionary, requested: int, difficulty: float) -> Dictionary:
+	var template := CollectionTemplates.create(level_id, rules.board_size, rules.palette.size())
+	var board := BoardRules.new(rules.board_size)
+	for entry: Dictionary in template["initial_cells"]:
+		board.set_cell(entry["x"], entry["y"], entry["color"])
+	# Never start on a full line, including when a custom board size maps two
+	# authored mask coordinates together.
 	if not board.duplicate_board().clear_full_lines()["cells"].is_empty():
-		return {}
-	var initial_board := board.duplicate_board()
-	var pieces: Array[PieceData] = []
-	pieces.assign(recipe["pieces"])
-	var solution: Array[Dictionary] = []
-	solution.assign(recipe["solution"])
-	var buckets: Array[Array] = []
-	for index in range(solution.size()):
-		var step: Dictionary = solution[index]
-		var piece := pieces[index]
-		var origin: Vector2i = step["origin"]
-		if not board.can_place(piece, origin):
-			return {}
-		board.place(piece, origin, 0)
-		var cleared := board.clear_full_lines()
-		var bucket: Array[Vector2i] = []
-		var expected_y := board.size - 1 - index
-		for cell in cleared["cells"]:
-			if initial_remaining.erase(cell):
-				# Reject premature crossing clears that steal future goal rows.
-				if cell.y != expected_y:
-					return {}
-				bucket.append(cell)
-		if bucket.is_empty():
-			return {}
-		buckets.append(bucket)
-	if not initial_remaining.is_empty():
-		return {}
-	var ordered_targets := _interleaved_targets(buckets, seed)
-	var target_total: int = objective["target_total"]
-	if ordered_targets.size() < target_total:
-		return {}
-	ordered_targets.resize(target_total)
+		return _invalid_setup(seed, requested, "template_contains_full_line")
 	var targets: Dictionary = {}
-	var gold: int = objective["target_counts"]["gold_gem"]
-	for index in range(target_total):
-		var is_gold := floori(float((index + 1) * gold) / float(target_total)) > floori(float(index * gold) / float(target_total))
-		var kind := "gold_gem" if is_gold else "red_star"
-		targets[ordered_targets[index]] = kind
-	# Pad the last round with legal ordinary pieces in the opened work area.
-	# Completion still happens immediately when the last marker is collected.
-	while pieces.size() % config.tray_count != 0:
-		var padded := false
-		for piece in pool:
-			var legal := board.get_legal_origins(piece)
-			if legal.is_empty():
-				continue
-			var origin: Vector2i = legal[0]
-			solution.append({"piece_index": pieces.size(), "origin": origin})
-			pieces.append(piece.duplicate_piece())
-			board.place(piece, origin, 0)
-			board.clear_full_lines()
-			padded = true
-			break
-		if not padded:
-			return {}
-	var rounds := _make_certified_rounds(initial_board, targets, pieces, solution, config.tray_count)
-	if rounds.is_empty():
-		return {}
+	var kinds: Array = objective["target_kinds"]
+	var marker_index := 0
+	for entry: Dictionary in template["initial_cells"]:
+		if posmod(int(entry["x"]) + int(entry["y"]) + level_id, 3) == 0:
+			targets[Vector2i(entry["x"], entry["y"])] = kinds[marker_index % kinds.size()]
+			marker_index += 1
+	var generator := RoundGenerator.new(seed, rules)
+	var supplier := CollectionTraySupplier.new(rules, seed, difficulty)
+	var supplied := supplier.build(board, objective["target_counts"], generator)
+	var diagnostics: Dictionary = supplied["diagnostics"]
+	diagnostics["seed"] = seed
+	diagnostics["requested_occupied"] = requested
+	diagnostics["initial_occupied"] = template["initial_cells"].size()
+	diagnostics["template_id"] = template["template_id"]
+	diagnostics["template_name"] = template["template_name"]
 	return {
-		"initial_cells": initial_cells, "initial_pieces": rounds[0]["pieces"],
-		"initial_solution": rounds[0]["solution"], "certified_rounds": rounds,
-		"target_cells": targets, "target_counts": objective["target_counts"].duplicate(),
-		"target_total": target_total,
-		"initial_diagnostics": {
-			"seed": seed, "reason": "certified_collection_route", "requested_occupied": requested,
-			"initial_occupied": initial_cells.size(), "solution_certified": true,
-			"target_route_certified": true, "target_count": target_total,
-			"certified_round_count": rounds.size(), "certified_move_count": pieces.size(),
-			"goal_rows": recipe["goal_rows"], "fallback_used": false,
-		},
+		"initial_cells": template["initial_cells"], "initial_pieces": supplied["pieces"],
+		"initial_solution": supplied["solution"], "target_cells": targets,
+		"initial_diagnostics": diagnostics, "template_id": template["template_id"],
+		"template_name": template["template_name"],
 	}
-
-static func _make_certified_rounds(board: BoardRules, targets: Dictionary, pieces: Array[PieceData], solution: Array[Dictionary], tray_count: int) -> Array[Dictionary]:
-	var rounds: Array[Dictionary] = []
-	var replay := board.duplicate_board()
-	var remaining := targets.duplicate()
-	for offset in range(0, pieces.size(), tray_count):
-		var round_pieces: Array[PieceData] = []
-		var round_solution: Array[Dictionary] = []
-		var board_key := occupancy_key(replay)
-		var targets_key := target_key(remaining)
-		for index in range(tray_count):
-			var piece := pieces[offset + index].duplicate_piece()
-			var origin: Vector2i = solution[offset + index]["origin"]
-			if not replay.can_place(piece, origin):
-				return []
-			round_pieces.append(piece)
-			round_solution.append({"piece_index": index, "origin": origin})
-			replay.place(piece, origin, 0)
-			var cleared := replay.clear_full_lines()
-			for cell in cleared["cells"]:
-				remaining.erase(cell)
-		rounds.append({"occupancy_key": board_key, "target_key": targets_key, "pieces": round_pieces, "solution": round_solution})
-	if not remaining.is_empty():
-		return []
-	return rounds
-
-static func _interleaved_targets(buckets: Array[Array], seed: int) -> Array[Vector2i]:
-	var rng := RandomNumberGenerator.new()
-	rng.seed = seed + 3989
-	var shuffled: Array[Array] = []
-	var longest := 0
-	for bucket in buckets:
-		var entries: Array[Vector2i] = []
-		for index in _random_coordinates(bucket.size(), rng):
-			entries.append(bucket[index])
-		shuffled.append(entries)
-		longest = maxi(longest, entries.size())
-	var targets: Array[Vector2i] = []
-	for index in range(longest):
-		for bucket in shuffled:
-			if index < bucket.size():
-				targets.append(bucket[index])
-	return targets
-
-static func occupancy_key(board: BoardRules) -> String:
-	var key := ""
-	for y in range(board.size):
-		for x in range(board.size):
-			key += "1" if board.get_cell(x, y) >= 0 else "0"
-	return key
-
-static func target_key(targets: Dictionary) -> String:
-	var entries := PackedStringArray()
-	for cell: Vector2i in targets:
-		entries.append("%d,%d:%s" % [cell.x, cell.y, str(targets[cell])])
-	entries.sort()
-	return ";".join(entries)
-
-static func _invalid_collection(seed: int, requested: int, objective: Dictionary, reason: String) -> Dictionary:
-	var invalid := _invalid_setup(seed, requested, reason)
-	invalid["target_cells"] = {}
-	invalid["target_counts"] = objective["target_counts"].duplicate()
-	invalid["target_total"] = objective["target_total"]
-	invalid["certified_rounds"] = []
-	return invalid
-
-static func _piece_bounds(piece: PieceData) -> Rect2i:
-	var minimum := piece.cells[0]
-	var maximum := piece.cells[0]
-	for cell in piece.cells:
-		minimum.x = mini(minimum.x, cell.x)
-		minimum.y = mini(minimum.y, cell.y)
-		maximum.x = maxi(maximum.x, cell.x)
-		maximum.y = maxi(maximum.y, cell.y)
-	return Rect2i(minimum, maximum - minimum + Vector2i.ONE)
-
-static func _random_coordinates(count: int, rng: RandomNumberGenerator) -> Array[int]:
-	var coordinates: Array[int] = []
-	for index in range(count):
-		coordinates.append(index)
-	for index in range(count - 1, 0, -1):
-		var other := rng.randi_range(0, index)
-		var value := coordinates[index]
-		coordinates[index] = coordinates[other]
-		coordinates[other] = value
-	return coordinates
 
 static func _board_scale(config: GameRulesConfig) -> float:
 	return float(maxi(1, config.board_size) * maxi(1, config.board_size)) / 64.0
@@ -544,6 +359,7 @@ static func _shape_pool(config: GameRulesConfig) -> Array[PieceData]:
 
 static func _invalid_setup(seed: int, target: int, reason: String) -> Dictionary:
 	return {
+		"initial_setup_invalid": true,
 		"initial_cells": [], "initial_pieces": [], "initial_solution": [],
 		"initial_diagnostics": {
 			"seed": seed, "reason": reason, "requested_occupied": target,

@@ -44,6 +44,21 @@ func _run_tests() -> void:
 	_assert_equal(scoring.combo, 2, "连续清除连击递增")
 	scoring.register_move(false)
 	_assert_equal(scoring.combo, 0, "未清线有效落子重置连击")
+	var collection_rules := GameRulesConfig.new()
+	collection_rules.combo_miss_tolerance = 2
+	var tolerant := Scoring.new(collection_rules)
+	tolerant.register_move(true)
+	tolerant.register_move(false)
+	tolerant.register_move(false)
+	tolerant.register_move(true)
+	_assert_equal(tolerant.combo, 2, "收集关两次铺垫后继续连击")
+	for _miss in range(3):
+		tolerant.register_move(false)
+	_assert_equal(tolerant.combo, 0, "收集关第三次未消除断连")
+	var marked := PieceData.new(Vector2i.ZERO, line_piece.cells, "marked_line", {Vector2i.ZERO: "blue_diamond"})
+	var copied := marked.duplicate_piece()
+	copied.targets.clear()
+	_assert_equal(marked.targets.size(), 1, "复制方块后标记字典独立")
 
 	var clearing_state := GameState.new(7)
 	clearing_state.board.fill_cell_row(0, 1)

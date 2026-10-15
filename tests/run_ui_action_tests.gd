@@ -82,6 +82,24 @@ func _run_tests() -> void:
 	main._confirm_action()
 	_equal(main.screen, "menu", "常驻返回菜单按钮可用")
 	_equal(main.game, null, "返回菜单清理当前局")
+	# A completed game locks the board while gems arrive, but its result
+	# screen must release the primary and secondary navigation buttons.
+	main.save_data["adventure_highest_completed"] = 2
+	main._start_game("adventure", 3)
+	var objective_stats := {"target_counts": main.game.target_counts, "target_total": main.game.target_total}
+	var visible_kinds: Array = main.gameplay_ui.call("_active_target_kinds", objective_stats)
+	_equal(visible_kinds.size(), 3, "本关只显示配置的三类目标")
+	_equal(main.gameplay_ui.call("_target_count", objective_stats, "target_counts", "red_star"), 0, "缺席的红星不按总配额虚构目标")
+	main.gameplay_ui.accept_objective_intro()
+	main.game.status = GameState.Status.LEVEL_COMPLETE
+	main.screen = "level_complete"
+	main._refresh_controls()
+	var next_level: Button = main.gameplay_ui.get("_next_level_button")
+	var result_menu: Button = main.gameplay_ui.get("_overlay_menu_button")
+	_check(next_level != null and not next_level.disabled, "通关面板释放下一关按钮")
+	_check(result_menu != null and not result_menu.disabled, "通关面板释放返回选关按钮")
+	main._return_to_menu()
+	main._show_menu()
 	var saved_settings: Dictionary = main.save_data.duplicate()
 	main.feedback_audio.apply_settings({"sound_enabled": false, "music_enabled": false})
 	main.free()

@@ -41,17 +41,23 @@ static func draw_block(canvas: CanvasItem, rect: Rect2, color: Color, opacity: f
 	canvas.draw_line(tl + Vector2(rim, rim), tr + Vector2(-rim, rim), Color(1.0, 1.0, 1.0, alpha * 0.30), rim, true)
 	canvas.draw_line(ctl, ctr, Color(1.0, 1.0, 1.0, alpha * 0.15), rim, true)
 
-static func draw_empty_cell(canvas: CanvasItem, rect: Rect2, color: Color) -> void:
+static func draw_empty_cell(canvas: CanvasItem, rect: Rect2, color: Color, subtle: bool = false) -> void:
 	if rect.size.x <= 0.0 or rect.size.y <= 0.0:
 		return
 	canvas.draw_rect(rect, color)
 	var edge := clampf(minf(rect.size.x, rect.size.y) * 0.025, 0.6, 1.4)
-	canvas.draw_line(rect.position, Vector2(rect.end.x, rect.position.y), color.darkened(0.18), edge)
-	canvas.draw_line(rect.position, Vector2(rect.position.x, rect.end.y), color.darkened(0.14), edge)
-	canvas.draw_line(Vector2(rect.position.x, rect.end.y), rect.end, color.lightened(0.05), edge)
-	canvas.draw_line(Vector2(rect.end.x, rect.position.y), rect.end, color.lightened(0.035), edge)
+	canvas.draw_line(rect.position, Vector2(rect.end.x, rect.position.y), color.darkened(0.05 if subtle else 0.18), edge)
+	canvas.draw_line(rect.position, Vector2(rect.position.x, rect.end.y), color.darkened(0.04 if subtle else 0.14), edge)
+	canvas.draw_line(Vector2(rect.position.x, rect.end.y), rect.end, color.lightened(0.025 if subtle else 0.05), edge)
+	canvas.draw_line(Vector2(rect.end.x, rect.position.y), rect.end, color.lightened(0.02 if subtle else 0.035), edge)
 
-static func draw_board_frame(canvas: CanvasItem, rect: Rect2) -> void:
+static func draw_board_frame(canvas: CanvasItem, rect: Rect2, compact: bool = false) -> void:
+	if compact:
+		var rim := clampf(rect.size.x * 0.015, 4.0, 8.0)
+		canvas.draw_style_box(panel_style(Color(0.04, 0.08, 0.17, 0.28), 9, Color.TRANSPARENT), Rect2(rect.position + Vector2(0.0, 3.0), rect.size).grow(rim + 2.0))
+		canvas.draw_style_box(panel_style(Color("#263b65"), 7, Color("#3c5686")), rect.grow(rim))
+		canvas.draw_rect(rect.grow(1.0), Color("#111d36"))
+		return
 	var shadow_rect := Rect2(rect.position + Vector2(0.0, 7.0), rect.size).grow(12.0)
 	canvas.draw_style_box(panel_style(Color(0.06, 0.10, 0.20, 0.28), 15, Color.TRANSPARENT), shadow_rect)
 	canvas.draw_style_box(panel_style(Color("#273e6b"), 13, Color("#3e5b92")), rect.grow(11.0))
@@ -148,7 +154,11 @@ static func target_tile_color(_kind: String = "red_star") -> Color:
 	return Color("#e3c38a")
 
 static func target_name(kind: String = "red_star") -> String:
-	return "金色宝石" if kind == "gold_gem" else "红星宝石"
+	match kind:
+		"blue_diamond": return "蓝色钻石"
+		"gold_gem": return "金色宝石"
+		"yellow_star": return "黄色星星"
+	return "红星宝石"
 
 static func draw_target_tile(canvas: CanvasItem, rect: Rect2, opacity: float = 1.0, highlight: float = 0.0, kind: String = "red_star") -> void:
 	if rect.size.x <= 0.0 or rect.size.y <= 0.0 or opacity <= 0.0:
@@ -193,13 +203,23 @@ static func draw_target_marker(canvas: CanvasItem, rect: Rect2, opacity: float =
 	var center := rect.get_center() - Vector2(0.0, side * 0.018)
 	var alpha := clampf(opacity, 0.0, 1.0)
 	var is_gold := kind == "gold_gem"
-	var shape := _target_outline(is_gold)
+	var shape := _target_outline(kind)
 	var points := _target_points(shape, center, side)
 	var inset := _target_points(shape, center - Vector2(side * 0.010, side * 0.014), side * (0.70 if is_gold else 0.82))
 	var dark := Color("#9c6821") if is_gold else Color("#a9222e")
 	var bright := Color("#ffe59a") if is_gold else Color("#fb7c80")
 	var base := Color("#ffc23f") if is_gold else Color("#ee3d48")
 	var shade := Color("#e58b1d") if is_gold else Color("#c92639")
+	if kind == "blue_diamond":
+		dark = Color("#1489ad")
+		bright = Color("#a9fff2")
+		base = Color("#30d4df")
+		shade = Color("#16a6c9")
+	elif kind == "yellow_star":
+		dark = Color("#c58b25")
+		bright = Color("#fff5b8")
+		base = Color("#ffd34c")
+		shade = Color("#e8a42f")
 	var edge := clampf(side * 0.014, 0.28, 0.80)
 	var rim_scale := 1.0 + edge / (side * 0.30)
 	# Short colored extrusion and a narrow rim give volume without a sticker halo.
@@ -219,8 +239,15 @@ static func draw_target_marker(canvas: CanvasItem, rect: Rect2, opacity: float =
 		table_colors.append(_alpha(base.lerp(bright, top_light + clampf(glow, 0.0, 2.0) * 0.012), alpha))
 	canvas.draw_polygon(inset, table_colors)
 
-static func _target_outline(is_gold: bool) -> PackedVector2Array:
-	if is_gold:
+static func _target_outline(kind: String) -> PackedVector2Array:
+	if kind == "blue_diamond":
+		return PackedVector2Array([Vector2(0.0, -0.34), Vector2(0.30, 0.0), Vector2(0.0, 0.34), Vector2(-0.30, 0.0)])
+	if kind == "yellow_star":
+		var star := PackedVector2Array()
+		for index in range(10):
+			star.append(Vector2.from_angle(-PI * 0.5 + float(index) * PI / 5.0) * (0.33 if index % 2 == 0 else 0.22))
+		return star
+	if kind == "gold_gem":
 		return PackedVector2Array([
 			Vector2(0.0, -0.315), Vector2(0.30, -0.09), Vector2(0.19, 0.28),
 			Vector2(-0.19, 0.28), Vector2(-0.30, -0.09)

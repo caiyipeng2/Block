@@ -5,11 +5,14 @@ var score: int = 0
 var combo: int = 0
 var base_points_per_cell: int = 10
 var multiline_bonus_step: float = 0.5
+var combo_miss_tolerance: int = 0
+var combo_misses: int = 0
 
 func _init(config: GameRulesConfig = null) -> void:
 	if config != null:
 		base_points_per_cell = config.base_points_per_cell
 		multiline_bonus_step = config.multiline_bonus_step
+		combo_miss_tolerance = maxi(0, config.combo_miss_tolerance)
 
 func score_clear(cleared_cell_count: int, line_count: int) -> int:
 	if cleared_cell_count <= 0 or line_count <= 0:
@@ -26,14 +29,17 @@ func score_placement(placed_cell_count: int) -> int:
 func register_move(cleared_line: bool) -> void:
 	if cleared_line:
 		combo += 1
+		combo_misses = 0
 	else:
-		combo = 0
+		combo_misses += 1
+		if combo_misses > combo_miss_tolerance:
+			combo = 0
 
 func apply_move(placed_cell_count: int, cleared_cell_count: int, line_count: int) -> Dictionary:
 	## Apply one legal move and expose placement/clear points separately.
 	## Every legal placement earns points for its cells. Clearing earns an
 	## additional amount, with the multiline multiplier applied only to that
-	## clear portion. A legal move without a clear resets combo to zero.
+	## clear portion. Consecutive misses obey the mode's configured tolerance.
 	register_move(line_count > 0)
 	var placement_points := score_placement(placed_cell_count)
 	var clear_points := score_clear(cleared_cell_count, line_count)

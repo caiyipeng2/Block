@@ -3,8 +3,10 @@ extends Resource
 
 @export_range(1, 32, 1) var board_size: int = 8
 @export_range(1, 8, 1) var tray_count: int = 3
-@export_range(3, 5, 1) var min_piece_cells: int = 3
-@export_range(3, 5, 1) var max_piece_cells: int = 5
+@export_range(1, 9, 1) var min_piece_cells: int = 3
+@export_range(1, 9, 1) var max_piece_cells: int = 5
+## Default modes break on the first miss; collection rules use two setup moves.
+@export_range(0, 5, 1) var combo_miss_tolerance: int = 0
 @export_range(0, 1000, 1) var base_points_per_cell: int = 10
 @export_range(0.0, 5.0, 0.1) var multiline_bonus_step: float = 0.5
 @export_range(0, 1000, 1) var generation_attempts: int = 100

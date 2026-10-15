@@ -58,6 +58,7 @@ var current_level := 0
 var level_select: Control
 var level_completion_recorded := false
 var level_objective: Dictionary = {}
+var display_remaining_counts: Dictionary = {}
 
 func _ready() -> void:
 	set_process_input(true)
@@ -72,6 +73,8 @@ func _ready() -> void:
 	add_child(move_feedback)
 	move_feedback.finished.connect(_on_feedback_finished)
 	move_feedback.shake_requested.connect(_request_board_shake)
+	move_feedback.target_arrived.connect(_on_target_arrived)
+	move_feedback.collections_settled.connect(_on_collections_settled)
 	gameplay_ui = GameplayControlsScript.new()
 	gameplay_ui.name = "GameplayControls"
 	gameplay_ui.z_index = 10
@@ -81,7 +84,8 @@ func _ready() -> void:
 	gameplay_ui.resume_requested.connect(_toggle_pause)
 	gameplay_ui.restart_requested.connect(_request_restart)
 	gameplay_ui.menu_requested.connect(_request_menu)
-	gameplay_ui.settings_requested.connect(_request_game_settings)
+	gameplay_ui.settings_requested.connect(_on_settings_requested)
+	gameplay_ui.open_settings_requested.connect(_request_game_settings)
 	gameplay_ui.next_level_requested.connect(_start_next_level)
 	gameplay_ui.levels_requested.connect(_return_to_menu)
 	gameplay_ui.objective_intro_dismissed.connect(_on_objective_intro_dismissed)
@@ -186,7 +190,7 @@ func _handle_press(position: Vector2) -> void:
 	if screen == "game_over":
 		return
 	if screen == "game":
-		if paused:
+		if paused or game == null or game.status != GameState.Status.PLAYING:
 			return
 		if _restart_button_rect().has_point(position):
 			_request_restart()
@@ -230,6 +234,8 @@ func _handle_release(position: Vector2) -> void:
 		return
 	var before_board := game.board.duplicate_board()
 	var before_targets := game.target_cells.duplicate()
+	for local_cell: Vector2i in piece.targets:
+		before_targets[origin + local_cell] = piece.targets[local_cell]
 	pending_tray = game.remaining_pieces.duplicate()
 	pending_tray.remove_at(index)
 	input_locked = true
@@ -264,7 +270,7 @@ func _handle_release(position: Vector2) -> void:
 			var first_record := not new_record
 			new_record = true
 			_save_high_score()
-			if first_record:
+			if first_record and not _is_collect_mode():
 				gameplay_ui.show_notice("新纪录！继续挑战", "record", _reduced_motion())
 		if game.is_level_complete():
 			_record_level_completion()
@@ -286,9 +292,13 @@ func _handle_release(position: Vector2) -> void:
 			"collected_target_events": result.get("collected_target_events", []),
 			"objective_target": gameplay_ui.score_target(),
 			"objective_targets": {
+				"blue_diamond": gameplay_ui.objective_target("blue_diamond"),
 				"red_star": gameplay_ui.objective_target("red_star"),
 				"gold_gem": gameplay_ui.objective_target("gold_gem"),
+				"yellow_star": gameplay_ui.objective_target("yellow_star"),
 			},
+			"objective_type": game.objective_type,
+			"final_block": game.is_level_complete() and game.objective_type == "collect",
 			"score_flight_enabled": game.objective_type != "collect",
 		})
 	else:
@@ -319,6 +329,7 @@ func _start_game(mode: String = "", level_id: int = 0) -> void:
 		current_level = 0
 	level_objective = ModeCatalog.objective_config(current_level) if game_mode == "adventure" else {}
 	game = GameState.new(seed, rules_config.board_size, rules_config, setup)
+	display_remaining_counts = game.target_remaining_counts.duplicate()
 	level_completion_recorded = false
 	board_placement_orders.clear()
 	var initial_cells: Array = setup.get("initial_cells", [])
@@ -348,6 +359,33 @@ func _start_game(mode: String = "", level_id: int = 0) -> void:
 func _objective_intro_open() -> bool:
 	return gameplay_ui != null and gameplay_ui.is_objective_intro_visible()
 
+func _is_collect_mode() -> bool:
+	return game != null and game_mode == "adventure" and game.objective_type == "collect"
+
+func _result_feedback_pending() -> bool:
+	return input_locked or (move_feedback != null and move_feedback.has_pending_collections())
+
+func _on_target_arrived(kind: String, counted: bool) -> void:
+	if exiting or not _is_collect_mode():
+		return
+	if counted:
+		display_remaining_counts[kind] = maxi(0, int(display_remaining_counts.get(kind, 0)) - 1)
+	_refresh_controls()
+	gameplay_ui.notify_target_arrival(kind, counted)
+	queue_redraw()
+
+func _on_collections_settled() -> void:
+	_try_show_level_complete()
+
+func _try_show_level_complete() -> void:
+	if exiting or game == null or screen != "game" or not game.is_level_complete() or _result_feedback_pending():
+		return
+	_record_level_completion()
+	screen = "level_complete"
+	paused = false
+	_refresh_controls()
+	queue_redraw()
+
 func _collection_intro_stats() -> Dictionary:
 	var stats := level_objective.duplicate(true)
 	if game != null:
@@ -357,6 +395,7 @@ func _collection_intro_stats() -> Dictionary:
 			"target_counts": game.target_counts.duplicate(),
 			"collected_counts": game.target_collected_counts.duplicate(),
 			"remaining_counts": game.target_remaining_counts.duplicate(),
+			"display_remaining_counts": display_remaining_counts.duplicate(),
 			"target_total": game.target_total,
 			"difficulty_description": str(level_objective.get("description", "")),
 		}, true)
@@ -531,6 +570,7 @@ func _set_setting(key: String, value: bool) -> void:
 		settings_controls.modulate.a = 1.0
 		menu_controls.modulate.a = 1.0
 	if key == "reduced_motion" and value:
+		move_feedback.finish_collections()
 		move_feedback.reset()
 		if input_locked:
 			_on_feedback_finished()
@@ -566,10 +606,16 @@ func _request_game_settings() -> void:
 	_fade_controls(settings_controls)
 	queue_redraw()
 
+func _on_settings_requested() -> void:
+	if _is_collect_mode() and screen == "game" and not paused:
+		_toggle_pause()
+	else:
+		_request_game_settings()
+
 func _close_settings() -> void:
 	if settings_origin == "game" and game != null:
 		screen = "game"
-		if not input_locked:
+		if not _result_feedback_pending():
 			if game.is_level_complete():
 				screen = "level_complete"
 			elif game.is_game_over():
@@ -678,11 +724,9 @@ func _on_feedback_finished() -> void:
 		screen = "game_over"
 		paused = false
 	elif game != null and screen == "game" and game.is_level_complete():
-		_record_level_completion()
-		screen = "level_complete"
-		paused = false
+		_try_show_level_complete()
 	_refresh_controls()
-	if game != null and screen == "game" and refilled and game.round_index != last_notice_round:
+	if game != null and screen == "game" and refilled and game.round_index != last_notice_round and not _is_collect_mode():
 		last_notice_round = game.round_index
 		gameplay_ui.show_notice("新的三块，继续！", "info", _reduced_motion())
 	queue_redraw()
@@ -823,6 +867,7 @@ func _layout_controls() -> void:
 	_cancel_drag()
 	_stop_board_shake()
 	if move_feedback != null:
+		move_feedback.finish_collections()
 		move_feedback.reset()
 	if input_locked:
 		_on_feedback_finished()
@@ -879,7 +924,7 @@ func _refresh_controls() -> void:
 				"clear_points": game.last_clear_points,
 				"clear_lines": game.last_clear_lines,
 				"new_record": new_record,
-				"input_locked": input_locked or _objective_intro_open(),
+				"input_locked": input_locked or _objective_intro_open() or (screen == "game" and game.is_level_complete()),
 				"reduced_motion": _reduced_motion(),
 				"mode": game_mode,
 				"level_id": current_level,
@@ -887,10 +932,11 @@ func _refresh_controls() -> void:
 				"objective_type": game.objective_type,
 				"target_total": game.target_total,
 				"target_collected": game.target_collected,
-				"target_remaining": game.target_cells.size(),
+				"target_remaining": maxi(0, game.target_total - game.target_collected),
 				"target_counts": game.target_counts.duplicate(),
 				"collected_counts": game.target_collected_counts.duplicate(),
 				"remaining_counts": game.target_remaining_counts.duplicate(),
+				"display_remaining_counts": display_remaining_counts.duplicate(),
 				"difficulty_label": str(level_objective.get("difficulty_label", "")),
 				"highest_completed": int(save_data.get("adventure_highest_completed", 0)),
 				"has_next_level": current_level < ModeCatalog.MAX_LEVELS,
@@ -911,7 +957,7 @@ func _refresh_controls() -> void:
 	settings_controls.get_node("BackButton").text = "返回游戏" if settings_origin == "game" else "返回菜单"
 
 func _tray_hit(position: Vector2) -> int:
-	if game == null or input_locked:
+	if game == null or input_locked or _objective_intro_open() or game.status != GameState.Status.PLAYING:
 		return -1
 	for index in range(game.remaining_pieces.size()):
 		var piece: PieceData = game.remaining_pieces[index]
@@ -929,9 +975,21 @@ func _board_size() -> int:
 	return game.board.size if game != null else rules_config.board_size
 
 func _header_height() -> float:
-	return gameplay_ui.header_height() if gameplay_ui != null else clampf(size.y * 0.18, 148.0, 210.0)
+	# Resolve from the new game's state, before HUD set_mode has changed modes.
+	if _is_collect_mode():
+		return maxf(clampf(size.y * 0.15, 116.0, 180.0), 132.0 if size.y > size.x else 116.0)
+	var height := clampf(size.y * 0.18, 148.0, 210.0)
+	if size.y > size.x:
+		height = clampf(size.y * 0.20, 210.0, 560.0)
+	if size.x < 350.0:
+		return maxf(height, 210.0)
+	if size.x < 440.0:
+		return maxf(height, 176.0)
+	return height
 
 func _tray_height() -> float:
+	if _is_collect_mode():
+		return clampf(size.y * 0.14, 104.0, 170.0)
 	return clampf(size.y * 0.16, 128.0, 190.0)
 
 func _visible_tray() -> Array[PieceData]:
@@ -941,9 +999,9 @@ func _visible_tray() -> Array[PieceData]:
 
 func _tray_slot_rect(index: int) -> Rect2:
 	var count := maxi(1, rules_config.tray_count)
-	var tray_width := minf(size.x - BOARD_MARGIN * 2.0, maxf(_board_rect().size.x, 440.0))
+	var tray_width := minf(size.x - BOARD_MARGIN * 2.0, maxf(_board_rect().size.x, 320.0 if _is_collect_mode() else 440.0))
 	var slot_width := (tray_width - float(count - 1) * 16.0) / float(count)
-	var tray_top := _board_rect().end.y + 84.0
+	var tray_top := _board_rect().end.y + (clampf(_cell_size() * 0.6, 12.0, 40.0) if _is_collect_mode() else 84.0)
 	return Rect2(Vector2((size.x - tray_width) * 0.5 + float(index) * (slot_width + 16.0), tray_top), Vector2(slot_width, _tray_height() - 32.0))
 
 func _piece_bounds(piece: PieceData) -> Rect2i:
@@ -959,7 +1017,7 @@ func _piece_bounds(piece: PieceData) -> Rect2i:
 func _tray_unit(index: int, piece: PieceData) -> float:
 	var bounds := _piece_bounds(piece)
 	var slot := _tray_slot_rect(index)
-	return maxf(6.0, minf(_cell_size() * 0.57, minf((slot.size.x - 24.0) / float(bounds.size.x), (slot.size.y - 20.0) / float(bounds.size.y))))
+	return maxf(6.0, minf(_cell_size() * (0.48 if _is_collect_mode() else 0.57), minf((slot.size.x - 24.0) / float(bounds.size.x), (slot.size.y - 20.0) / float(bounds.size.y))))
 
 func _tray_piece_origin(index: int, piece: PieceData) -> Vector2:
 	var slot := _tray_slot_rect(index)
@@ -1018,9 +1076,9 @@ func _menu_button_rect() -> Rect2:
 	return gameplay_ui.get_menu_rect() if gameplay_ui != null else Rect2()
 
 func _board_rect() -> Rect2:
-	var top := _header_height() + (64.0 if game_mode == "adventure" else 48.0)
+	var top := _header_height() + (16.0 if _is_collect_mode() else (64.0 if game_mode == "adventure" else 48.0))
 	# Keep distinct bands for the notice, tray and bottom instruction.
-	var available_height := size.y - _tray_height() - top - 84.0
+	var available_height := size.y - _tray_height() - top - (58.0 if _is_collect_mode() else 84.0)
 	var width_limit := size.x * 0.90 if size.y > size.x else 660.0
 	var board_side := maxf(48.0, minf(width_limit, minf(size.x - BOARD_MARGIN * 2.0, available_height)))
 	return Rect2(Vector2((size.x - board_side) * 0.5, top), Vector2(board_side, board_side))
@@ -1111,7 +1169,7 @@ func _draw_game() -> void:
 func _draw_board() -> void:
 	var rect := _board_rect()
 	rect.position += board_shake_offset
-	Art.draw_board_frame(self, rect)
+	Art.draw_board_frame(self, rect, _is_collect_mode())
 	var cell := _cell_size()
 	var hide_final_board := input_locked and not pending_move.is_empty()
 	for y in range(_board_size()):
@@ -1120,9 +1178,10 @@ func _draw_board() -> void:
 			var color := rules_config.empty_cell_color
 			if value >= 0:
 				color = _block_color(int(preview_clear_colors.get(Vector2i(x, y), value)))
-			var cell_rect := Rect2(rect.position + Vector2(x, y) * cell + Vector2.ONE, Vector2.ONE * (cell - 2.0))
+			var inset := 0.4 if _is_collect_mode() else 1.0
+			var cell_rect := Rect2(rect.position + Vector2(x, y) * cell + Vector2.ONE * inset, Vector2.ONE * (cell - inset * 2.0))
 			if value < 0:
-				Art.draw_empty_cell(self, cell_rect, color)
+				Art.draw_empty_cell(self, cell_rect, color, _is_collect_mode())
 			else:
 				if game.target_cells.has(Vector2i(x, y)) and not preview_clear_colors.has(Vector2i(x, y)):
 					Art.draw_target_tile(self, cell_rect, 1.0, 0.0, _target_kind_at(Vector2i(x, y)))
@@ -1142,9 +1201,11 @@ func _draw_board() -> void:
 				else:
 					Art.draw_block(self, preview_rect, preview_color, 0.72 if drag_valid else 0.40, 0.2)
 					draw_rect(preview_rect.grow(-1.0), Color("#b3fff1") if drag_valid else Color("#ffb3a9"), false, 1.5)
+				if piece.targets.has(local_cell):
+					Art.draw_target_marker(self, preview_rect, 0.78, 1.0, str(piece.targets[local_cell]))
 
 func _target_kind_at(cell: Vector2i) -> String:
-	return "gold_gem" if game != null and str(game.target_cells.get(cell, "red_star")) == "gold_gem" else "red_star"
+	return str(game.target_cells.get(cell, "red_star")) if game != null else "red_star"
 
 func _draw_tray() -> void:
 	var pieces := _visible_tray()
@@ -1158,8 +1219,20 @@ func _draw_tray() -> void:
 		var cell := _tray_unit(index, piece)
 		for local_cell in piece.cells:
 			var p := origin + Vector2(local_cell.x, local_cell.y) * cell
-			var r := Rect2(p + Vector2.ONE, Vector2.ONE * (cell - 2.0))
-			Art.draw_block(self, r, _piece_color(piece))
+			var inset := 0.2 if _is_collect_mode() else 1.0
+			var r := Rect2(p + Vector2.ONE * inset, Vector2.ONE * (cell - inset * 2.0))
+			_draw_piece_cell(piece, local_cell, r)
+
+func _draw_piece_cell(piece: PieceData, local_cell: Vector2i, rect: Rect2, opacity: float = 1.0, clear_color: Variant = null) -> void:
+	var marked := piece.targets.has(local_cell)
+	if clear_color is Color:
+		Art.draw_block(self, rect, clear_color, opacity, 0.20)
+	elif marked:
+		Art.draw_target_tile(self, rect, opacity, 0.0, str(piece.targets[local_cell]))
+	else:
+		Art.draw_block(self, rect, _piece_color(piece), opacity)
+	if marked:
+		Art.draw_target_marker(self, rect, opacity, 1.0, str(piece.targets[local_cell]))
 
 func _draw_drag_layer() -> void:
 	if game == null or dragging_index >= game.remaining_pieces.size():
@@ -1171,9 +1244,9 @@ func _draw_drag_layer() -> void:
 		var rect := Rect2(origin + Vector2(cell) * unit + Vector2.ONE, Vector2.ONE * (unit - 2))
 		var target: Vector2i = drag_origin + cell
 		if drag_valid and preview_clear_colors.has(target):
-			Art.draw_block(self, rect, _block_color(int(preview_clear_colors[target])), 1.0, 0.20)
+			_draw_piece_cell(piece, cell, rect, 1.0, _block_color(int(preview_clear_colors[target])))
 		else:
-			Art.draw_block(self, rect, _piece_color(piece), 0.96, 0.16)
+			_draw_piece_cell(piece, cell, rect, 0.96)
 
 func _box(color: Color, radius: float) -> StyleBoxFlat:
 	var box := StyleBoxFlat.new()
