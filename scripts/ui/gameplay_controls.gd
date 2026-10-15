@@ -52,6 +52,7 @@ var _overlay_root: Control
 var _scrim: ColorRect
 var _card: PanelContainer
 var _overlay_box: VBoxContainer
+var _overlay_objective_badge: Control
 var _overlay_title: Label
 var _overlay_score: Label
 var _overlay_best: Label
@@ -68,6 +69,7 @@ var _target_score := -1
 var _notice: PanelContainer
 var _notice_label: Label
 var _notice_tween: Tween
+var _overlay_tween: Tween
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -78,6 +80,7 @@ func _ready() -> void:
 
 func _exit_tree() -> void:
 	_stop_score_animation()
+	_stop_overlay_animation()
 	clear_notice()
 
 func _notification(what: int) -> void:
@@ -94,30 +97,75 @@ func _draw() -> void:
 func _is_adventure() -> bool:
 	return str(_stats.get("mode", "free")) == "adventure"
 
+func _is_collect_objective() -> bool:
+	return _is_adventure() and str(_stats.get("objective_type", "score")) == "collect"
+
+func _objective_total() -> int:
+	return maxi(1, int(_stats.get("target_total", 1))) if _is_collect_objective() else maxi(1, int(_stats.get("target_score", 1)))
+
+func _objective_current() -> int:
+	return maxi(0, int(_stats.get("target_collected", 0))) if _is_collect_objective() else maxi(0, int(roundf(_display_score)))
+
 func _draw_level_progress() -> void:
+	if _current_badge.size.x <= 0.0:
+		return
 	var current_center := _current_badge.get_center()
 	var goal_center := _goal_badge.get_center()
 	var radius := _current_badge.size.x * 0.5
-	draw_circle(current_center + Vector2(0.0, 3.0), radius, Color("#1b3566"))
-	draw_circle(current_center, radius, Color("#27c9d0"))
-	draw_arc(current_center, radius - 1.0, 0.0, TAU, 48, AQUA, 2.0, true)
-	draw_circle(goal_center + Vector2(0.0, 3.0), radius, Color("#1b3566"))
-	draw_circle(goal_center, radius, Color("#172b50"))
-	draw_arc(goal_center, radius - 1.0, 0.0, TAU, 48, Color("#6d8ac0"), 2.0, true)
-	var track_style := BlockArt.panel_style(Color("#182b4f"), 24, Color("#5e79ae"))
+	# A continuous rail runs underneath both end caps, making one gauge.
+	var rail_shadow := BlockArt.panel_style(Color("#233b6b"), int(_progress_track.size.y * 0.5), Color.TRANSPARENT)
+	rail_shadow.set_content_margin_all(0.0)
+	draw_style_box(rail_shadow, Rect2(_progress_track.position + Vector2(0.0, 3.0), _progress_track.size))
+	var track_style := BlockArt.panel_style(Color("#182b4f"), int(_progress_track.size.y * 0.5), Color("#526fa4"))
 	track_style.set_content_margin_all(0.0)
 	draw_style_box(track_style, _progress_track)
-	var goal := maxi(1, int(_stats.get("target_score", 1)))
-	var progress := clampf(_display_score / float(goal), 0.0, 1.0)
-	if progress <= 0.0:
-		return
+	var progress := clampf(float(_objective_current()) / float(_objective_total()), 0.0, 1.0)
 	var inner := _progress_track.grow(-4.0)
 	var fill_width := inner.size.x * progress
 	if fill_width > 0.0:
 		var fill := Rect2(inner.position, Vector2(fill_width, inner.size.y))
-		var fill_style := BlockArt.panel_style(AQUA if progress >= 1.0 else GOLD, 20, Color.TRANSPARENT)
+		var fill_style := BlockArt.panel_style(AQUA if progress >= 1.0 else Color("#2eb9df"), int(inner.size.y * 0.5), Color.TRANSPARENT)
 		fill_style.set_content_margin_all(0.0)
 		draw_style_box(fill_style, fill)
+	for center: Vector2 in [current_center, goal_center]:
+		draw_circle(center + Vector2(0.0, 3.0), radius + 2.0, Color("#1b3159"))
+	draw_circle(current_center, radius, Color("#169fd0"))
+	draw_arc(current_center, radius - 1.0, 0.0, TAU, 64, Color("#6ae2f4"), 2.0, true)
+	draw_arc(current_center + Vector2(0.0, 1.0), radius - 4.0, PI * 1.12, PI * 1.86, 24, Color(0.75, 0.97, 1.0, 0.24), 2.0, true)
+	draw_circle(goal_center, radius + 1.0, Color("#243d6a"))
+	draw_circle(goal_center, radius - 4.0, Color("#192a4d"))
+	draw_arc(goal_center, radius - 1.0, 0.0, TAU, 64, Color("#5d7aac"), 2.0, true)
+	_draw_badge_number(str(_objective_current()), _current_badge, Color("#f3ffff"))
+	_draw_badge_number(str(_objective_total()), _goal_badge, GOLD)
+	if _is_collect_objective():
+		_draw_gem(self, Vector2(_progress_track.get_center().x, _current_badge.position.y - 7.0), 8.0)
+
+func _draw_badge_number(value: String, rect: Rect2, color: Color) -> void:
+	var font := _stats_label.get_theme_font("font")
+	var font_size := _badge_font(int(value), rect.size.x)
+	var text_width := font.get_string_size(value, HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size).x
+	# Draw a baseline from ascent/descent instead of Label's minimum line height.
+	var baseline := rect.get_center() + Vector2(-text_width * 0.5, (font.get_ascent(font_size) - font.get_descent(font_size)) * 0.5)
+	draw_string(font, baseline + Vector2(0.0, 1.0), value, HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size, Color(0.0, 0.06, 0.16, 0.25))
+	draw_string(font, baseline, value, HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size, color)
+
+func _draw_gem(canvas: CanvasItem, center: Vector2, radius: float) -> void:
+	var top := center + Vector2(0.0, -radius)
+	var right := center + Vector2(radius * 0.78, 0.0)
+	var bottom := center + Vector2(0.0, radius)
+	var left := center + Vector2(-radius * 0.78, 0.0)
+	canvas.draw_colored_polygon(PackedVector2Array([top, right, bottom, left]), Color("#a88cff"))
+	canvas.draw_colored_polygon(PackedVector2Array([top, center, left]), Color("#eee7ff"))
+	canvas.draw_colored_polygon(PackedVector2Array([center, right, bottom]), Color("#7652d1"))
+	canvas.draw_polyline(PackedVector2Array([top, right, bottom, left, top]), Color("#f4efff"), maxf(1.0, radius * 0.08), true)
+
+func _draw_overlay_objective_badge() -> void:
+	var center := _overlay_objective_badge.size * 0.5
+	_overlay_objective_badge.draw_circle(center, 25.0, Color("#293660"))
+	if _is_collect_objective():
+		_draw_gem(_overlay_objective_badge, center, 20.0)
+	else:
+		BlockArt.draw_icon(_overlay_objective_badge, "crown", Rect2(center - Vector2.ONE * 20.0, Vector2.ONE * 40.0), GOLD)
 
 func configure(primary: Color, secondary: Color, text: Color, surface: Color) -> void:
 	_primary = primary
@@ -135,11 +183,14 @@ func set_playfield(rect: Rect2) -> void:
 		_layout_controls()
 
 func score_target() -> Vector2:
+	if _is_adventure():
+		return _current_badge.get_center()
 	if is_instance_valid(_stats_label):
 		return _stats_label.position + _stats_label.size * 0.5
 	return Vector2(size.x * 0.5, header_height() * 0.65)
 
-## Accepted stats include the existing score breakdown and reduced_motion.
+## Objective stats: objective_type (score/collect), target_total,
+## target_collected and target_remaining. Score and score breakdown stay separate.
 func set_mode(mode: String, stats: Dictionary = {}) -> void:
 	var next_mode := mode if mode in [MODE_HIDDEN, MODE_PLAYING, MODE_PAUSED, MODE_GAME_OVER, MODE_LEVEL_COMPLETE] else MODE_HIDDEN
 	var mode_changed := next_mode != _mode
@@ -267,6 +318,13 @@ func _build_controls() -> void:
 	_overlay_box.alignment = BoxContainer.ALIGNMENT_CENTER
 	_overlay_box.add_theme_constant_override("separation", 10)
 	_card.add_child(_overlay_box)
+	_overlay_objective_badge = Control.new()
+	_overlay_objective_badge.name = "ObjectiveBadge"
+	_overlay_objective_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_overlay_objective_badge.custom_minimum_size = Vector2(56.0, 56.0)
+	_overlay_objective_badge.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_overlay_objective_badge.draw.connect(_draw_overlay_objective_badge)
+	_overlay_box.add_child(_overlay_objective_badge)
 	_overlay_title = _new_label("Title", 24)
 	_overlay_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_overlay_box.add_child(_overlay_title)
@@ -433,10 +491,13 @@ func _apply_state(mode_changed: bool) -> void:
 		_focus_mode = ""
 		_focus_pending = true
 		_stop_score_animation()
+		_stop_overlay_animation()
 		clear_notice()
 	if not _configured:
 		return
 	_update_texts(mode_changed)
+	if bool(_stats.get("reduced_motion", false)):
+		_stop_overlay_animation()
 	var input_locked := bool(_stats.get("input_locked", false))
 	# A paused feedback animation must always be resumable.
 	_pause_button.disabled = false
@@ -453,9 +514,13 @@ func _apply_state(mode_changed: bool) -> void:
 	_overlay_restart_button.visible = _overlay_root.visible
 	_overlay_menu_button.visible = _overlay_root.visible
 	_new_record_label.visible = _mode in [MODE_GAME_OVER, MODE_LEVEL_COMPLETE]
+	_overlay_objective_badge.visible = _mode == MODE_LEVEL_COMPLETE
+	_overlay_objective_badge.queue_redraw()
 	_title_label.visible = not _is_adventure()
 	_goal_label.visible = _is_adventure()
-	_goal_score_label.visible = _is_adventure()
+	# Adventure digits are drawn on the same canvas as their circular caps.
+	_stats_label.visible = not _is_adventure()
+	_goal_score_label.visible = false
 	_stats_label.add_theme_color_override("font_color", Color("#efffff") if _is_adventure() else AQUA)
 	_layout_controls()
 	if _focus_pending:
@@ -465,6 +530,8 @@ func _apply_state(mode_changed: bool) -> void:
 		else:
 			_grab_first_focus()
 		_focus_pending = false
+	if mode_changed and _overlay_root.visible:
+		_animate_overlay_entrance()
 	queue_redraw()
 
 func _update_texts(mode_changed: bool) -> void:
@@ -479,22 +546,33 @@ func _update_texts(mode_changed: bool) -> void:
 	var adventure := _is_adventure()
 	var level_id := int(_stats.get("level_id", 1))
 	var goal := int(_stats.get("target_score", 0))
+	var collect := _is_collect_objective()
+	var collected := maxi(0, int(_stats.get("target_collected", 0)))
+	var target_total := maxi(1, int(_stats.get("target_total", 1)))
+	var remaining := maxi(0, int(_stats.get("target_remaining", target_total - collected)))
 	var gameplay_mode := str(_stats.get("mode", "free"))
 	_mode_label.text = "第 %d 关" % level_id if adventure else ("经典模式" if gameplay_mode == "classic" else "自由模式")
-	_goal_label.text = "第 %d 关 · 闯关模式" % level_id
+	_goal_label.text = "消除菱形标记  %d / %d" % [collected, target_total] if collect else "第 %d 关 · 目标 %d 分" % [level_id, goal]
 	_goal_score_label.text = str(goal)
 	_title_label.text = str(high_score)
 	_title_label.tooltip_text = "最高分：%d" % high_score
 	_detail_label.text = "放置 +%d  ·  消除 +%d  ·  %d 线" % [placement_points, clear_points, clear_lines]
 	if combo > 0:
 		_detail_label.text += "  ·  连击 ×%d" % combo
-	_overlay_title.text = "第 %d 关通过" % level_id if _mode == MODE_LEVEL_COMPLETE else ("已暂停" if _mode == MODE_PAUSED else ("第 %d 关未通过" % level_id if adventure else "游戏结束"))
-	_overlay_score.text = str(score)
-	_overlay_best.text = "目标  %d 分" % goal if adventure else "最高分  %d" % high_score
+	if collect:
+		_detail_label.text = "总分 %d  ·  " % score + _detail_label.text
+	_overlay_title.text = "目标完成" if _mode == MODE_LEVEL_COMPLETE else ("已暂停" if _mode == MODE_PAUSED else ("第 %d 关未通过" % level_id if adventure else "游戏结束"))
+	_overlay_score.text = "%d / %d" % [collected, target_total] if collect and _mode == MODE_LEVEL_COMPLETE else str(score)
+	if collect:
+		_overlay_best.text = "第 %d 关  ·  总分 %d" % [level_id, score] if _mode == MODE_LEVEL_COMPLETE else "菱形标记  %d / %d  ·  还需 %d" % [collected, target_total, remaining]
+	else:
+		_overlay_best.text = "第 %d 关  ·  目标 %d 分" % [level_id, goal] if adventure else "最高分  %d" % high_score
 	if _mode == MODE_PAUSED:
 		_overlay_stats.text = "当前连击 ×%d   ·   已消除 %d 行/列\n最近放置 +%d   消除 +%d   ·   %d 线" % [combo, total_cleared, placement_points, clear_points, clear_lines]
 	else:
 		_overlay_stats.text = "消除 %d 行/列   ·   完成 %d 回合\n最近放置 +%d   消除 +%d   ·   %d 线" % [total_cleared, round_index + 1, placement_points, clear_points, clear_lines]
+	if collect and _mode == MODE_LEVEL_COMPLETE:
+		_overlay_stats.text = "已收集全部 %d 个菱形标记\n消除 %d 行/列  ·  完成 %d 回合" % [target_total, total_cleared, round_index + 1]
 	if _mode == MODE_LEVEL_COMPLETE:
 		if bool(_stats.get("save_failed", false)):
 			_new_record_label.text = "进度保存失败，本次运行已解锁"
@@ -520,14 +598,15 @@ func _refresh_score(score: int, mode_changed: bool) -> void:
 	_target_score = score
 	_score_tween = create_tween()
 	_score_tween.tween_method(_set_display_score, _display_score, float(score), 0.32).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	_score_tween.parallel().tween_property(_stats_label, "scale", Vector2(1.08, 1.08), 0.10).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	_score_tween.tween_property(_stats_label, "scale", Vector2.ONE, 0.15).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	if not _is_adventure():
+		_score_tween.parallel().tween_property(_stats_label, "scale", Vector2(1.08, 1.08), 0.10).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		_score_tween.tween_property(_stats_label, "scale", Vector2.ONE, 0.15).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	_score_tween.tween_callback(func() -> void: _score_tween = null)
 
 func _set_display_score(value: float) -> void:
 	_display_score = value
 	if is_instance_valid(_stats_label):
-		_stats_label.text = str(int(roundf(value)))
+		_stats_label.text = str(_objective_current()) if _is_collect_objective() else str(int(roundf(value)))
 	queue_redraw()
 
 func _stop_score_animation() -> void:
@@ -536,6 +615,31 @@ func _stop_score_animation() -> void:
 	_score_tween = null
 	if is_instance_valid(_stats_label):
 		_stats_label.scale = Vector2.ONE
+
+func _animate_overlay_entrance() -> void:
+	_stop_overlay_animation()
+	if bool(_stats.get("reduced_motion", false)):
+		return
+	_card.pivot_offset = _card.size * 0.5
+	_card.scale = Vector2.ONE * 0.96
+	_card.modulate.a = 0.0
+	_scrim.modulate.a = 0.0
+	_overlay_tween = create_tween().set_parallel(true)
+	_overlay_tween.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	_overlay_tween.tween_property(_card, "scale", Vector2.ONE, 0.18).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_overlay_tween.tween_property(_card, "modulate:a", 1.0, 0.18)
+	_overlay_tween.tween_property(_scrim, "modulate:a", 1.0, 0.18)
+	_overlay_tween.chain().tween_callback(func() -> void: _overlay_tween = null)
+
+func _stop_overlay_animation() -> void:
+	if is_instance_valid(_overlay_tween):
+		_overlay_tween.kill()
+	_overlay_tween = null
+	if is_instance_valid(_card):
+		_card.scale = Vector2.ONE
+		_card.modulate = Color.WHITE
+	if is_instance_valid(_scrim):
+		_scrim.modulate = Color.WHITE
 
 func _layout_controls() -> void:
 	if not _configured:
@@ -594,8 +698,8 @@ func _layout_controls() -> void:
 		_current_badge = Rect2(Vector2(stage_left, band_y), Vector2.ONE * badge_side)
 		_goal_badge = Rect2(Vector2(stage_left + stage_width - badge_side, band_y), Vector2.ONE * badge_side)
 		var track_height := clampf(badge_side * 0.82, 44.0, 64.0)
-		var track_left := _current_badge.end.x + 12.0
-		var track_width := maxf(1.0, _goal_badge.position.x - 12.0 - track_left)
+		var track_left := _current_badge.get_center().x
+		var track_width := maxf(1.0, _goal_badge.get_center().x - track_left)
 		_progress_track = Rect2(Vector2(track_left, band_y + (badge_side - track_height) * 0.5), Vector2(track_width, track_height))
 		_stats_label.position = _current_badge.position + Vector2(3.0, 0.0)
 		_stats_label.size = _current_badge.size - Vector2(6.0, 0.0)
@@ -604,8 +708,8 @@ func _layout_controls() -> void:
 		_goal_score_label.position = _goal_badge.position + Vector2(3.0, 0.0)
 		_goal_score_label.size = _goal_badge.size - Vector2(6.0, 0.0)
 		_goal_score_label.add_theme_font_size_override("font_size", _badge_font(int(_stats.get("target_score", 0)), badge_side))
-		_goal_label.position = Vector2(track_left, band_y + badge_side + 2.0)
-		_goal_label.size = Vector2(track_width, 20.0 if portrait else 12.0)
+		_goal_label.position = Vector2(stage_left, band_y + badge_side + 2.0)
+		_goal_label.size = Vector2(stage_width, 20.0)
 		_goal_label.add_theme_font_size_override("font_size", 14 if portrait else 12)
 	var detail_y := field.position.y - 52.0
 	_detail_label.position = Vector2(stage_left, detail_y)
@@ -617,7 +721,14 @@ func _layout_controls() -> void:
 
 func _badge_font(value: int, diameter: float) -> int:
 	var digit_count := maxi(1, str(maxi(0, value)).length())
-	return clampi(int(minf(diameter * 0.62, (diameter - 10.0) / (float(digit_count) * 0.60))), 12, 50)
+	var font_size := clampi(int(minf(diameter * 0.58, (diameter - 12.0) / (float(digit_count) * 0.60))), 10, 50)
+	if not is_instance_valid(_stats_label):
+		return font_size
+	var font := _stats_label.get_theme_font("font")
+	var number := str(maxi(0, value))
+	while font_size > 10 and (font.get_string_size(number, HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size).x > diameter - 14.0 or font.get_height(font_size) > diameter - 12.0):
+		font_size -= 1
+	return font_size
 
 func _effective_playfield() -> Rect2:
 	if _playfield.size.x > 0.0:
@@ -634,6 +745,7 @@ func _layout_notice() -> void:
 	_notice.position = Vector2(field.get_center().x - width * 0.5, field.end.y + 28.0)
 
 func _layout_overlay() -> void:
+	_overlay_objective_badge.custom_minimum_size = Vector2(56.0, 56.0)
 	_overlay_title.custom_minimum_size = Vector2(0.0, 32.0)
 	_overlay_score.custom_minimum_size = Vector2(0.0, 78.0)
 	_overlay_best.custom_minimum_size = Vector2(0.0, 28.0)
@@ -641,7 +753,7 @@ func _layout_overlay() -> void:
 	_new_record_label.custom_minimum_size = Vector2(0.0, 24.0)
 	_overlay_buttons.custom_minimum_size = Vector2(0.0, MIN_BUTTON_HEIGHT)
 	var card_width := minf(540.0 if _mode == MODE_LEVEL_COMPLETE else 480.0, maxf(size.x - 32.0, 240.0))
-	var card_height := 376.0 if _mode == MODE_PAUSED else 428.0
+	var card_height := 376.0 if _mode == MODE_PAUSED else (492.0 if _mode == MODE_LEVEL_COMPLETE else 428.0)
 	var short_labels := card_width < 420.0
 	_resume_button.text = "继续" if short_labels else "继续游戏"
 	_next_level_button.text = "下一关" if bool(_stats.get("has_next_level", false)) else "全部通关"
@@ -652,6 +764,7 @@ func _layout_overlay() -> void:
 	_overlay_menu_button.tooltip_text = "返回选关" if _is_adventure() else "返回菜单"
 	_card.size = Vector2(card_width, card_height)
 	_card.position = Vector2((size.x - card_width) * 0.5, maxf((size.y - card_height) * 0.5, 12.0))
+	_card.pivot_offset = _card.size * 0.5
 	# PanelContainer owns Content and its margins; do not preset child anchors.
 
 func _grab_first_focus() -> void:

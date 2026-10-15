@@ -20,6 +20,8 @@ var _title: Label
 var _progress: Label
 var _scroll: ScrollContainer
 var _map: Control
+var _route: AdventureRoute
+var _marker: GoldDiamond
 var _trophy: Control
 var _map_caption: Label
 var _description: Label
@@ -30,6 +32,109 @@ var _tiles: Dictionary = {}
 var _description_text: String = ""
 var _reveal_queued: bool = false
 var _focus_on_reveal: bool = false
+var _center_on_reveal: bool = false
+var _animate_on_reveal: bool = false
+var _reduced_motion: bool = false
+var _last_activated_level: int = 0
+var _scroll_tween: Tween
+var _manual_scroll_epoch: int = 0
+var _programmatic_focus: bool = false
+var _reveal_level: int = 0
+
+
+class AdventureRoute extends Control:
+
+	const RouteArt := preload("res://scripts/ui/block_art.gd")
+
+	var points := PackedVector2Array()
+	var completed_count: int = 0
+	var tile_side: float = 56.0
+
+	func _draw() -> void:
+		for index in range(maxi(0, points.size() - 1)):
+			var start := points[index]
+			var finish := points[index + 1]
+			var active := index < completed_count
+			var curve := PackedVector2Array()
+			for step in range(17):
+				var t := float(step) / 16.0
+				var blend := t * t * (3.0 - 2.0 * t)
+				curve.append(Vector2(lerpf(start.x, finish.x, blend), lerpf(start.y, finish.y, t)))
+			draw_polyline(curve, Color(0.07, 0.15, 0.30, 0.45), 12.0, true)
+			draw_polyline(curve, Color("#4caeb4") if active else Color("#456a90"), 6.0, true)
+			draw_polyline(curve, Color(0.58, 0.98, 0.84, 0.44) if active else Color(0.57, 0.76, 0.87, 0.20), 1.5, true)
+			var center := (start + finish) * 0.5
+			if index % 2 == 0:
+				_draw_leaf(center, -1.0 if index % 4 == 0 else 1.0, active)
+			else:
+				draw_circle(center, 4.0, Color("#d6bc68") if active else Color("#597c9e"))
+				draw_circle(center + Vector2(-0.7, -1.0), 1.4, Color(1.0, 0.94, 0.63, 0.7) if active else Color(0.69, 0.81, 0.94, 0.3))
+		var font := get_theme_default_font()
+		for index in range(0, points.size(), 12):
+			var center := points[index]
+			var completed := index < completed_count
+			var platform := Rect2(center + Vector2(-74.0, tile_side * 0.39), Vector2(148.0, 18.0))
+			draw_style_box(RouteArt.panel_style(Color("#346d7d") if completed else Color("#2c4772"), 9, Color("#5a879f")), platform)
+			var caption := "第 %d 段旅程" % (floori(float(index) / 12.0) + 1)
+			var text_width := font.get_string_size(caption, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 16).x
+			draw_string(font, Vector2(center.x - text_width * 0.5, center.y + tile_side * 0.5 + 36.0), caption, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 16, Color("#b8d9e8"))
+
+	func _draw_leaf(center: Vector2, direction: float, active: bool) -> void:
+		var root := center + Vector2(direction * 3.0, 2.0)
+		var tip := center + Vector2(direction * 37.0, -17.0)
+		var leaf := PackedVector2Array([
+			root, center + Vector2(direction * 9.0, -19.0),
+			center + Vector2(direction * 26.0, -26.0), tip,
+			center + Vector2(direction * 28.0, 0.0), center + Vector2(direction * 14.0, 7.0)
+		])
+		draw_colored_polygon(leaf, Color(0.25, 0.67, 0.57, 0.7) if active else Color(0.35, 0.55, 0.67, 0.35))
+		draw_line(root, tip, Color(0.62, 0.91, 0.76, 0.55) if active else Color(0.67, 0.81, 0.88, 0.24), 1.4, true)
+
+
+class GoldDiamond extends Control:
+
+	var reduced_motion: bool = false
+	var _phase: float = 0.0
+
+	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_update_processing()
+
+	func _notification(what: int) -> void:
+		if what == NOTIFICATION_VISIBILITY_CHANGED and is_inside_tree():
+			_update_processing()
+
+	func set_reduced_motion(enabled: bool) -> void:
+		reduced_motion = enabled
+		if enabled:
+			_phase = 0.0
+		_update_processing()
+		queue_redraw()
+
+	func _update_processing() -> void:
+		set_process(is_visible_in_tree() and not reduced_motion)
+
+	func _process(delta: float) -> void:
+		_phase = fmod(_phase + delta * 3.2, TAU)
+		queue_redraw()
+
+	func _draw() -> void:
+		var bob := 0.0 if reduced_motion else sin(_phase) * 5.0
+		var center := Vector2(size.x * 0.5, 19.0 + bob)
+		for radius in [22.0, 17.0, 13.0]:
+			draw_circle(center, radius, Color(1.0, 0.82, 0.23, 0.035))
+		draw_set_transform(Vector2(size.x * 0.5, size.y - 3.0), 0.0, Vector2(1.0, 0.22))
+		draw_circle(Vector2.ZERO, 10.5 - bob * 0.16, Color(0.03, 0.08, 0.17, 0.27))
+		draw_set_transform(center, 0.0 if reduced_motion else sin(_phase * 0.5) * 0.055)
+		var top := Vector2(0.0, -13.5)
+		var right := Vector2(15.5, -3.0)
+		var bottom := Vector2(0.0, 16.0)
+		var left := Vector2(-15.5, -3.0)
+		draw_colored_polygon(PackedVector2Array([top, right, Vector2(0.0, 4.0), left]), Color("#ffe986"))
+		draw_colored_polygon(PackedVector2Array([left, Vector2(0.0, 4.0), bottom]), Color("#f4ba37"))
+		draw_colored_polygon(PackedVector2Array([Vector2(0.0, 4.0), right, bottom]), Color("#cc8b24"))
+		draw_polyline(PackedVector2Array([left, top, right]), Color("#fff6c2"), 1.5, true)
+		draw_set_transform(Vector2.ZERO)
 
 
 class LevelTile extends Button:
@@ -120,12 +225,14 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_build_controls()
 	resized.connect(_layout_controls)
+	visibility_changed.connect(_on_visibility_changed)
 	_layout_controls()
 	_rebuild_tiles()
 	_refresh_selection()
 
 
 func configure(level_count: int, completed_count: int, initial_selection: int = 0) -> void:
+	_cancel_scroll_animation()
 	total_levels = maxi(1, level_count)
 	highest_completed = clampi(completed_count, 0, total_levels)
 	_unlocked_level = mini(total_levels, highest_completed + 1)
@@ -148,8 +255,50 @@ func set_save_status(message: String) -> void:
 
 
 func activate() -> void:
+	var animate_upward := _last_activated_level > 0 and _unlocked_level > _last_activated_level
 	select_latest()
-	_schedule_reveal(true)
+	_schedule_reveal(true, true, animate_upward)
+	_last_activated_level = selected_level
+
+
+func set_reduced_motion(enabled: bool) -> void:
+	_reduced_motion = enabled
+	if is_instance_valid(_marker):
+		_marker.set_reduced_motion(enabled)
+	if enabled:
+		_cancel_scroll_animation()
+
+
+func _exit_tree() -> void:
+	_cancel_scroll_animation()
+
+
+func _on_visibility_changed() -> void:
+	if not is_visible_in_tree():
+		_cancel_scroll_animation()
+
+
+func _input(event: InputEvent) -> void:
+	if not is_visible_in_tree() or not is_instance_valid(_scroll):
+		return
+	var pointer_in_map := _scroll.get_global_rect().has_point(get_global_mouse_position())
+	var user_scroll := false
+	if event is InputEventMouseButton and event.pressed and pointer_in_map:
+		user_scroll = event.button_index in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_MIDDLE, MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]
+	elif event is InputEventMouseMotion and pointer_in_map:
+		user_scroll = (event.button_mask & (MOUSE_BUTTON_MASK_LEFT | MOUSE_BUTTON_MASK_MIDDLE)) != 0
+	elif event is InputEventKey and event.pressed:
+		user_scroll = event.keycode in [KEY_PAGEUP, KEY_PAGEDOWN, KEY_HOME, KEY_END, KEY_UP, KEY_DOWN]
+	if user_scroll:
+		_manual_scroll_epoch += 1
+		_cancel_scroll_animation()
+
+
+func _cancel_scroll_animation() -> void:
+	if is_instance_valid(_scroll_tween):
+		_scroll_tween.kill()
+	_scroll_tween = null
+	_animate_on_reveal = false
 
 
 func set_level_description(value: String) -> void:
@@ -176,19 +325,28 @@ func _build_controls() -> void:
 	_scroll = ScrollContainer.new()
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
-	_scroll.follow_focus = true
+	# Reveal the marker with its tile, rather than letting native focus clip it.
+	_scroll.follow_focus = false
 	_scroll.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(_scroll)
 	_map = Control.new()
 	_map.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_map.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_scroll.add_child(_map)
+	_route = AdventureRoute.new()
+	_route.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_map.add_child(_route)
 	_trophy = TrophyArt.new()
 	_trophy.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_map.add_child(_trophy)
 	_map_caption = _label(18, Color("#c8e9ff"))
-	_map_caption.text = "逐关挑战，点亮你的方块地图"
+	_map_caption.text = "沿着藤蔓向上，点亮下一段旅程"
 	_map.add_child(_map_caption)
+	_marker = GoldDiamond.new()
+	_marker.name = "SelectedLevelMarker"
+	_marker.z_index = 2
+	_marker.set_reduced_motion(_reduced_motion)
+	_map.add_child(_marker)
 	_footer = Panel.new()
 	_footer.mouse_filter = Control.MOUSE_FILTER_STOP
 	_footer.add_theme_stylebox_override("panel", Art.panel_style(Color("#304b87"), 0, Color("#597ec5")))
@@ -208,6 +366,7 @@ func _build_controls() -> void:
 	_start.add_theme_stylebox_override("pressed", Art.button_style(Color("#36af38"), true))
 	var focus := Art.panel_style(Color.TRANSPARENT, 12, Color("#82f5e9"))
 	focus.set_border_width_all(2)
+	focus.shadow_size = 0
 	_start.add_theme_stylebox_override("focus", focus)
 	_start.pressed.connect(_start_selected_level)
 	_footer.add_child(_start)
@@ -241,8 +400,15 @@ func _rebuild_tiles() -> void:
 		tile.completed = level_id <= highest_completed
 		tile.tooltip_text = "第 %d 关%s" % [level_id, " · 尚未解锁" if tile.disabled else (" · 已通关" if tile.completed else "")]
 		tile.pressed.connect(_select_level.bind(level_id))
+		tile.focus_entered.connect(_on_tile_focused.bind(level_id))
 		_map.add_child(tile)
 		_tiles[level_id] = tile
+	for level_id in _tiles:
+		var tile: LevelTile = _tiles[level_id]
+		if int(level_id) < _unlocked_level:
+			tile.focus_neighbor_top = tile.get_path_to(_tiles[int(level_id) + 1])
+		if int(level_id) > 1:
+			tile.focus_neighbor_bottom = tile.get_path_to(_tiles[int(level_id) - 1])
 	_layout_map()
 
 
@@ -274,51 +440,55 @@ func _layout_controls() -> void:
 	_save_warning.position = Vector2(24.0, 112.0)
 	_save_warning.size = Vector2(maxf(0.0, size.x - 48.0), 18.0)
 	_layout_map()
-	_schedule_reveal()
 
 
 func _layout_map() -> void:
 	if not is_instance_valid(_map):
 		return
-	# Rows grow upward from level 1, like a tower made of square blocks.
-	# Reserve scrollbar space so a newly visible scrollbar cannot clip a tile.
-	var content_width := maxf(52.0, _scroll.size.x - 24.0)
-	var available_width := minf(704.0, maxf(52.0, content_width - 24.0))
-	var columns := clampi(int((available_width + 4.0) / 52.0), 1, 11)
-	var tile_side := clampf(floorf((available_width - float(columns - 1) * 4.0) / float(columns)), 48.0, 62.0)
-	var pitch := tile_side + 4.0
-	var map_width := float(columns) * pitch - 4.0
-	var proportions := [1.0, 0.82, 0.73, 0.55, 0.55, 0.64, 0.73, 0.82, 0.73, 0.64, 0.55, 0.73, 0.64, 0.55, 0.36]
-	var rows: Array = []
-	var first_level := 1
-	while first_level <= total_levels:
-		var row_index := rows.size()
-		var row_capacity := clampi(int(round(float(columns) * float(proportions[row_index % proportions.size()]))), mini(3, columns), columns)
-		var count := mini(row_capacity, total_levels - first_level + 1)
-		rows.append({"first": first_level, "count": count})
-		first_level += count
-	var top_space := 190.0
-	var map_height := top_space + float(rows.size()) * pitch + 28.0
+	# One climbing route keeps the next challenge above the current one. A
+	# chapter adds a breathing space, without packing future levels into a grid.
+	var content_width := maxf(160.0, _scroll.size.x - 24.0)
+	var available_width := minf(760.0, content_width - 24.0)
+	var tile_side := clampf(floorf(content_width * 0.095), 48.0, 64.0)
+	var amplitude := maxf(18.0, (available_width - tile_side - 64.0) * 0.34)
+	var step_height := 104.0
+	var chapter_gap := 68.0
+	var chapter_count := floori(float(total_levels - 1) / 12.0)
+	var top_space := 222.0
+	var map_height := top_space + float(total_levels - 1) * step_height + float(chapter_count) * chapter_gap + tile_side + 108.0
 	_map.custom_minimum_size = Vector2(0.0, map_height)
+	_route.position = Vector2.ZERO
+	_route.size = Vector2(content_width, map_height)
+	_route.tile_side = tile_side
+	_route.completed_count = highest_completed
+	_route.points.clear()
 	_trophy.position = Vector2((content_width - 124.0) * 0.5, 14.0)
 	_trophy.size = Vector2(124.0, 124.0)
-	_map_caption.position = Vector2(8.0, 142.0)
+	_map_caption.position = Vector2(8.0, 152.0)
 	_map_caption.size = Vector2(maxf(0.0, content_width - 16.0), 32.0)
-	var left := (content_width - map_width) * 0.5
-	for row_index in range(rows.size()):
-		var row: Dictionary = rows[row_index]
-		var count := int(row["count"])
-		var free_columns := columns - count
-		var stagger := 1 if row_index % 4 == 2 else 0
-		var offset_columns := clampi(int(floor(float(free_columns) * 0.5)) + stagger, 0, free_columns)
-		var y := top_space + float(rows.size() - row_index - 1) * pitch
-		for index in range(count):
-			var tile: LevelTile = _tiles.get(int(row["first"]) + index)
-			if not is_instance_valid(tile):
-				continue
-			tile.position = Vector2(left + float(offset_columns + index) * pitch, y)
-			tile.size = Vector2.ONE * tile_side
-			tile.refresh()
+	_map_caption.add_theme_font_size_override("font_size", 18 if content_width >= 440.0 else 15)
+	for level_id in range(1, total_levels + 1):
+		var tile: LevelTile = _tiles.get(level_id)
+		if not is_instance_valid(tile):
+			continue
+		var chapter := floori(float(level_id - 1) / 12.0)
+		var phase := -PI * 0.5 + float(level_id - 1) * PI / 4.4
+		var center := Vector2(content_width * 0.5 + sin(phase) * amplitude,
+			top_space + float(total_levels - level_id) * step_height + float(chapter_count - chapter) * chapter_gap + tile_side * 0.5)
+		tile.position = center - Vector2.ONE * tile_side * 0.5
+		tile.size = Vector2.ONE * tile_side
+		tile.refresh()
+		_route.points.append(center)
+	_route.queue_redraw()
+	_position_marker()
+
+
+func _position_marker() -> void:
+	var tile: LevelTile = _tiles.get(selected_level)
+	if not is_instance_valid(tile) or not is_instance_valid(_marker):
+		return
+	_marker.size = Vector2(48.0, 48.0)
+	_marker.position = Vector2(tile.position.x + tile.size.x * 0.5 - 24.0, tile.position.y - 48.0)
 
 
 func _select_level(level_id: int) -> void:
@@ -340,6 +510,7 @@ func _refresh_selection() -> void:
 		tile.refresh()
 	_progress.text = "已通关 %d / %d" % [highest_completed, total_levels]
 	_start.text = "开始第 %d 关" % selected_level
+	_position_marker()
 	_refresh_description()
 
 
@@ -362,8 +533,16 @@ func _start_selected_level() -> void:
 		level_started.emit(selected_level)
 
 
-func _schedule_reveal(focus_selected: bool = false) -> void:
+func _on_tile_focused(level_id: int) -> void:
+	if not _programmatic_focus:
+		_reveal_level = level_id
+		_schedule_reveal()
+
+
+func _schedule_reveal(focus_selected: bool = false, center_selected: bool = false, animate_upward: bool = false) -> void:
 	_focus_on_reveal = _focus_on_reveal or focus_selected
+	_center_on_reveal = _center_on_reveal or center_selected
+	_animate_on_reveal = _animate_on_reveal or animate_upward
 	if _reveal_queued or not is_inside_tree():
 		return
 	_reveal_queued = true
@@ -372,19 +551,53 @@ func _schedule_reveal(focus_selected: bool = false) -> void:
 
 func _reveal_selection() -> void:
 	# A frame lets ScrollContainer apply its child's new minimum height first.
+	var manual_epoch := _manual_scroll_epoch
 	if not is_inside_tree():
 		_reveal_queued = false
 		_focus_on_reveal = false
 		return
 	await get_tree().process_frame
 	_reveal_queued = false
-	if not is_visible_in_tree():
+	if not is_visible_in_tree() or manual_epoch != _manual_scroll_epoch:
 		_focus_on_reveal = false
+		_center_on_reveal = false
+		_animate_on_reveal = false
+		_reveal_level = 0
 		return
-	var tile: LevelTile = _tiles.get(selected_level)
+	var level_id := _reveal_level if _reveal_level > 0 and not _center_on_reveal else selected_level
+	_reveal_level = 0
+	var tile: LevelTile = _tiles.get(level_id)
 	if not is_instance_valid(tile):
+		_focus_on_reveal = false
+		_center_on_reveal = false
+		_animate_on_reveal = false
 		return
-	_scroll.ensure_control_visible(tile)
+	var viewport_height := _scroll.size.y
+	var visible_top := float(_scroll.scroll_vertical)
+	var target := visible_top
+	if _center_on_reveal:
+		target = tile.position.y + tile.size.y * 0.5 - viewport_height * 0.66
+	elif tile.position.y - 56.0 < visible_top + 12.0:
+		target = tile.position.y - 68.0
+	elif tile.position.y + tile.size.y + 16.0 > visible_top + viewport_height:
+		target = tile.position.y + tile.size.y + 24.0 - viewport_height
+	var scroll_bar := _scroll.get_v_scroll_bar()
+	var maximum := maxf(0.0, scroll_bar.max_value - scroll_bar.page)
+	target = clampf(target, 0.0, maximum)
+	var animate := _animate_on_reveal and not _reduced_motion and target < visible_top - 2.0
+	_cancel_scroll_animation()
+	if animate:
+		# Returning from a completed level shows a short climb. An old manual
+		# scroll position must never cause a tour through thousands of pixels.
+		if visible_top - target > viewport_height * 0.85:
+			_scroll.scroll_vertical = int(minf(maximum, target + viewport_height * 0.45))
+		_scroll_tween = create_tween()
+		_scroll_tween.tween_property(_scroll, "scroll_vertical", int(target), 0.55).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	else:
+		_scroll.scroll_vertical = int(target)
 	if _focus_on_reveal:
+		_programmatic_focus = true
 		tile.grab_focus()
+		_programmatic_focus = false
 	_focus_on_reveal = false
+	_center_on_reveal = false

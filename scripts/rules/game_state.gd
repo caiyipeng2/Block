@@ -22,6 +22,11 @@ var last_clear_lines: int = 0
 var mode := "free"
 var level_id := 0
 var target_score := 0
+## Markers are presentation-independent coordinates on the initial occupied board.
+var objective_type := "score"
+var target_cells: Dictionary = {}
+var target_total := 0
+var target_collected := 0
 
 func _init(initial_seed: int = 0, board_size: int = 8, config: GameRulesConfig = null, setup: Dictionary = {}) -> void:
 	rules_config = config if config != null else GameRulesConfig.new()
@@ -36,15 +41,28 @@ func _init(initial_seed: int = 0, board_size: int = 8, config: GameRulesConfig =
 	mode = str(setup.get("mode", "free"))
 	level_id = maxi(0, int(setup.get("level_id", 0)))
 	target_score = maxi(0, int(setup.get("target_score", 0))) if mode == "adventure" else 0
+	objective_type = "collect" if mode == "adventure" and str(setup.get("objective_type", "score")) == "collect" else "score"
+	if objective_type == "collect":
+		target_score = 0
 	generator.candidate_samples = clampi(int(setup.get("candidate_samples", 1)), 1, 12) if mode == "adventure" else 1
 	generator.solution_count_cap = clampi(int(setup.get("solution_count_cap", 8)), 2, 32)
 	for entry: Dictionary in setup.get("initial_cells", []):
 		board.set_cell(int(entry["x"]), int(entry["y"]), int(entry["color"]))
+	if objective_type == "collect":
+		for entry in setup.get("target_cells", []):
+			var cell := Vector2i(entry)
+			if board.get_cell(cell.x, cell.y) >= 0:
+				target_cells[cell] = true
+		target_total = target_cells.size()
 	if _accept_initial_tray(setup):
 		generation_diagnostics = setup.get("initial_diagnostics", {}).duplicate(true)
-		if mode == "adventure" and generator.candidate_samples > 1:
+		if mode == "adventure" and objective_type != "collect" and generator.candidate_samples > 1:
 			remaining_pieces = generator.generate_solvable_round(board, remaining_pieces)
 			generation_diagnostics["difficulty_selection"] = generator.last_diagnostics.duplicate(true)
+	elif objective_type == "collect":
+		# A generic solvable tray does not prove these particular markers can be
+		# collected. Reject a broken recipe rather than silently losing its proof.
+		generation_diagnostics = {"reason": "invalid_collection_route", "solution_certified": false}
 	else:
 		remaining_pieces = generator.generate_solvable_round(board)
 		generation_diagnostics = generator.last_diagnostics.duplicate(true)
@@ -64,6 +82,7 @@ func _accept_initial_tray(setup: Dictionary) -> bool:
 		return false
 	var check := board.duplicate_board()
 	var seen := {}
+	var uncleared_targets := target_cells.duplicate()
 	for step: Dictionary in path:
 		var index := int(step.get("piece_index", -1))
 		var origin: Vector2i = step.get("origin", Vector2i(-99, -99))
@@ -71,7 +90,11 @@ func _accept_initial_tray(setup: Dictionary) -> bool:
 			return false
 		seen[index] = true
 		check.place(pieces[index], origin, 0)
-		check.clear_full_lines()
+		var cleared := check.clear_full_lines()
+		for cell in cleared["cells"]:
+			uncleared_targets.erase(cell)
+	if objective_type == "collect" and (target_total == 0 or not uncleared_targets.is_empty()):
+		return false
 	remaining_pieces = pieces
 	generator.last_solution.assign(path)
 	return true
@@ -93,6 +116,11 @@ func place_piece(piece_index: int, origin: Vector2i, color_id: int = 0) -> Dicti
 		placed_cells.append(origin + local_cell)
 	board.place(piece, origin, color_id)
 	var clear_result := board.clear_full_lines()
+	var collected_targets: Array[Vector2i] = []
+	for cell in clear_result["cells"]:
+		if target_cells.erase(cell):
+			collected_targets.append(cell)
+	target_collected += collected_targets.size()
 	var cleared_lines: int = clear_result["rows"] + clear_result["columns"]
 	var scoring_result := scoring.apply_move(placed_cells.size(), clear_result["cells"].size(), cleared_lines)
 	var placement_points: int = scoring_result["placement_points"]
@@ -107,7 +135,7 @@ func place_piece(piece_index: int, origin: Vector2i, color_id: int = 0) -> Dicti
 	total_moves += 1
 	remaining_pieces.remove_at(piece_index)
 	var round_refilled := false
-	if mode == "adventure" and target_score > 0 and scoring.score >= target_score:
+	if _objective_complete():
 		status = Status.LEVEL_COMPLETE
 	elif remaining_pieces.is_empty():
 		round_index += 1
@@ -139,6 +167,11 @@ func place_piece(piece_index: int, origin: Vector2i, color_id: int = 0) -> Dicti
 		"round_refilled": round_refilled,
 		"generation_diagnostics": generation_diagnostics.duplicate(true),
 		"level_complete": status == Status.LEVEL_COMPLETE,
+		"collected_targets": collected_targets,
+		"objective_type": objective_type,
+		"target_total": target_total,
+		"target_collected": target_collected,
+		"target_remaining": target_cells.size(),
 		"status": status
 	}
 
@@ -154,7 +187,19 @@ func _invalid_move_result(reason: String) -> Dictionary:
 		"gained": 0,
 		"score": scoring.score if scoring != null else 0,
 		"combo": scoring.combo if scoring != null else 0,
+		"collected_targets": [],
+		"objective_type": objective_type,
+		"target_total": target_total,
+		"target_collected": target_collected,
+		"target_remaining": target_cells.size(),
 	}
+
+func _objective_complete() -> bool:
+	if mode != "adventure":
+		return false
+	if objective_type == "collect":
+		return target_total > 0 and target_cells.is_empty()
+	return target_score > 0 and scoring.score >= target_score
 
 func is_game_over() -> bool:
 	return status == Status.GAME_OVER

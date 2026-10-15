@@ -143,6 +143,28 @@ static func button_style(fill: Color, pressed: bool = false) -> StyleBoxFlat:
 	style.set_content_margin_all(10.0)
 	return style
 
+static func draw_target_marker(canvas: CanvasItem, rect: Rect2, opacity: float = 1.0, glow: float = 1.0) -> void:
+	if rect.size.x <= 2.0 or rect.size.y <= 2.0 or opacity <= 0.0:
+		return
+	var center := rect.get_center()
+	var radius := minf(rect.size.x, rect.size.y) * 0.28
+	var alpha := clampf(opacity, 0.0, 1.0)
+	canvas.draw_circle(center, radius * 1.45, Color(0.70, 1.0, 0.92, 0.14 * alpha * glow))
+	var top := center + Vector2(0, -radius)
+	var right := center + Vector2(radius * 0.78, 0)
+	var bottom := center + Vector2(0, radius)
+	var left := center - Vector2(radius * 0.78, 0)
+	canvas.draw_colored_polygon(PackedVector2Array([top, right, bottom, left]), Color(0.02, 0.16, 0.29, alpha))
+	var inset := 0.78
+	top = center + (top - center) * inset
+	right = center + (right - center) * inset
+	bottom = center + (bottom - center) * inset
+	left = center + (left - center) * inset
+	canvas.draw_colored_polygon(PackedVector2Array([top, right, center, left]), Color(0.98, 1.0, 0.85, alpha))
+	canvas.draw_colored_polygon(PackedVector2Array([left, center, bottom]), Color(0.25, 0.95, 0.83, alpha))
+	canvas.draw_colored_polygon(PackedVector2Array([center, right, bottom]), Color(0.05, 0.55, 0.73, alpha))
+	canvas.draw_line(top, right, Color(1, 1, 1, alpha), maxf(1.0, radius * 0.10), true)
+
 static func _alpha(color: Color, opacity: float) -> Color:
 	return Color(color.r, color.g, color.b, opacity)
 

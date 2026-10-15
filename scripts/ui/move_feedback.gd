@@ -39,6 +39,8 @@ var _clear_cells: Dictionary = {}
 var _clear_colors: Dictionary = {}
 var _clear_row_colors: Dictionary = {}
 var _clear_column_colors: Dictionary = {}
+var _target_cells: Dictionary = {}
+var _collected_targets: Array[Vector2i] = []
 var _clear_rows: Array[int] = []
 var _clear_columns: Array[int] = []
 var _placed_scale := 1.0
@@ -100,6 +102,8 @@ func play_move(
 	_clear_colors = context.get("clear_colors", {}).duplicate()
 	_clear_row_colors = context.get("clear_row_colors", {}).duplicate()
 	_clear_column_colors = context.get("clear_column_colors", {}).duplicate()
+	_target_cells = context.get("target_cells", {}).duplicate()
+	_collected_targets.assign(context.get("collected_targets", []))
 	_gained = gained
 	_overlay_visible = true
 	_board_overlay_active = true
@@ -192,6 +196,8 @@ func reset() -> void:
 	_clear_colors.clear()
 	_clear_row_colors.clear()
 	_clear_column_colors.clear()
+	_target_cells.clear()
+	_collected_targets.clear()
 	_clear_rows.clear()
 	_clear_columns.clear()
 	_context.clear()
@@ -301,6 +307,8 @@ func _start_score_float(static_text: bool) -> void:
 	_score_label = _make_effect_label("+%d" % _gained, clampi(int(_cell_size * 0.55), 22, 38), GOLD, 4)
 	_score_origin = _score_anchor() + Vector2(0.0, -_cell_size * 0.30)
 	_score_target = _context.get("score_target", Vector2(_board_rect.get_center().x, maxf(_board_rect.position.y - 54.0, 28.0)))
+	if not bool(_context.get("score_flight_enabled", true)):
+		_score_target = _score_origin + Vector2(0.0, -32.0)
 	_score_label.position = _score_origin - _score_label.get_minimum_size() * 0.5
 	_score_tween = create_tween()
 	if static_text:
@@ -422,6 +430,7 @@ func _draw() -> void:
 				_draw_board_cell(coordinate, _color_for_id(_resolved_cell_color_id(coordinate)), block_scale, alpha, highlight)
 			_draw_clear_lines()
 	_draw_particles()
+	_draw_target_flights()
 
 func _draw_board_cell(coordinate: Vector2i, color: Color, block_scale: float, alpha: float, highlight: float) -> void:
 	if coordinate.x < 0 or coordinate.y < 0 or coordinate.x >= _board_size or coordinate.y >= _board_size:
@@ -429,6 +438,21 @@ func _draw_board_cell(coordinate: Vector2i, color: Color, block_scale: float, al
 	var source_rect := Rect2(_board_rect.position + _board_offset + Vector2(coordinate) * _cell_size, Vector2.ONE * _cell_size)
 	var draw_size := Vector2.ONE * maxf(_cell_size - 2.0, 1.0) * block_scale
 	BlockArt.draw_block(self, Rect2(source_rect.get_center() - draw_size * 0.5, draw_size), color, alpha, highlight)
+	if _target_cells.has(coordinate):
+		BlockArt.draw_target_marker(self, Rect2(source_rect.get_center() - draw_size * 0.5, draw_size), alpha)
+
+func _draw_target_flights() -> void:
+	if not _dispersing or _accent_tween == null or _collected_targets.is_empty():
+		return
+	var destination: Vector2 = _context.get("objective_target", Vector2(_board_rect.get_center().x, _board_rect.position.y - 50.0))
+	for index in range(_collected_targets.size()):
+		var progress := clampf((_accent_progress - float(index % 4) * 0.025) / 0.90, 0.0, 1.0)
+		var origin := _cell_center(_collected_targets[index])
+		var eased := progress * progress * (3.0 - 2.0 * progress)
+		var point := origin.lerp(destination, eased)
+		point.y -= sin(progress * PI) * minf(_cell_size * 0.9, 56.0)
+		var side := maxf(12.0, _cell_size * lerpf(0.95, 0.55, progress))
+		BlockArt.draw_target_marker(self, Rect2(point - Vector2.ONE * side * 0.5, Vector2.ONE * side), 1.0 - clampf((progress - 0.82) / 0.18, 0.0, 1.0), 1.5)
 
 func _draw_clear_lines() -> void:
 	if not _clear_started or _dispersing:

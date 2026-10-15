@@ -4,6 +4,14 @@ extends SceneTree
 var failures := 0
 
 func _initialize() -> void:
+	_test_score_modes()
+	_test_collection_progress()
+	_test_crossing_collection()
+	if failures == 0:
+		print("MODE STATE TESTS PASSED")
+	quit(0 if failures == 0 else 1)
+
+func _test_score_modes() -> void:
 	var config := GameRulesConfig.new()
 	var line := PieceData.new(Vector2i.ZERO, [Vector2i.ZERO, Vector2i(1, 0), Vector2i(2, 0)])
 	var setup := {
@@ -39,9 +47,89 @@ func _initialize() -> void:
 	var classic := GameState.new(19, 8, config, free_setup)
 	classic.place_piece(0, Vector2i.ZERO, 0)
 	_check(not classic.is_level_complete() and classic.target_score == 0, "经典模式不受目标限制")
-	if failures == 0:
-		print("MODE STATE TESTS PASSED")
-	quit(0 if failures == 0 else 1)
+
+func _collection_setup() -> Dictionary:
+	var line := PieceData.new(Vector2i.ZERO, [Vector2i.ZERO, Vector2i(1, 0), Vector2i(2, 0)])
+	var initial: Array[Dictionary] = []
+	for y in [0, 2, 4]:
+		for x in range(5):
+			initial.append({"x": x, "y": y, "color": y % 6})
+	return {
+		"mode": "adventure", "level_id": 3, "objective_type": "collect",
+		"target_score": 1, "candidate_samples": 12,
+		"target_cells": [Vector2i(0, 2), Vector2i(0, 4), Vector2i(0, 4)],
+		"initial_cells": initial,
+		"initial_pieces": [line, line.duplicate_piece(), line.duplicate_piece()],
+		"initial_solution": [
+			{"piece_index": 0, "origin": Vector2i(5, 0)},
+			{"piece_index": 1, "origin": Vector2i(5, 2)},
+			{"piece_index": 2, "origin": Vector2i(5, 4)},
+		],
+	}
+
+func _test_collection_progress() -> void:
+	var config := GameRulesConfig.new()
+	var setup := _collection_setup()
+	var adventure := GameState.new(22, 8, config, setup)
+	_check(adventure.objective_type == "collect" and adventure.target_score == 0, "特殊目标关不使用分数作为通关条件")
+	_check(adventure.target_total == 2 and adventure.target_collected == 0, "重复目标坐标去重且开局尚未收集")
+	_check(adventure.remaining_pieces[0].cells == setup["initial_pieces"][0].cells, "特殊关保留带目标认证的初始托盘")
+	var ordinary := adventure.place_piece(0, Vector2i(5, 0), 1)
+	_check(bool(ordinary["ok"]) and ordinary["collected_targets"].is_empty(), "普通消除不增加特殊目标收集")
+	_check(adventure.scoring.score > 1 and not adventure.is_level_complete(), "分数超过旧目标但标记尚在时不通关")
+	var first_target := adventure.place_piece(0, Vector2i(5, 2), 2)
+	_check(first_target["target_collected"] == 1 and first_target["target_remaining"] == 1, "清除一枚特殊标记更新剩余数")
+	_check(first_target["collected_targets"] == [Vector2i(0, 2)], "结果返回真实清除的特殊格坐标")
+	var previous_score := adventure.scoring.score
+	var invalid := adventure.place_piece(0, Vector2i(-1, -1), 2)
+	_check(not bool(invalid["ok"]) and invalid["target_collected"] == 1 and invalid["target_remaining"] == 1, "非法落子保持收集状态不变")
+	_check(invalid["collected_targets"].is_empty() and adventure.scoring.score == previous_score, "非法落子无收集或分数增量")
+	var final_target := adventure.place_piece(0, Vector2i(5, 4), 3)
+	_check(adventure.is_level_complete() and final_target["target_remaining"] == 0, "特殊目标清完即通关")
+	_check(not bool(final_target["round_refilled"]) and adventure.round_index == 0, "清完目标优先胜利且不补盘")
+	var restarted := GameState.new(22, 8, config, setup)
+	_check(restarted.target_total == 2 and restarted.target_collected == 0 and restarted.target_cells.size() == 2 and restarted.scoring.score == 0, "重开恢复原始特殊标记和零进度")
+	var invalid_setup := setup.duplicate(true)
+	invalid_setup["target_cells"] = [Vector2i(7, 7)]
+	var broken := GameState.new(22, 8, config, invalid_setup)
+	_check(broken.is_game_over() and not broken.is_level_complete(), "空白格不能伪造特殊目标并自动过关")
+	invalid_setup["target_cells"] = [Vector2i(0, 2)]
+	invalid_setup["initial_solution"] = [
+		{"piece_index": 0, "origin": Vector2i(5, 0)},
+		{"piece_index": 1, "origin": Vector2i(0, 6)},
+		{"piece_index": 2, "origin": Vector2i(3, 6)},
+	]
+	var uncertified := GameState.new(22, 8, config, invalid_setup)
+	_check(uncertified.is_game_over(), "仅能放完三块却不清除目标的路线不予认证")
+
+func _test_crossing_collection() -> void:
+	var config := GameRulesConfig.new()
+	var step := PieceData.new(Vector2i.ZERO, [Vector2i.ZERO, Vector2i(0, 1), Vector2i(1, 1)])
+	var line := PieceData.new(Vector2i.ZERO, [Vector2i.ZERO, Vector2i(1, 0), Vector2i(2, 0)])
+	var occupied: Dictionary = {}
+	for coordinate in range(8):
+		if coordinate != 5:
+			occupied[Vector2i(coordinate, 0)] = true
+		if coordinate != 1:
+			occupied[Vector2i(6, coordinate)] = true
+	var initial: Array[Dictionary] = []
+	for cell: Vector2i in occupied:
+		initial.append({"x": cell.x, "y": cell.y, "color": 1})
+	var setup := {
+		"mode": "adventure", "level_id": 3, "objective_type": "collect",
+		"target_cells": [Vector2i(6, 0)], "initial_cells": initial,
+		"initial_pieces": [step, line, line.duplicate_piece()],
+		"initial_solution": [
+			{"piece_index": 0, "origin": Vector2i(5, 0)},
+			{"piece_index": 1, "origin": Vector2i(0, 3)},
+			{"piece_index": 2, "origin": Vector2i(0, 4)},
+		],
+	}
+	var adventure := GameState.new(23, 8, config, setup)
+	var result := adventure.place_piece(0, Vector2i(5, 0), 2)
+	_check(result["clear"]["rows"] == 1 and result["clear"]["columns"] == 1, "交叉消除场景真实包含行列")
+	_check(result["target_collected"] == 1 and result["collected_targets"].size() == 1, "行列交叉特殊格只收集一次")
+	_check(adventure.is_level_complete() and adventure.remaining_pieces.size() == 2, "目标清完后即便仍有托盘方块也立即胜利")
 
 func _check(value: bool, message: String) -> void:
 	if not value:

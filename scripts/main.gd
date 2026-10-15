@@ -220,6 +220,7 @@ func _handle_release(position: Vector2) -> void:
 		queue_redraw()
 		return
 	var before_board := game.board.duplicate_board()
+	var before_targets := game.target_cells.duplicate()
 	pending_tray = game.remaining_pieces.duplicate()
 	pending_tray.remove_at(index)
 	input_locked = true
@@ -267,6 +268,10 @@ func _handle_release(position: Vector2) -> void:
 			"clear_colors": clear_appearance["cell_colors"],
 			"clear_row_colors": clear_appearance["row_colors"],
 			"clear_column_colors": clear_appearance["column_colors"],
+			"target_cells": before_targets,
+			"collected_targets": result.get("collected_targets", []),
+			"objective_target": gameplay_ui.score_target(),
+			"score_flight_enabled": game.objective_type != "collect",
 		})
 	else:
 		_reset_visual_feedback()
@@ -313,7 +318,7 @@ func _start_game(mode: String = "", level_id: int = 0) -> void:
 	last_gain = 0
 	_play_feedback("click")
 	_refresh_controls()
-	var notice := "目标 %d 分，挑战第 %d 关" % [game.target_score, current_level] if game_mode == "adventure" else "拖动方块，填满一行或一列"
+	var notice := ModeCatalog.objective_description(current_level) if game_mode == "adventure" else "拖动方块，填满一行或一列"
 	gameplay_ui.show_notice(notice, "info", _reduced_motion())
 	queue_redraw()
 
@@ -324,6 +329,7 @@ func _open_levels() -> void:
 	screen = "levels"
 	paused = false
 	level_select.configure(ModeCatalog.MAX_LEVELS, int(save_data.get("adventure_highest_completed", 0)))
+	level_select.set_reduced_motion(_reduced_motion())
 	level_select.set_save_status("进度保存失败，仅本次运行有效" if not save_status_text.is_empty() else "")
 	_refresh_controls()
 	_update_level_description(level_select.selected_level)
@@ -332,8 +338,7 @@ func _open_levels() -> void:
 	queue_redraw()
 
 func _update_level_description(level_id: int) -> void:
-	var target := ModeCatalog.target_score_for_level(level_id)
-	level_select.set_level_description("第 %d 关 · 目标 %d 分" % [level_id, target])
+	level_select.set_level_description("第 %d 关 · %s" % [level_id, ModeCatalog.objective_description(level_id)])
 
 func _start_adventure_level(level_id: int) -> void:
 	if level_id >= 1 and level_id <= _unlocked_level():
@@ -826,6 +831,10 @@ func _refresh_controls() -> void:
 				"mode": game_mode,
 				"level_id": current_level,
 				"target_score": game.target_score,
+				"objective_type": game.objective_type,
+				"target_total": game.target_total,
+				"target_collected": game.target_collected,
+				"target_remaining": game.target_cells.size(),
 				"highest_completed": int(save_data.get("adventure_highest_completed", 0)),
 				"has_next_level": current_level < ModeCatalog.MAX_LEVELS,
 				"total_levels": ModeCatalog.MAX_LEVELS,
@@ -952,7 +961,7 @@ func _menu_button_rect() -> Rect2:
 	return gameplay_ui.get_menu_rect() if gameplay_ui != null else Rect2()
 
 func _board_rect() -> Rect2:
-	var top := _header_height() + 48.0
+	var top := _header_height() + (64.0 if game_mode == "adventure" else 48.0)
 	# Keep distinct bands for the notice, tray and bottom instruction.
 	var available_height := size.y - _tray_height() - top - 84.0
 	var width_limit := size.x * 0.90 if size.y > size.x else 660.0
@@ -1059,6 +1068,8 @@ func _draw_board() -> void:
 				Art.draw_empty_cell(self, cell_rect, color)
 			else:
 				Art.draw_block(self, cell_rect, color, 1.0, 0.20 if preview_clear_colors.has(Vector2i(x, y)) else 0.0)
+				if game.target_cells.has(Vector2i(x, y)):
+					Art.draw_target_marker(self, cell_rect)
 	if dragging_index >= 0 and game != null:
 		var piece: PieceData = game.remaining_pieces[dragging_index]
 		var preview_color := _piece_color(piece) if drag_valid else Color("#ff7575")
