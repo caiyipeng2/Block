@@ -437,10 +437,10 @@ func _draw_board_cell(coordinate: Vector2i, color: Color, block_scale: float, al
 	var source_rect := Rect2(_board_rect.position + _board_offset + Vector2(coordinate) * _cell_size, Vector2.ONE * _cell_size)
 	var draw_size := Vector2.ONE * maxf(_cell_size - 2.0, 1.0) * block_scale
 	var block_rect := Rect2(source_rect.get_center() - draw_size * 0.5, draw_size)
-	var tile_color := color
 	if _target_cells.has(coordinate) and not _clear_cells.has(coordinate):
-		tile_color = BlockArt.target_tile_color(_target_kind(_target_cells[coordinate]))
-	BlockArt.draw_block(self, block_rect, tile_color, alpha, highlight)
+		BlockArt.draw_target_tile(self, block_rect, alpha, highlight, _target_kind(_target_cells[coordinate]))
+	else:
+		BlockArt.draw_block(self, block_rect, color, alpha, highlight)
 	if _target_cells.has(coordinate):
 		BlockArt.draw_target_marker(self, block_rect, alpha, 1.0, _target_kind(_target_cells[coordinate]))
 

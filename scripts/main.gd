@@ -1125,8 +1125,9 @@ func _draw_board() -> void:
 				Art.draw_empty_cell(self, cell_rect, color)
 			else:
 				if game.target_cells.has(Vector2i(x, y)) and not preview_clear_colors.has(Vector2i(x, y)):
-					color = Art.target_tile_color(_target_kind_at(Vector2i(x, y)))
-				Art.draw_block(self, cell_rect, color, 1.0, 0.20 if preview_clear_colors.has(Vector2i(x, y)) else 0.0)
+					Art.draw_target_tile(self, cell_rect, 1.0, 0.0, _target_kind_at(Vector2i(x, y)))
+				else:
+					Art.draw_block(self, cell_rect, color, 1.0, 0.20 if preview_clear_colors.has(Vector2i(x, y)) else 0.0)
 				if game.target_cells.has(Vector2i(x, y)):
 					Art.draw_target_marker(self, cell_rect, 1.0, 1.0, _target_kind_at(Vector2i(x, y)))
 	if dragging_index >= 0 and game != null:

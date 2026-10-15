@@ -143,68 +143,96 @@ static func button_style(fill: Color, pressed: bool = false) -> StyleBoxFlat:
 	style.set_content_margin_all(10.0)
 	return style
 
-static func target_tile_color(kind: String = "red_star") -> Color:
-	return Color("#efdfb5") if kind == "gold_gem" else Color("#f2e8ce")
+static func target_tile_color(_kind: String = "red_star") -> Color:
+	# Both gem kinds sit in the same warm sand-gold tile.
+	return Color("#e3c38a")
 
 static func target_name(kind: String = "red_star") -> String:
 	return "金色宝石" if kind == "gold_gem" else "红星宝石"
+
+static func draw_target_tile(canvas: CanvasItem, rect: Rect2, opacity: float = 1.0, highlight: float = 0.0, kind: String = "red_star") -> void:
+	if rect.size.x <= 0.0 or rect.size.y <= 0.0 or opacity <= 0.0:
+		return
+	var alpha := clampf(opacity, 0.0, 1.0)
+	var side := minf(rect.size.x, rect.size.y)
+	if side <= 2.0:
+		canvas.draw_rect(rect, _alpha(target_tile_color(kind), alpha))
+		return
+	var rim := clampf(side * 0.012, 0.35, 0.8)
+	var bevel := side * 0.18
+	var face := rect.grow(-rim)
+	var center := face.grow(-bevel)
+	var tl := face.position
+	var tr := Vector2(face.end.x, face.position.y)
+	var br := face.end
+	var bl := Vector2(face.position.x, face.end.y)
+	var ctl := center.position
+	var ctr := Vector2(center.end.x, center.position.y)
+	var cbr := center.end
+	var cbl := Vector2(center.position.x, center.end.y)
+	var light := clampf(highlight, 0.0, 1.0) * 0.18
+	var cream := Color("#ffe4aa")
+	canvas.draw_rect(Rect2(rect.position + Vector2(0.0, clampf(side * 0.025, 0.4, 1.2)), rect.size), Color(0.42, 0.29, 0.12, alpha * 0.17))
+	canvas.draw_rect(rect, _alpha(Color("#b58b4d").lerp(cream, light), alpha))
+	canvas.draw_colored_polygon(PackedVector2Array([tl, tr, ctr, ctl]), _alpha(Color("#f6dba0").lerp(cream, light), alpha))
+	canvas.draw_colored_polygon(PackedVector2Array([tl, ctl, cbl, bl]), _alpha(Color("#eaca8b").lerp(cream, light), alpha))
+	canvas.draw_colored_polygon(PackedVector2Array([tr, br, cbr, ctr]), _alpha(Color("#c29b5c").lerp(cream, light), alpha))
+	canvas.draw_colored_polygon(PackedVector2Array([bl, cbl, cbr, br]), _alpha(Color("#b88d4d").lerp(cream, light), alpha))
+	canvas.draw_polygon(PackedVector2Array([ctl, ctr, cbr, cbl]), PackedColorArray([
+		_alpha(Color("#ebcf97").lerp(cream, light), alpha),
+		_alpha(Color("#e7c68b").lerp(cream, light), alpha),
+		_alpha(Color("#ddba7c").lerp(cream, light), alpha),
+		_alpha(Color("#e2c187").lerp(cream, light), alpha)
+	]))
+	canvas.draw_line(tl, tr, Color(1.0, 0.89, 0.67, alpha * 0.45), rim, true)
 
 static func draw_target_marker(canvas: CanvasItem, rect: Rect2, opacity: float = 1.0, glow: float = 1.0, kind: String = "red_star") -> void:
 	if rect.size.x <= 2.0 or rect.size.y <= 2.0 or opacity <= 0.0:
 		return
 	var side := minf(rect.size.x, rect.size.y)
-	var center := rect.get_center() - Vector2(0.0, side * 0.015)
+	var center := rect.get_center() - Vector2(0.0, side * 0.018)
 	var alpha := clampf(opacity, 0.0, 1.0)
 	var is_gold := kind == "gold_gem"
 	var shape := _target_outline(is_gold)
 	var points := _target_points(shape, center, side)
-	var inset := _target_points(shape, center - Vector2(0.0, side * 0.007), side * 0.65)
-	var dark := Color("#654018") if is_gold else Color("#4c1725")
-	var bright := Color("#ffe995") if is_gold else Color("#ff8d8d")
-	var base := Color("#ffb52c") if is_gold else Color("#f54256")
-	var shade := Color("#c16c11") if is_gold else Color("#b8153d")
-	# Broad contact shadow and an opaque dark rim keep both silhouettes legible
-	# on ivory tiles, colored line previews and the blue HUD.
-	canvas.draw_circle(center + Vector2(0.0, side * 0.035), side * 0.34, Color(0.15, 0.08, 0.07, alpha * 0.13))
-	canvas.draw_colored_polygon(_target_points(shape, center + Vector2(0.0, side * 0.048), side * 1.035), Color(0.12, 0.06, 0.08, alpha * 0.48))
-	if glow > 0.0:
-		canvas.draw_colored_polygon(_target_points(shape, center, side * 1.10), _alpha(bright, alpha * clampf(glow, 0.0, 2.0) * 0.10))
-	canvas.draw_colored_polygon(_target_points(shape, center, side * 1.075), _alpha(dark, alpha))
+	var inset := _target_points(shape, center - Vector2(side * 0.010, side * 0.014), side * (0.70 if is_gold else 0.82))
+	var dark := Color("#9c6821") if is_gold else Color("#a9222e")
+	var bright := Color("#ffe59a") if is_gold else Color("#fb7c80")
+	var base := Color("#ffc23f") if is_gold else Color("#ee3d48")
+	var shade := Color("#e58b1d") if is_gold else Color("#c92639")
+	var edge := clampf(side * 0.014, 0.28, 0.80)
+	var rim_scale := 1.0 + edge / (side * 0.30)
+	# Short colored extrusion and a narrow rim give volume without a sticker halo.
+	canvas.draw_colored_polygon(_target_points(shape, center + Vector2(0.0, side * 0.037), side * 1.025), Color(0.40, 0.24, 0.11, alpha * 0.22))
+	canvas.draw_colored_polygon(_target_points(shape, center + Vector2(0.0, side * 0.025), side * rim_scale), _alpha(dark, alpha))
+	canvas.draw_colored_polygon(_target_points(shape, center, side * rim_scale), _alpha(dark, alpha))
 	canvas.draw_colored_polygon(points, _alpha(base, alpha))
 	for i in range(points.size()):
 		var next := (i + 1) % points.size()
 		var normal := ((shape[i] + shape[next]) * 0.5).normalized()
 		var light := clampf(0.5 + normal.dot(Vector2(-0.52, -0.86)) * 0.5, 0.0, 1.0)
 		var facet := shade.lerp(bright, light)
-		if not is_gold and i % 2 == 1:
-			facet = facet.darkened(0.10)
 		canvas.draw_colored_polygon(PackedVector2Array([points[i], points[next], inset[next], inset[i]]), _alpha(facet, alpha))
 	var table_colors := PackedColorArray()
 	for point in shape:
-		table_colors.append(_alpha(base.lightened(clampf(0.13 - point.y * 0.30, 0.03, 0.27)), alpha))
+		var top_light := clampf(0.10 - point.y * 0.22, 0.03, 0.17)
+		table_colors.append(_alpha(base.lerp(bright, top_light + clampf(glow, 0.0, 2.0) * 0.012), alpha))
 	canvas.draw_polygon(inset, table_colors)
-	# Highlight only a few upper facets rather than tracing the entire contour.
-	var highlight_width := clampf(side * 0.034, 0.8, 2.2)
-	for i in range(points.size()):
-		var next := (i + 1) % points.size()
-		if shape[i].y < -0.12 and shape[next].x <= 0.04:
-			canvas.draw_line(points[i], points[next], Color(1.0, 0.97, 0.88, alpha * 0.95), highlight_width, true)
-	var glint := center + Vector2(-0.09, -0.105) * side
-	var glint_size := side * 0.063
-	canvas.draw_line(glint - Vector2(glint_size, 0.0), glint + Vector2(glint_size, 0.0), Color(1.0, 1.0, 0.97, alpha), highlight_width, true)
-	canvas.draw_line(glint - Vector2(0.0, glint_size), glint + Vector2(0.0, glint_size), Color(1.0, 1.0, 0.97, alpha), highlight_width, true)
 
 static func _target_outline(is_gold: bool) -> PackedVector2Array:
-	var shape := PackedVector2Array()
-	var count := 5 if is_gold else 12
-	for i in range(count):
-		var angle := -PI * 0.5 + TAU * float(i) / float(count)
-		var radius := 0.33 if is_gold or i % 2 == 0 else 0.175
-		var point := Vector2.from_angle(angle) * radius
-		if not is_gold:
-			point.x *= 1.10
-		shape.append(point)
-	return shape
+	if is_gold:
+		return PackedVector2Array([
+			Vector2(0.0, -0.315), Vector2(0.30, -0.09), Vector2(0.19, 0.28),
+			Vector2(-0.19, 0.28), Vector2(-0.30, -0.09)
+		])
+	# Inner corners sit at roughly three quarters of the outer radius:
+	# six broad points remain readable when the board cell is only 30px wide.
+	return PackedVector2Array([
+		Vector2(0.0, -0.30), Vector2(0.115, -0.20), Vector2(0.28, -0.15),
+		Vector2(0.23, 0.0), Vector2(0.28, 0.15), Vector2(0.115, 0.20),
+		Vector2(0.0, 0.30), Vector2(-0.115, 0.20), Vector2(-0.28, 0.15),
+		Vector2(-0.23, 0.0), Vector2(-0.28, -0.15), Vector2(-0.115, -0.20)
+	])
 
 static func _target_points(shape: PackedVector2Array, center: Vector2, side: float) -> PackedVector2Array:
 	var points := PackedVector2Array()
