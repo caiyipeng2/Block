@@ -24,6 +24,18 @@ const GOLD := Color("#ffd05a")
 const AQUA := Color("#73f8e4")
 const MUTED := Color("#aec3eb")
 const TARGET_KINDS := ["blue_diamond", "gold_gem", "yellow_star", "red_star"]
+## Victory timing and strength are presentation-only tuning values, in seconds.
+const VICTORY_SEQUENCE_DURATION := 2.80
+const VICTORY_GEM_START := 0.10
+const VICTORY_TITLE_START := 0.44
+const VICTORY_ACTION_START := 0.84
+const VICTORY_SHEEN_START := 1.12
+const VICTORY_GEM_OVERSHOOT := 1.25
+const VICTORY_GLOW_STRENGTH := 1.0
+const VICTORY_CONFETTI_COUNT := 104
+const VICTORY_HERO_SIZE := Vector2(440.0, 280.0)
+const VICTORY_CARD_WIDTH := 640.0
+const VICTORY_CARD_HEIGHT := 630.0
 
 var _mode := MODE_HIDDEN
 var _stats: Dictionary = {}
@@ -101,6 +113,9 @@ var _victory_progress := 1.0
 var _victory_tween: Tween
 var _victory_confetti: Control
 var _victory_particles: Array[Dictionary] = []
+var _victory_ambient_running := false
+var _victory_ambient_time := 0.0
+var _victory_button_ready := true
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -123,6 +138,9 @@ func _notification(what: int) -> void:
 		_layout_controls()
 
 func _process(delta: float) -> void:
+	if _victory_ambient_running:
+		_victory_ambient_time += delta
+		_overlay_objective_badge.queue_redraw()
 	if _target_pulses.is_empty():
 		return
 	for kind: String in _target_pulses.keys():
@@ -238,8 +256,9 @@ func _draw_check(canvas: CanvasItem, center: Vector2, side: float, opacity: floa
 	var shadow := PackedVector2Array()
 	for point in points:
 		shadow.append(point + Vector2(0.0, 1.5))
-	canvas.draw_polyline(shadow, Color(0.0, 0.20, 0.08, opacity), 5.5, true)
-	canvas.draw_polyline(points, Color(0.35, 1.0, 0.18, opacity), 3.5, true)
+	var weight := maxf(3.5, side * 0.25)
+	canvas.draw_polyline(shadow, Color(0.0, 0.20, 0.08, opacity), weight + 2.0, true)
+	canvas.draw_polyline(points, Color(0.35, 1.0, 0.18, opacity), weight, true)
 
 func _draw_centered_text(canvas: CanvasItem, value: String, rect: Rect2, max_font_size: int, color: Color) -> void:
 	var font := _stats_label.get_theme_font("font")
@@ -296,18 +315,104 @@ func _draw_overlay_objective_badge() -> void:
 	if _is_collect_objective():
 		var kinds := _active_target_kinds(_stats)
 		var victory := _mode == MODE_LEVEL_COMPLETE
-		var spacing := minf(112.0 if victory else 64.0, _overlay_objective_badge.size.x / float(maxi(kinds.size(), 1)))
-		var marker_side := minf(76.0 if victory else 48.0, spacing * 0.80)
+		if victory:
+			_draw_victory_targets(kinds)
+			return
+		var spacing := minf(64.0, _overlay_objective_badge.size.x / float(maxi(kinds.size(), 1)))
+		var marker_side := minf(48.0, spacing * 0.80)
 		for index in range(kinds.size()):
-			var reveal := clampf((_victory_progress - float(index) * 0.12) / 0.34, 0.0, 1.0) if victory else 1.0
-			var marker_center := center + Vector2((float(index) - float(kinds.size() - 1) * 0.5) * spacing, -10.0 if victory else 0.0)
-			var visual_side := marker_side * (0.82 + reveal * 0.18)
-			BlockArt.draw_target_marker(_overlay_objective_badge, Rect2(marker_center - Vector2.ONE * visual_side * 0.5, Vector2.ONE * visual_side), 1.0, 1.0 + (1.0 - reveal) * 0.7, kinds[index])
-			if victory:
-				_draw_check(_overlay_objective_badge, marker_center + Vector2(0.0, marker_side * 0.5 + 10.0), 12.0, reveal)
+			var marker_center := center + Vector2((float(index) - float(kinds.size() - 1) * 0.5) * spacing, 0.0)
+			BlockArt.draw_target_marker(_overlay_objective_badge, Rect2(marker_center - Vector2.ONE * marker_side * 0.5, Vector2.ONE * marker_side), 1.0, 1.0, kinds[index])
 	else:
 		_overlay_objective_badge.draw_circle(center, 25.0, Color("#293660"))
 		BlockArt.draw_icon(_overlay_objective_badge, "crown", Rect2(center - Vector2.ONE * 20.0, Vector2.ONE * 40.0), GOLD)
+
+func _victory_time() -> float:
+	return _victory_progress * VICTORY_SEQUENCE_DURATION
+
+func _victory_marker_center(index: int, count: int) -> Vector2:
+	var bounds := _overlay_objective_badge.size
+	if count == 3:
+		# The middle category crowns the group, with the other two below it.
+		var horizontal := 0.265 if index == 0 else (0.735 if index == 2 else 0.5)
+		return Vector2(bounds.x * horizontal, bounds.y * (0.265 if index == 1 else 0.64))
+	if count == 1:
+		return bounds * Vector2(0.5, 0.47)
+	if count == 2:
+		return bounds * Vector2(0.30 if index == 0 else 0.70, 0.48)
+	var angle := -PI * 0.5 + TAU * float(index) / float(maxi(count, 1))
+	return bounds * 0.5 + Vector2(cos(angle) * bounds.x * 0.29, sin(angle) * bounds.y * 0.28)
+
+func _victory_pop(progress: float, overshoot: float) -> float:
+	if progress <= 0.0:
+		return 0.0
+	if progress < 0.46:
+		return lerpf(0.20, overshoot, sin(progress / 0.46 * PI * 0.5))
+	var settling := (progress - 0.46) / 0.54
+	return lerpf(overshoot, 1.0, 1.0 - pow(1.0 - settling, 3.0))
+
+func _victory_presentation_kinds(kinds: Array[String]) -> Array[String]:
+	if kinds.size() != 3:
+		return kinds
+	var upper := "gold_gem" if kinds.has("gold_gem") else kinds[0]
+	var lower: Array[String] = []
+	for kind: String in kinds:
+		if kind != upper:
+			lower.append(kind)
+	var ordered: Array[String] = [lower[0], upper, lower[1]]
+	return ordered
+
+func _draw_victory_targets(kinds: Array[String]) -> void:
+	var presentation_kinds := _victory_presentation_kinds(kinds)
+	var reduced := bool(_stats.get("reduced_motion", false))
+	var elapsed := _victory_time()
+	var bounds := _overlay_objective_badge.size
+	var marker_side := minf(bounds.x * 0.30, bounds.y * 0.42)
+	_draw_victory_glow(reduced)
+	for index in range(presentation_kinds.size()):
+		var reveal := 1.0 if reduced else clampf((elapsed - VICTORY_GEM_START - float(index) * 0.065) / 0.34, 0.0, 1.0)
+		if reveal <= 0.0:
+			continue
+		var marker_center := _victory_marker_center(index, presentation_kinds.size())
+		if _victory_ambient_running:
+			marker_center.y += sin(_victory_ambient_time * 1.8 + float(index) * 1.9) * 2.5
+		var scale_factor := 1.0 if reduced else _victory_pop(reveal, VICTORY_GEM_OVERSHOOT)
+		var side := marker_side * scale_factor
+		var flash := 0.0 if reduced else sin(reveal * PI) * 0.65
+		for ring in range(4, 0, -1):
+			_overlay_objective_badge.draw_circle(marker_center, marker_side * (0.48 + float(ring) * 0.10), Color(1.0, 0.78, 0.23, 0.022 * reveal * VICTORY_GLOW_STRENGTH))
+		BlockArt.draw_target_marker(_overlay_objective_badge, Rect2(marker_center - Vector2.ONE * side * 0.5, Vector2.ONE * side), minf(reveal * 4.0, 1.0), 1.15 + flash, presentation_kinds[index])
+		var check_reveal := 1.0 if reduced else clampf((elapsed - 0.30 - float(index) * 0.085) / 0.20, 0.0, 1.0)
+		if check_reveal > 0.0:
+			var check_scale := 1.0 if reduced else _victory_pop(check_reveal, 1.30)
+			_draw_check(_overlay_objective_badge, marker_center + Vector2(marker_side * 0.10, marker_side * 0.43), marker_side * 0.24 * check_scale, minf(check_reveal * 3.0, 1.0))
+
+func _draw_victory_glow(reduced: bool) -> void:
+	var canvas := _overlay_objective_badge
+	var bounds := canvas.size
+	var center := bounds * Vector2(0.5, 0.49)
+	var radius := minf(bounds.x * 0.48, bounds.y * 0.61)
+	var reveal := 1.0 if reduced else clampf((_victory_time() - 0.08) / 0.40, 0.0, 1.0)
+	var strength := (0.48 if reduced else 1.0) * reveal * VICTORY_GLOW_STRENGTH
+	for ring in range(10, 0, -1):
+		var fraction := float(ring) / 10.0
+		canvas.draw_circle(center, radius * fraction, Color(1.0, 0.70 + 0.14 * (1.0 - fraction), 0.20, (0.012 + (1.0 - fraction) * 0.022) * strength))
+	if reduced:
+		return
+	var angle_offset := _victory_ambient_time * 0.12
+	for ray in range(10):
+		var angle := angle_offset + TAU * float(ray) / 10.0
+		var ray_length := radius * (0.96 if ray % 2 == 0 else 1.08)
+		canvas.draw_colored_polygon(PackedVector2Array([center, center + Vector2.from_angle(angle - 0.10) * ray_length, center + Vector2.from_angle(angle + 0.10) * ray_length]), Color(1.0, 0.85, 0.42, 0.030 * strength))
+	for index in range(9):
+		var phase := angle_offset * 1.6 + TAU * float(index) / 9.0
+		var orbit := Vector2(cos(phase), sin(phase)) * radius * (0.65 + float(index % 3) * 0.10)
+		var twinkle := 0.35 + 0.65 * pow(maxf(0.0, sin(_victory_ambient_time * 2.6 + float(index) * 2.0)), 3.0)
+		var point := center + orbit
+		var length := 2.0 + twinkle * 2.5
+		var color := Color(1.0, 0.95, 0.62, twinkle * strength)
+		canvas.draw_line(point - Vector2(length, 0.0), point + Vector2(length, 0.0), color, 1.3, true)
+		canvas.draw_line(point - Vector2(0.0, length), point + Vector2(0.0, length), color, 1.3, true)
 
 func configure(primary: Color, secondary: Color, text: Color, surface: Color) -> void:
 	_primary = primary
@@ -1076,14 +1181,21 @@ func _configure_overlay_actions() -> void:
 		var clear_panel := StyleBoxEmpty.new()
 		clear_panel.set_content_margin_all(20.0)
 		_card.add_theme_stylebox_override("panel", clear_panel)
-		_overlay_title.add_theme_font_size_override("font_size", 42)
-		_overlay_title.add_theme_color_override("font_color", AQUA)
+		_overlay_title.add_theme_font_size_override("font_size", 46)
+		_overlay_title.add_theme_color_override("font_color", Color("#ddffff"))
+		_overlay_title.add_theme_color_override("font_outline_color", Color("#154577"))
+		_overlay_title.add_theme_constant_override("outline_size", 5)
+		_overlay_title.add_theme_color_override("font_shadow_color", Color(0.01, 0.08, 0.23, 0.72))
+		_overlay_title.add_theme_constant_override("shadow_offset_y", 4)
 		_overlay_box.move_child(_overlay_title, 0)
 		_overlay_box.move_child(_overlay_objective_badge, 1)
 	else:
 		_card.add_theme_stylebox_override("panel", _card_box())
 		_overlay_title.add_theme_font_size_override("font_size", 24)
 		_overlay_title.add_theme_color_override("font_color", _text)
+		_overlay_title.add_theme_constant_override("outline_size", 0)
+		_overlay_title.add_theme_color_override("font_shadow_color", Color.TRANSPARENT)
+		_overlay_title.add_theme_constant_override("shadow_offset_y", 0)
 		_overlay_box.move_child(_overlay_objective_badge, 0)
 		_overlay_box.move_child(_overlay_title, 1)
 
@@ -1199,36 +1311,85 @@ func _start_victory_animation() -> void:
 	if bool(_stats.get("reduced_motion", false)):
 		return
 	_victory_progress = 0.0
+	_victory_ambient_time = 0.0
+	_victory_ambient_running = true
+	_victory_button_ready = false
+	_set_victory_action_visible(false)
+	_overlay_title.modulate.a = 0.0
+	_overlay_title.scale = Vector2.ONE * 0.55
+	_overlay_title.rotation = deg_to_rad(-4.0)
 	var random := RandomNumberGenerator.new()
 	random.seed = Time.get_ticks_usec()
 	var colors := [GOLD, AQUA, Color("#fb5f7a"), Color("#a67cf1"), Color("#8fed4d")]
-	for index in range(72):
+	for index in range(VICTORY_CONFETTI_COUNT):
+		var direction := -1.0 if index % 2 == 0 else 1.0
 		_victory_particles.append({
-			"origin": Vector2(random.randf_range(size.x * 0.20, size.x * 0.80), random.randf_range(size.y * 0.13, size.y * 0.30)),
-			"velocity": Vector2(random.randf_range(-130.0, 130.0), random.randf_range(-90.0, 15.0)),
+			# Relative to the live hero group, so scroll/resize cannot detach it.
+			"origin": Vector2(direction * random.randf_range(0.34, 0.44), random.randf_range(-0.08, 0.10)),
+			"velocity": Vector2(direction * random.randf_range(75.0, 195.0), random.randf_range(-230.0, -115.0)),
 			"color": colors[index % colors.size()],
-			"side": random.randf_range(4.0, 8.0),
+			"side": random.randf_range(4.0, 8.5),
 			"angle": random.randf_range(-PI, PI),
+			"delay": random.randf_range(0.0, 0.12),
 		})
 	_victory_tween = create_tween()
 	_victory_tween.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
-	_victory_tween.tween_method(_set_victory_progress, 0.0, 1.0, 1.65)
+	_victory_tween.tween_method(_set_victory_progress, 0.0, 1.0, VICTORY_SEQUENCE_DURATION)
 	_victory_tween.tween_callback(func() -> void:
 		_victory_tween = null
 		_victory_particles.clear()
+		_set_victory_action_visible(true)
 		_victory_confetti.queue_redraw())
+	# The hidden primary action must never retain invisible keyboard focus.
+	if not _overlay_restart_button.has_focus() and not _overlay_menu_button.has_focus():
+		_overlay_restart_button.grab_focus()
+		_ensure_overlay_focus_visible.call_deferred(_overlay_restart_button)
+	_set_victory_progress(0.0)
 
 func _set_victory_progress(progress: float) -> void:
 	_victory_progress = progress
+	var elapsed := _victory_time()
+	var title_reveal := clampf((elapsed - VICTORY_TITLE_START) / 0.30, 0.0, 1.0)
+	_overlay_title.pivot_offset = _overlay_title.size * 0.5
+	_overlay_title.scale = Vector2.ONE * _victory_pop(title_reveal, 1.10)
+	_overlay_title.modulate.a = minf(title_reveal * 3.0, 1.0)
+	_overlay_title.rotation = deg_to_rad(-4.0) * (1.0 - title_reveal)
+	var action_reveal := clampf((elapsed - VICTORY_ACTION_START) / 0.28, 0.0, 1.0)
+	if action_reveal > 0.0:
+		_set_victory_action_visible(action_reveal >= 0.15)
+		_next_level_button.pivot_offset = _next_level_button.size * 0.5
+		_next_level_button.scale = Vector2.ONE * _victory_pop(action_reveal, 1.08)
+		_next_level_button.modulate.a = minf(action_reveal * 3.0, 1.0)
 	_overlay_objective_badge.queue_redraw()
 	_victory_confetti.queue_redraw()
+
+func _set_victory_action_visible(ready: bool) -> void:
+	_victory_button_ready = ready
+	if not is_instance_valid(_next_level_button):
+		return
+	_next_level_button.modulate = Color.WHITE if ready else Color(1.0, 1.0, 1.0, 0.0)
+	_next_level_button.scale = Vector2.ONE
+	_next_level_button.mouse_filter = Control.MOUSE_FILTER_STOP if ready else Control.MOUSE_FILTER_IGNORE
+	_next_level_button.focus_mode = Control.FOCUS_ALL if ready else Control.FOCUS_NONE
+	if not ready:
+		_next_level_button.release_focus()
+	elif _mode == MODE_LEVEL_COMPLETE and _is_collect_objective() and _next_level_button.is_visible_in_tree() and not _next_level_button.disabled and is_inside_tree() and get_viewport() != null and not is_instance_valid(get_viewport().gui_get_focus_owner()):
+		# Do not steal a secondary action the player has already selected.
+		_next_level_button.grab_focus()
 
 func _stop_victory_animation() -> void:
 	if is_instance_valid(_victory_tween):
 		_victory_tween.kill()
 	_victory_tween = null
 	_victory_progress = 1.0
+	_victory_ambient_running = false
+	_victory_ambient_time = 0.0
 	_victory_particles.clear()
+	_set_victory_action_visible(true)
+	if is_instance_valid(_overlay_title):
+		_overlay_title.scale = Vector2.ONE
+		_overlay_title.modulate = Color.WHITE
+		_overlay_title.rotation = 0.0
 	if is_instance_valid(_overlay_objective_badge):
 		_overlay_objective_badge.queue_redraw()
 	if is_instance_valid(_victory_confetti):
@@ -1237,19 +1398,55 @@ func _stop_victory_animation() -> void:
 func _draw_victory_confetti() -> void:
 	if _mode != MODE_LEVEL_COMPLETE or not _is_collect_objective():
 		return
-	var elapsed := _victory_progress * 1.65
+	var elapsed := _victory_time()
+	var anchor := _overlay_objective_badge.global_position - _victory_confetti.global_position + _overlay_objective_badge.size * Vector2(0.5, 0.49)
+	var viewport_rect := Rect2(_card_viewport.global_position - _victory_confetti.global_position, _card_viewport.size)
+	var group_size := _overlay_objective_badge.size
+	var intensity_scale := clampf(group_size.x / 330.0, 0.55, 1.30)
 	for particle: Dictionary in _victory_particles:
-		var origin: Vector2 = particle["origin"]
+		var lifetime := elapsed - 0.42 - float(particle["delay"])
+		if lifetime < 0.0:
+			continue
+		var relative_origin: Vector2 = particle["origin"]
+		var origin := anchor + relative_origin * group_size
 		var velocity: Vector2 = particle["velocity"]
-		var point := origin + velocity * elapsed + Vector2(0.0, elapsed * elapsed * 190.0)
+		var point := origin + (velocity * lifetime + Vector2(0.0, lifetime * lifetime * 120.0)) * intensity_scale
+		if not viewport_rect.grow(-8.0).has_point(point):
+			continue
 		var color: Color = particle["color"]
-		color.a = 1.0 - clampf((_victory_progress - 0.66) / 0.34, 0.0, 1.0)
-		var angle := float(particle["angle"]) + elapsed * 4.0
-		var side := float(particle["side"])
+		color.a = 1.0 - clampf((lifetime - 1.60) / 0.70, 0.0, 1.0)
+		var angle := float(particle["angle"]) + lifetime * 5.0
+		var side := float(particle["side"]) * intensity_scale
 		var vertices := PackedVector2Array()
 		for corner in [Vector2(-0.5, -1.0), Vector2(0.5, -1.0), Vector2(0.5, 1.0), Vector2(-0.5, 1.0)]:
 			vertices.append(point + corner.rotated(angle) * side)
 		_victory_confetti.draw_colored_polygon(vertices, color)
+	_draw_victory_action_sheen(viewport_rect)
+
+func _draw_victory_action_sheen(viewport_rect: Rect2) -> void:
+	if bool(_stats.get("reduced_motion", false)) or not _victory_button_ready:
+		return
+	var progress := (_victory_time() - VICTORY_SHEEN_START) / 0.64
+	if progress < 0.0 or progress > 1.0:
+		return
+	var global_rect := _next_level_button.get_global_rect()
+	var rect := Rect2(global_rect.position - _victory_confetti.global_position, global_rect.size).grow(-4.0)
+	var clipped := rect.intersection(viewport_rect)
+	if not clipped.has_area():
+		return
+	var middle := lerpf(rect.position.x - rect.size.x * 0.30, rect.end.x + rect.size.x * 0.30, progress)
+	var half_width := rect.size.x * 0.12
+	for row in range(0, int(rect.size.y), 2):
+		var y := rect.position.y + float(row)
+		if y < clipped.position.y or y > clipped.end.y:
+			continue
+		var skew := (float(row) / maxf(rect.size.y, 1.0) - 0.5) * rect.size.y * 0.65
+		for layer in range(3, 0, -1):
+			var width := half_width * float(layer) / 3.0
+			var left := maxf(clipped.position.x, middle + skew - width)
+			var right := minf(clipped.end.x, middle + skew + width)
+			if right > left:
+				_victory_confetti.draw_line(Vector2(left, y), Vector2(right, y), Color(1.0, 1.0, 0.85, 0.065), 2.0)
 
 func _layout_controls() -> void:
 	if not _configured:
@@ -1384,20 +1581,27 @@ func _layout_notice() -> void:
 
 func _layout_overlay() -> void:
 	var collect_victory := _is_collect_objective() and _mode == MODE_LEVEL_COMPLETE
-	_overlay_objective_badge.custom_minimum_size = Vector2(minf(330.0, maxf(size.x - 72.0, 96.0)) if collect_victory else (192.0 if _is_collect_objective() else 56.0), 116.0 if collect_victory else 56.0)
-	_overlay_title.custom_minimum_size = Vector2(0.0, 54.0 if collect_victory else 32.0)
+	_overlay_objective_badge.custom_minimum_size = Vector2(minf(VICTORY_HERO_SIZE.x, maxf(size.x - 80.0, 96.0)) if collect_victory else (192.0 if _is_collect_objective() else 56.0), VICTORY_HERO_SIZE.y if collect_victory else 56.0)
+	_overlay_title.custom_minimum_size = Vector2(0.0, 64.0 if collect_victory else 32.0)
 	if collect_victory:
-		_overlay_title.add_theme_font_size_override("font_size", 30 if size.x < 420.0 else 42)
+		_overlay_title.add_theme_font_size_override("font_size", 32 if size.x < 420.0 else 46)
+	_overlay_title.pivot_offset = _overlay_title.size * 0.5
 	_overlay_score.custom_minimum_size = Vector2(0.0, 78.0)
-	_overlay_best.custom_minimum_size = Vector2(0.0, 24.0 if collect_victory else 28.0)
-	_overlay_best.add_theme_font_size_override("font_size", 16 if collect_victory else 18)
-	_overlay_stats.custom_minimum_size = Vector2(0.0, 42.0 if collect_victory else 66.0)
-	_overlay_stats.add_theme_font_size_override("font_size", 14 if collect_victory else 16)
-	_new_record_label.custom_minimum_size = Vector2(0.0, 24.0)
+	_overlay_best.custom_minimum_size = Vector2(0.0, 20.0 if collect_victory else 28.0)
+	_overlay_best.add_theme_font_size_override("font_size", 14 if collect_victory else 18)
+	_overlay_best.add_theme_color_override("font_color", MUTED if collect_victory else GOLD)
+	_overlay_stats.custom_minimum_size = Vector2(0.0, 32.0 if collect_victory else 66.0)
+	_overlay_stats.add_theme_font_size_override("font_size", 12 if collect_victory else 16)
+	var save_warning := collect_victory and bool(_stats.get("save_failed", false))
+	_new_record_label.custom_minimum_size = Vector2(0.0, (48.0 if size.x < 420.0 else 26.0) if save_warning else (22.0 if collect_victory else 24.0))
+	_new_record_label.add_theme_font_size_override("font_size", 16 if save_warning else (14 if collect_victory else 18))
+	_new_record_label.add_theme_color_override("font_color", Color("#ffc586") if save_warning else (MUTED if collect_victory else GOLD))
+	_new_record_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART if save_warning else TextServer.AUTOWRAP_OFF
+	_new_record_label.max_lines_visible = 2 if save_warning else 1
 	_overlay_buttons.custom_minimum_size = Vector2(0.0, MIN_BUTTON_HEIGHT)
 	_overlay_secondary_buttons.custom_minimum_size = Vector2(0.0, 40.0 if collect_victory else MIN_BUTTON_HEIGHT)
-	var card_width := minf(540.0 if _mode == MODE_LEVEL_COMPLETE else 480.0, maxf(size.x - 32.0, 240.0))
-	var card_height := (438.0 if _is_collect_objective() else 376.0) if _mode == MODE_PAUSED else (480.0 if collect_victory else (492.0 if _mode == MODE_LEVEL_COMPLETE else 428.0))
+	var card_width := minf(VICTORY_CARD_WIDTH if collect_victory else (540.0 if _mode == MODE_LEVEL_COMPLETE else 480.0), maxf(size.x - 32.0, 240.0))
+	var card_height := (438.0 if _is_collect_objective() else 376.0) if _mode == MODE_PAUSED else (VICTORY_CARD_HEIGHT if collect_victory else (492.0 if _mode == MODE_LEVEL_COMPLETE else 428.0))
 	var short_labels := card_width < 420.0
 	_resume_button.text = "继续" if short_labels else "继续游戏"
 	_next_level_button.text = "下一关" if bool(_stats.get("has_next_level", false)) else "全部通关"
@@ -1423,7 +1627,7 @@ func _grab_first_focus() -> void:
 	elif _mode == MODE_PAUSED:
 		first = _resume_button
 	elif _mode == MODE_LEVEL_COMPLETE:
-		first = _overlay_menu_button if _next_level_button.disabled else _next_level_button
+		first = _overlay_restart_button if _is_collect_objective() and not _victory_button_ready else (_overlay_menu_button if _next_level_button.disabled else _next_level_button)
 	else:
 		first = _overlay_restart_button
 	if is_instance_valid(first) and not first.disabled and first.visible:
@@ -1432,7 +1636,7 @@ func _grab_first_focus() -> void:
 		_ensure_overlay_focus_visible.call_deferred(first)
 
 func _ensure_overlay_focus_visible(button: Button) -> void:
-	if is_instance_valid(button) and is_instance_valid(_card_viewport) and _overlay_root.visible and button.is_inside_tree() and _card.is_ancestor_of(button):
+	if is_instance_valid(button) and button.has_focus() and is_instance_valid(_card_viewport) and _overlay_root.visible and button.is_inside_tree() and _card.is_ancestor_of(button):
 		_card_viewport.ensure_control_visible(button)
 
 func _local_button_rect(button: Button) -> Rect2:
@@ -1471,5 +1675,5 @@ func _on_settings_pressed() -> void:
 		settings_requested.emit()
 
 func _on_next_level_pressed() -> void:
-	if _mode == MODE_LEVEL_COMPLETE and not _next_level_button.disabled:
+	if _mode == MODE_LEVEL_COMPLETE and not _next_level_button.disabled and (not _is_collect_objective() or _victory_button_ready):
 		next_level_requested.emit()

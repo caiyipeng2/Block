@@ -5,11 +5,13 @@ extends Control
 ## after finished so particle lifetime does not extend the input lock.
 signal finished
 signal shake_requested(strength: float, duration: float)
+signal impact_requested(strength: float, duration: float)
 signal target_arrived(kind: String, counted: bool)
 signal collections_settled
 
 const BlockArt = preload("res://scripts/ui/block_art.gd")
 const CollectionFlights = preload("res://scripts/ui/collection_flights.gd")
+const FinalImpact = preload("res://scripts/ui/final_impact.gd")
 const GOLD := Color("#ffdc57")
 const CYAN := Color("#a0f8ff")
 const OUTLINE := Color("#182a71")
@@ -17,6 +19,12 @@ const FLASH_DURATION := 0.06
 const SWEEP_DURATION := 0.10
 const ACCENT_DURATION := 0.62
 const SCORE_FLIGHT_DURATION := 0.58
+const FINAL_LIFT_DURATION := 0.20
+const FINAL_HOLD_DURATION := 0.07
+const FINAL_SLAM_DURATION := 0.09
+const FINAL_REBOUND_DURATION := 0.12
+const FINAL_PEAK_SCALE := 1.95
+const FINAL_PLACEMENT_DURATION := FINAL_LIFT_DURATION + FINAL_HOLD_DURATION + FINAL_SLAM_DURATION + FINAL_REBOUND_DURATION
 
 var blocks_board: bool:
 	get:
@@ -72,12 +80,18 @@ var _combo_number: Label
 var _combo_root: Control
 var _combo_base_scale := 1.0
 var _collection_layer: Control
+var _final_impact: Control
+var _final_move := false
+var _final_piece_pivot := Vector2.ZERO
+var _final_piece_scale := Vector2.ONE
+var _final_piece_lift := 0.0
 var _accent_progress := 0.0
 var _particles: Array[Dictionary] = []
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_ensure_collection_layer()
+	_ensure_final_impact()
 
 func is_busy() -> bool:
 	return _busy
@@ -86,6 +100,8 @@ func set_board_offset(offset: Vector2) -> void:
 	_board_offset = offset
 	if is_instance_valid(_collection_layer):
 		_collection_layer.set_board_offset(offset)
+	if is_instance_valid(_final_impact):
+		_final_impact.set_board_offset(offset)
 	queue_redraw()
 
 func has_pending_collections() -> bool:
@@ -112,6 +128,15 @@ func _on_collection_target_arrived(kind: String, counted: bool) -> void:
 func _on_collections_settled() -> void:
 	collections_settled.emit()
 
+func _ensure_final_impact() -> void:
+	if is_instance_valid(_final_impact):
+		return
+	_final_impact = FinalImpact.new()
+	_final_impact.name = "FinalImpact"
+	_final_impact.z_index = 1
+	add_child(_final_impact)
+	_final_impact.set_paused(_paused)
+
 func play_move(
 		before_board: BoardRules,
 		placed_cells: Array[Vector2i],
@@ -135,6 +160,7 @@ func play_move(
 	_cell_inset = float(context.get("cell_inset", 1.0))
 	_palette = palette
 	_context = context.duplicate()
+	_final_move = bool(context.get("final_block", false)) and not reduced_motion and not placed_cells.is_empty()
 	_clear_colors = context.get("clear_colors", {}).duplicate()
 	_clear_row_colors = context.get("clear_row_colors", {}).duplicate()
 	_clear_column_colors = context.get("clear_column_colors", {}).duplicate()
@@ -153,9 +179,10 @@ func play_move(
 		_cell_colors[coordinate] = placed_color
 	for coordinate in clear_cells:
 		_clear_cells[coordinate] = true
+	_final_piece_pivot = _placed_bounds_center()
 	_collect_clear_lines()
 	_busy = true
-	var placement_duration := clampf(durations.x, 0.06, 0.14)
+	var placement_duration := FINAL_PLACEMENT_DURATION if _final_move else clampf(durations.x, 0.06, 0.14)
 	_enqueue_collection_events(reduced_motion, placement_duration + FLASH_DURATION + SWEEP_DURATION)
 	queue_redraw()
 	if reduced_motion:
@@ -165,12 +192,22 @@ func play_move(
 		return
 	if _clear_cells.is_empty() and gained > 0 and not _is_collection_presentation():
 		_start_score_float(false)
-	# Blocking phase is bounded to .50s even if a resource is edited.
+	# Ordinary moves block at most .50s. The last piece has a distinct .48s
+	# lift-and-contact lead-in, followed by the same bounded clear phase.
 	# durations.y includes the flash and sweep, not just fragment dispersion.
 	var disperse_duration := clampf(durations.y - FLASH_DURATION - SWEEP_DURATION, 0.10, 0.20)
 	_tween = create_tween()
-	_tween.tween_method(_set_placed_scale, 0.90, 1.06, placement_duration * 0.65).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	_tween.tween_method(_set_placed_scale, 1.06, 1.0, placement_duration * 0.35).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
+	if _final_move:
+		_placed_scale = 1.0
+		_tween.tween_method(_set_final_lift, 0.0, 1.0, FINAL_LIFT_DURATION).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		_tween.tween_interval(FINAL_HOLD_DURATION)
+		_tween.tween_method(_set_final_slam, 0.0, 1.0, FINAL_SLAM_DURATION).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+		_tween.tween_callback(_begin_final_impact)
+		_tween.tween_method(_set_final_squash, 0.0, 1.0, FINAL_REBOUND_DURATION * 0.40).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		_tween.tween_method(_set_final_settle, 0.0, 1.0, FINAL_REBOUND_DURATION * 0.60).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
+	else:
+		_tween.tween_method(_set_placed_scale, 0.90, 1.06, placement_duration * 0.65).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		_tween.tween_method(_set_placed_scale, 1.06, 1.0, placement_duration * 0.35).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
 	if not _clear_cells.is_empty():
 		_tween.tween_callback(_begin_clear)
 		_tween.tween_method(_set_flash_progress, 0.0, 1.0, FLASH_DURATION)
@@ -221,6 +258,8 @@ func reset() -> void:
 ## Starting the next placement only clears its board snapshot and accents.
 ## Previously collected gems keep flying and retain their arrival callbacks.
 func reset_move() -> void:
+	if is_instance_valid(_final_impact):
+		_final_impact.reset()
 	for tween in [_tween, _score_tween, _accent_tween]:
 		if tween != null:
 			tween.kill()
@@ -254,12 +293,18 @@ func reset_move() -> void:
 	_sweep_started = false
 	_dispersing = false
 	_rebound_progress = 0.0
+	_final_move = false
+	_final_piece_scale = Vector2.ONE
+	_final_piece_lift = 0.0
+	_final_piece_pivot = Vector2.ZERO
 	queue_redraw()
 
 func set_paused(paused: bool) -> void:
 	_paused = paused
 	if is_instance_valid(_collection_layer):
 		_collection_layer.set_paused(paused)
+	if is_instance_valid(_final_impact):
+		_final_impact.set_paused(paused)
 	_apply_paused_state()
 
 func _apply_paused_state() -> void:
@@ -272,6 +317,47 @@ func _apply_paused_state() -> void:
 
 func _set_placed_scale(value: float) -> void:
 	_placed_scale = value
+	queue_redraw()
+
+func _placed_bounds_center() -> Vector2:
+	if _placed_cells.is_empty():
+		return _board_rect.get_center()
+	var first: Vector2i = _placed_cells.keys()[0]
+	var minimum := first
+	var maximum := first
+	for key in _placed_cells:
+		var coordinate: Vector2i = key
+		minimum = Vector2i(mini(minimum.x, coordinate.x), mini(minimum.y, coordinate.y))
+		maximum = Vector2i(maxi(maximum.x, coordinate.x), maxi(maximum.y, coordinate.y))
+	return _board_rect.position + (Vector2(minimum + maximum) + Vector2.ONE) * _cell_size * 0.5
+
+func _set_final_lift(progress: float) -> void:
+	_final_piece_scale = Vector2.ONE * lerpf(1.0, FINAL_PEAK_SCALE, progress)
+	_final_piece_lift = _cell_size * 0.62 * progress
+	queue_redraw()
+
+func _set_final_slam(progress: float) -> void:
+	_final_piece_scale = Vector2.ONE * lerpf(FINAL_PEAK_SCALE, 1.0, progress)
+	_final_piece_lift = _cell_size * 0.62 * (1.0 - progress)
+	queue_redraw()
+
+func _begin_final_impact() -> void:
+	_final_piece_scale = Vector2(1.14, 0.86)
+	_final_piece_lift = 0.0
+	_ensure_final_impact()
+	_final_impact.play(_final_piece_pivot, _board_rect, _cell_size)
+	_final_impact.set_board_offset(_board_offset)
+	# The owner also synchronizes the existing impact sound here. It decides
+	# whether the dedicated camera impulse is enabled by the player settings.
+	impact_requested.emit(8.0, 0.30)
+	queue_redraw()
+
+func _set_final_squash(progress: float) -> void:
+	_final_piece_scale = Vector2(1.14, 0.86).lerp(Vector2(0.97, 1.045), progress)
+	queue_redraw()
+
+func _set_final_settle(progress: float) -> void:
+	_final_piece_scale = Vector2(0.97, 1.045).lerp(Vector2.ONE, progress)
 	queue_redraw()
 
 func _set_flash_progress(value: float) -> void:
@@ -294,7 +380,7 @@ func _begin_clear() -> void:
 	_clear_started = true
 	if _gained > 0 and not _is_collection_presentation():
 		_start_score_float(false)
-	if bool(_context.get("shake_enabled", true)):
+	if not _final_move and bool(_context.get("shake_enabled", true)):
 		var line_count := maxi(int(_context.get("clear_lines", _clear_rows.size() + _clear_columns.size())), 1)
 		shake_requested.emit(minf(1.6 + float(line_count) * 0.65, 4.8), minf(0.14 + float(line_count) * 0.025, 0.24))
 	queue_redraw()
@@ -404,10 +490,11 @@ func _make_effect_label(text: String, font_size: int, color: Color, outline_size
 func _start_combo() -> void:
 	var combo := int(_context.get("combo", 0))
 	var line_count := int(_context.get("clear_lines", _clear_rows.size() + _clear_columns.size()))
-	var final_block := bool(_context.get("final_block", false))
-	if combo < 2 and line_count < 2 and not final_block:
+	# The contact helper owns Final Block; dispersion can still show Combo.
+	var final_block := bool(_context.get("final_block", false)) and not _final_move
+	if combo < 2 and line_count < 2 and not final_block and not _final_move:
 		return
-	var text := "Final Block!" if final_block else ("Combo" if combo >= 2 else ("Double!" if line_count == 2 else "Multi Clear!"))
+	var text := "Final Block!" if final_block else ("Combo" if combo >= 2 or _final_move else ("Double!" if line_count == 2 else "Multi Clear!"))
 	var font_size := clampi(int(_board_rect.size.x * 0.105), 24, 58)
 	_combo_root = Control.new()
 	_combo_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -487,11 +574,14 @@ func _draw() -> void:
 		if _rebound_piece != null:
 			_draw_rebound()
 		elif _board_size > 0 and _cell_size > 0.0:
+			var whole_piece := _final_move and not _clear_started
 			# Use the resting board's row order, including newly placed cells.
 			for y in range(_board_size):
 				for x in range(_board_size):
 					var coordinate := Vector2i(x, y)
 					if not _cell_colors.has(coordinate):
+						continue
+					if whole_piece and _placed_cells.has(coordinate):
 						continue
 					var alpha := 1.0
 					var block_scale := 1.0
@@ -504,15 +594,31 @@ func _draw() -> void:
 					elif _placed_cells.has(coordinate):
 						block_scale = _placed_scale
 					_draw_board_cell(coordinate, _color_for_id(_resolved_cell_color_id(coordinate)), block_scale, alpha, highlight)
+			if whole_piece:
+				_draw_final_piece()
 			_draw_clear_lines()
 	_draw_particles()
+
+func _draw_final_piece() -> void:
+	# Transform the whole piece once: both tile sizes and their spacing follow
+	# the same pivot. Other occupied cells use the untouched shared grid path.
+	var pivot := _final_piece_pivot + _board_offset
+	var transform_origin := pivot - pivot * _final_piece_scale - Vector2(0.0, _final_piece_lift)
+	draw_set_transform(transform_origin, 0.0, _final_piece_scale)
+	for y in range(_board_size):
+		for x in range(_board_size):
+			var coordinate := Vector2i(x, y)
+			if _placed_cells.has(coordinate):
+				_draw_board_cell(coordinate, _color_for_id(int(_cell_colors[coordinate])), 1.0, 1.0, 0.12)
+	draw_set_transform(Vector2.ZERO)
 
 func _draw_board_cell(coordinate: Vector2i, color: Color, block_scale: float, alpha: float, highlight: float) -> void:
 	if coordinate.x < 0 or coordinate.y < 0 or coordinate.x >= _board_size or coordinate.y >= _board_size:
 		return
 	var cell_origin := _board_rect.position + _board_offset + Vector2(coordinate) * _cell_size
 	var block_rect := BlockArt.grid_cell_rect(cell_origin, _cell_size, _cell_inset, block_scale)
-	if _target_cells.has(coordinate) and not _clear_cells.has(coordinate):
+	var lifted_target := _final_move and not _clear_started and _placed_cells.has(coordinate)
+	if _target_cells.has(coordinate) and (not _clear_cells.has(coordinate) or lifted_target):
 		BlockArt.draw_target_tile(self, block_rect, alpha, highlight, _target_kind(_target_cells[coordinate]))
 	else:
 		BlockArt.draw_block(self, block_rect, color, alpha, highlight)

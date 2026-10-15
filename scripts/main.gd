@@ -49,6 +49,7 @@ var board_shake_offset := Vector2.ZERO
 var shake_elapsed := 0.0
 var shake_duration := 0.0
 var shake_strength := 0.0
+var final_impact_shake := false
 var last_notice_round := -1
 var preview_clear_colors: Dictionary = {}
 var board_placement_orders: Dictionary = {}
@@ -73,6 +74,7 @@ func _ready() -> void:
 	add_child(move_feedback)
 	move_feedback.finished.connect(_on_feedback_finished)
 	move_feedback.shake_requested.connect(_request_board_shake)
+	move_feedback.impact_requested.connect(_request_final_impact)
 	move_feedback.target_arrived.connect(_on_target_arrived)
 	move_feedback.collections_settled.connect(_on_collections_settled)
 	gameplay_ui = GameplayControlsScript.new()
@@ -110,7 +112,13 @@ func _process(delta: float) -> void:
 		shake_elapsed += delta
 		var progress := clampf(shake_elapsed / shake_duration, 0.0, 1.0)
 		var amplitude := shake_strength * (1.0 - progress)
-		board_shake_offset = Vector2(sin(shake_elapsed * 115.0), cos(shake_elapsed * 91.0) * 0.6) * amplitude
+		if final_impact_shake:
+			# One downward impact and a rapidly settling rebound; ordinary drops
+			# never enter this camera profile.
+			var envelope := pow(1.0 - progress, 2.2)
+			board_shake_offset = Vector2(sin(progress * TAU * 3.0) * 0.20, sin(progress * TAU * 2.4)) * shake_strength * envelope
+		else:
+			board_shake_offset = Vector2(sin(shake_elapsed * 115.0), cos(shake_elapsed * 91.0) * 0.6) * amplitude
 		if progress >= 1.0:
 			_stop_board_shake()
 		move_feedback.set_board_offset(board_shake_offset)
@@ -258,7 +266,9 @@ func _handle_release(position: Vector2) -> void:
 		pending_move = result
 		last_gain = int(result.get("gained", 0))
 		var cleared_lines := int(result["clear"]["rows"]) + int(result["clear"]["columns"])
-		_play_feedback("clear" if cleared_lines > 0 else "place")
+		var final_impact := _is_collect_mode() and game.is_level_complete() and not _reduced_motion()
+		if not final_impact:
+			_play_feedback("clear" if cleared_lines > 0 else "place")
 		status_text = "放置 +%d   清除 +%d   合计 +%d   清除 %d 行/列   连击 x%d" % [
 			int(result.get("placement_points", 0)),
 			int(result.get("clear_points", 0)),
@@ -735,13 +745,28 @@ func _on_feedback_finished() -> void:
 func _request_board_shake(strength: float, duration: float) -> void:
 	if _reduced_motion() or not bool(save_data.get("screen_shake", true)):
 		return
+	if final_impact_shake and shake_duration > 0.0:
+		return
+	final_impact_shake = false
 	shake_elapsed = 0.0
 	shake_duration = maxf(duration, 0.01)
 	shake_strength = minf(strength, 5.0)
 
+func _request_final_impact(strength: float, duration: float) -> void:
+	if exiting or screen != "game" or not _is_collect_mode() or not game.is_level_complete():
+		return
+	_play_feedback("clear")
+	if _reduced_motion() or not bool(save_data.get("screen_shake", true)):
+		return
+	final_impact_shake = true
+	shake_elapsed = 0.0
+	shake_duration = clampf(duration, 0.12, 0.40)
+	shake_strength = clampf(strength * 1.25, 0.0, 12.0)
+
 func _stop_board_shake() -> void:
 	board_shake_offset = Vector2.ZERO
 	shake_duration = 0.0
+	final_impact_shake = false
 	if move_feedback != null:
 		move_feedback.set_board_offset(Vector2.ZERO)
 
