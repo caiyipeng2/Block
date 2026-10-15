@@ -12,6 +12,7 @@ static func defaults() -> Dictionary:
 		"classic_high_score": 0,
 		"adventure_highest_completed": 0,
 		"adventure_best_scores": {},
+		"adventure_retry_failures": {},
 		"sound_enabled": true,
 		"music_enabled": true,
 		"reduced_motion": false,
@@ -60,6 +61,27 @@ static func save_data(data: Dictionary, path: String = SAVE_PATH) -> bool:
 		return false
 	return true
 
+static func level_failure_count(data: Dictionary, level_id: int) -> int:
+	if level_id < 1 or level_id > MAX_LEVEL_ID:
+		return 0
+	var payload := _normalized_data(data)
+	if level_id > int(payload["adventure_highest_completed"]) + 1:
+		return 0
+	var retry_failures: Dictionary = payload["adventure_retry_failures"]
+	return int(retry_failures.get(str(level_id), 0))
+
+static func record_level_failed(data: Dictionary, level_id: Variant) -> Dictionary:
+	var payload := _normalized_data(data)
+	if typeof(level_id) != TYPE_INT or level_id < 1 or level_id > MAX_LEVEL_ID:
+		return payload
+	var highest: int = payload["adventure_highest_completed"]
+	if level_id > highest + 1:
+		return payload
+	var key := str(level_id)
+	var retry_failures: Dictionary = payload["adventure_retry_failures"]
+	retry_failures[key] = mini(int(retry_failures.get(key, 0)) + 1, 99)
+	return payload
+
 static func record_level_completed(data: Dictionary, level_id: Variant, score: Variant) -> Dictionary:
 	var payload := _normalized_data(data)
 	# Variant parameters keep bools and fractional numbers from being silently
@@ -75,6 +97,8 @@ static func record_level_completed(data: Dictionary, level_id: Variant, score: V
 	var best_scores: Dictionary = payload["adventure_best_scores"]
 	best_scores[key] = maxi(int(best_scores.get(key, 0)), score)
 	payload["adventure_highest_completed"] = maxi(highest, level_id)
+	var retry_failures: Dictionary = payload["adventure_retry_failures"]
+	retry_failures.erase(key)
 	return payload
 
 static func _normalized_data(data: Dictionary) -> Dictionary:
@@ -98,6 +122,18 @@ static func _normalized_data(data: Dictionary) -> Dictionary:
 			var score: Variant = _nonnegative_integer(stored_best[key])
 			if score != null:
 				best_scores[key] = score
+	var stored_failures: Variant = data.get("adventure_retry_failures")
+	if stored_failures is Dictionary:
+		var retry_failures: Dictionary = payload["adventure_retry_failures"]
+		for key: Variant in stored_failures:
+			if not key is String or key.length() > 5 or not key.is_valid_int():
+				continue
+			var level_id := int(key)
+			if level_id < 1 or level_id > MAX_LEVEL_ID or str(level_id) != key:
+				continue
+			var failures: Variant = _nonnegative_integer(stored_failures[key])
+			if level_id <= int(payload["adventure_highest_completed"]) + 1 and failures != null and failures > 0 and failures <= 99:
+				retry_failures[key] = failures
 	for key: String in ["sound_enabled", "music_enabled", "reduced_motion", "screen_shake"]:
 		var value: Variant = data.get(key)
 		if value is bool:

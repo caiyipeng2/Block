@@ -33,7 +33,7 @@ static func classic_setup(seed: int, config: GameRulesConfig) -> Dictionary:
 	result["solution_count_cap"] = 8
 	return result
 
-static func level_setup(level_id: int, total_levels: int, config: GameRulesConfig) -> Dictionary:
+static func level_setup(level_id: int, total_levels: int, config: GameRulesConfig, retry_failures: int = 0) -> Dictionary:
 	var base: GameRulesConfig = config if config != null else GameRulesConfig.new()
 	var current := clampi(level_id, 1, clampi(total_levels, 1, MAX_LEVELS))
 	var row := level_config(current)
@@ -42,7 +42,10 @@ static func level_setup(level_id: int, total_levels: int, config: GameRulesConfi
 		var invalid := _invalid_setup(0, 0, "invalid_level_configuration")
 		invalid.merge({"mode": ADVENTURE, "level_id": current, "level_seed": 0, "config_valid": false, "config_errors": LevelTable.errors()})
 		return invalid
-	var difficulty := float(row["difficulty"]) / 100.0
+	var base_difficulty := float(row["difficulty"]) / 100.0
+	var failures := clampi(retry_failures, 0, 99)
+	var assistance := retry_assistance(current, failures)
+	var difficulty := base_difficulty * (1.0 - assistance)
 	var level_seed := int(row["seed"])
 	var result: Dictionary
 	if current <= 2:
@@ -50,17 +53,29 @@ static func level_setup(level_id: int, total_levels: int, config: GameRulesConfi
 		result = _initial_setup(level_seed, base, requested, difficulty)
 		result["target_cells"] = []
 	else:
-		result = _collection_setup(level_seed, collection_rules(base), current, objective, row)
+		result = _collection_setup(level_seed, collection_rules(base), current, objective, row, difficulty, assistance)
 	for field in objective:
 		result[field] = objective[field]
 	result["mode"] = ADVENTURE
 	result["level_id"] = current
 	result["level_seed"] = level_seed
 	result["difficulty_ratio"] = difficulty
+	result["base_difficulty_ratio"] = base_difficulty
+	result["retry_failures"] = failures
+	result["retry_assist_strength"] = assistance
 	result["config_valid"] = true
 	result["candidate_samples"] = 1
 	result["solution_count_cap"] = 8
 	return result
+
+static func retry_assistance(level_id: int, failures: int) -> float:
+	# The first two levels already have their own continuous tutorial rescue.
+	if level_id <= 2:
+		return 0.0
+	var row := level_config(level_id)
+	if row.is_empty():
+		return 0.0
+	return minf(float(clampi(failures, 0, 99)) * float(row["retry_assist_step"]), float(row["retry_assist_max"])) / 100.0
 
 ## This private copy keeps all other modes' 3–5 cell pool and strict combo
 ## untouched. Geometry in collect rounds is ordinary configured 2–9 cell play.
@@ -161,7 +176,7 @@ static func collection_difficulty(level_id: int, total_levels: int = MAX_LEVELS)
 	var row := level_config(clampi(level_id, 1, clampi(total_levels, 1, MAX_LEVELS)))
 	return float(row.get("difficulty", 0.0)) / 100.0
 
-static func _collection_setup(seed: int, rules: GameRulesConfig, level_id: int, objective: Dictionary, row: Dictionary) -> Dictionary:
+static func _collection_setup(seed: int, rules: GameRulesConfig, level_id: int, objective: Dictionary, row: Dictionary, difficulty: float, assistance: float) -> Dictionary:
 	var template := CollectionTemplates.create(level_id, rules.board_size, rules.palette.size(), str(row["template_id"]), bool(row["mirror"]))
 	var requested := int(row["initial_markers"])
 	if template.has("error"):
@@ -187,10 +202,9 @@ static func _collection_setup(seed: int, rules: GameRulesConfig, level_id: int, 
 		positions[other] = saved
 	for index in range(requested):
 		targets[positions[index]] = kinds[index % kinds.size()]
-	var difficulty := float(row["difficulty"]) / 100.0
 	var generator := RoundGenerator.new(seed, rules)
-	var supplier := CollectionTraySupplier.new(rules, seed, difficulty)
-	var supplied := supplier.build(board, objective["target_counts"], generator)
+	var supplier := CollectionTraySupplier.new(rules, seed, difficulty, assistance)
+	var supplied := supplier.build(board, objective["target_counts"], generator, targets)
 	var diagnostics: Dictionary = supplied["diagnostics"]
 	diagnostics["seed"] = seed
 	diagnostics["requested_occupied"] = template["initial_cells"].size()

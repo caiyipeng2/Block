@@ -36,6 +36,7 @@ var target_counts: Dictionary = {}
 var target_collected_counts: Dictionary = {}
 var target_remaining_counts: Dictionary = {}
 var difficulty_label := ""
+var retry_assist_strength := 0.0
 var _tutorial_builder: TutorialTrayBuilder
 var _collection_targets_valid := true
 var _collection_supplier: CollectionTraySupplier
@@ -62,7 +63,8 @@ func _init(initial_seed: int = 0, board_size: int = 8, config: GameRulesConfig =
 	generator.solution_count_cap = clampi(int(setup.get("solution_count_cap", 8)), 2, 32)
 	if objective_type == "collect":
 		var difficulty := clampf(float(setup.get("difficulty_ratio", ModeCatalog.collection_difficulty(level_id))), 0.0, 1.0)
-		_collection_supplier = CollectionTraySupplier.new(rules_config, initial_seed, difficulty)
+		retry_assist_strength = clampf(float(setup.get("retry_assist_strength", 0.0)), 0.0, 1.0)
+		_collection_supplier = CollectionTraySupplier.new(rules_config, initial_seed, difficulty, retry_assist_strength)
 	for entry: Dictionary in setup.get("initial_cells", []):
 		board.set_cell(int(entry["x"]), int(entry["y"]), int(entry["color"]))
 	if objective_type == "collect":
@@ -304,7 +306,7 @@ func _read_collection_targets(setup: Dictionary) -> void:
 		_collection_targets_valid = false
 
 func _fill_collection_tray() -> void:
-	var supplied := _collection_supplier.build(board, target_remaining_counts, generator)
+	var supplied := _collection_supplier.build(board, target_remaining_counts, generator, target_cells)
 	remaining_pieces.assign(supplied["pieces"])
 	generator.last_solution.assign(supplied["solution"])
 	generation_diagnostics = supplied["diagnostics"].duplicate(true)

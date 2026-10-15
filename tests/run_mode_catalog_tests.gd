@@ -55,6 +55,10 @@ func _run_tests() -> void:
 			_assert_true(level["template_id"] == row["template_id"] and level["initial_cells"] == template["initial_cells"], "模板与镜像由表指定，不按关号自动选取")
 			_assert_true(level["initial_diagnostics"]["certification_scope"] == "current_tray" and not level["initial_diagnostics"]["whole_level_certified"], "只声明真实首托盘证书，不宣称整关必过")
 			_validate_setup(level, expanded)
+		if level_id == 3:
+			_test_retry_setup(level, row, base, expanded)
+	for tutorial_level in [1, 2]:
+		_assert_true(is_zero_approx(ModeCatalog.retry_assistance(tutorial_level, 99)), "前两关继续独立教学保底，不叠加重试辅助")
 	var classic: Dictionary = ModeCatalog.classic_setup(17, base)
 	_validate_setup(classic, base)
 	_assert_true(classic["initial_cells"].size() >= 16 and classic["initial_cells"].size() <= 24, "经典模式原始开局范围保持")
@@ -62,6 +66,21 @@ func _run_tests() -> void:
 	invalid_config.shape_pool = []
 	_assert_true(not ModeCatalog.classic_setup(17, invalid_config)["initial_diagnostics"]["solution_certified"], "经典模式无形状配置不能伪造认证")
 	_assert_true(base.min_piece_cells == 3 and base.max_piece_cells == 5 and base.shape_pool.size() == ordinary_pool_size and base.combo_miss_tolerance == 0, "遍历所有表内关卡后普通模式配置保持独立")
+
+func _test_retry_setup(original: Dictionary, row: Dictionary, base: GameRulesConfig, expanded: GameRulesConfig) -> void:
+	var previous_assistance := 0.0
+	for failures in [1, 99]:
+		var retry: Dictionary = ModeCatalog.level_setup(3, LevelTable.LEVEL_COUNT, base, failures)
+		var expected := minf(float(failures) * float(row["retry_assist_step"]), float(row["retry_assist_max"])) / 100.0
+		_assert_true(is_equal_approx(float(retry["retry_assist_strength"]), expected) and expected >= previous_assistance, "重试辅助随真实失败次数增加且按本关表值封顶")
+		_assert_true(is_equal_approx(float(retry["base_difficulty_ratio"]), float(original["difficulty_ratio"])) and is_equal_approx(float(retry["difficulty_ratio"]), float(original["difficulty_ratio"]) * (1.0 - expected)), "重试保留基础难度并仅调整有效供块难度")
+		_assert_true(retry["retry_failures"] == failures, "开局保存本次读取的失败次数")
+		for field in ["target_counts", "target_total", "target_score", "level_seed", "initial_cells", "target_cells", "template_id"]:
+			_assert_true(retry[field] == original[field], "辅助不改目标、种子或初始棋盘：" + field)
+		_assert_true(is_equal_approx(float(retry["initial_diagnostics"]["retry_assist_strength"]), expected) and is_equal_approx(float(retry["initial_diagnostics"]["difficulty_ratio"]), float(retry["difficulty_ratio"])), "首组供块诊断与开局重试辅助参数一致")
+		_validate_setup(retry, expanded)
+		previous_assistance = expected
+	_assert_true(is_zero_approx(ModeCatalog.retry_assistance(3, -1)), "负失败次数不产生辅助")
 
 func _test_table_parser() -> void:
 	var reader_script: Script = LevelTable
@@ -74,6 +93,17 @@ func _test_table_parser() -> void:
 	_assert_true(parsed["errors"].is_empty() and parsed["levels"].size() == LevelTable.LEVEL_COUNT, "完整配置包含 1–96 关且无解析错误")
 	if not parsed["errors"].is_empty():
 		return
+	var legacy: Dictionary = LevelTable.parse_text(_csv_with_changes(source, {}, ["retry_assist_step", "retry_assist_max"]), "旧版十五列配置")
+	_assert_true(legacy["errors"].is_empty() and legacy["levels"].size() == LevelTable.LEVEL_COUNT, "旧十五列配置无需新增列也可继续读取")
+	if legacy["errors"].is_empty():
+		_assert_true(is_equal_approx(float(legacy["levels"][3]["retry_assist_step"]), 20.0) and is_equal_approx(float(legacy["levels"][3]["retry_assist_max"]), 60.0), "缺少重试可选列采用每次20与上限60的兼容默认值")
+	var custom_assist: Dictionary = LevelTable.parse_text(_csv_with_changes(source, {3: {"retry_assist_step": 0, "retry_assist_max": 0}, 4: {"retry_assist_step": 12.5, "retry_assist_max": 100}}), "自定义重试辅助配置")
+	_assert_true(custom_assist["errors"].is_empty(), "重试配置允许零值关闭、小数步长及百分百上限")
+	if custom_assist["errors"].is_empty():
+		_assert_true(custom_assist["levels"][3]["retry_assist_step"] == 0.0 and custom_assist["levels"][3]["retry_assist_max"] == 0.0 and custom_assist["levels"][4]["retry_assist_step"] == 12.5 and custom_assist["levels"][4]["retry_assist_max"] == 100.0, "重试配表精确保留零值和独立列值")
+	for column in ["retry_assist_step", "retry_assist_max"]:
+		for invalid in [-1, 100.1, "not-a-number"]:
+			_assert_table_rejected(_csv_with_changes(source, {3: {column: invalid}}), column, "越界或非数值重试参数拒绝整表：" + column)
 	var nonlinear := _csv_with_changes(source, {
 		3: {"blue_diamond": 13, "gold_gem": 0, "yellow_star": 4, "red_star": 0, "difficulty": 85},
 		4: {"blue_diamond": 2, "gold_gem": 1, "yellow_star": 0, "red_star": 0, "difficulty": 12},
@@ -103,15 +133,19 @@ func _test_table_parser() -> void:
 	if portable["errors"].is_empty():
 		_assert_true(portable["levels"][3]["note"] == quoted_note, "备注逗号及双引号不破坏其他配置字段")
 
-func _csv_with_changes(source: String, changes: Dictionary) -> String:
+func _csv_with_changes(source: String, changes: Dictionary, excluded_columns: Array[String] = []) -> String:
 	# Serialize parsed source rows so authored notes may contain quoted commas.
 	var parsed: Dictionary = LevelTable.parse_text(source, "测试配置源")
-	var lines := PackedStringArray([",".join(LevelTable.COLUMNS)])
+	var columns := PackedStringArray()
+	for column: String in LevelTable.COLUMNS:
+		if not excluded_columns.has(column):
+			columns.append(column)
+	var lines := PackedStringArray([",".join(columns)])
 	for level_id in range(1, LevelTable.LEVEL_COUNT + 1):
 		var row: Dictionary = parsed["levels"][level_id].duplicate(true)
 		row.merge(changes.get(level_id, {}), true)
 		var fields := PackedStringArray()
-		for column: String in LevelTable.COLUMNS:
+		for column: String in columns:
 			var value := str(row[column])
 			fields.append("\"%s\"" % value.replace("\"", "\"\"") if value.contains(",") or value.contains("\"") else value)
 		lines.append(",".join(fields))

@@ -1,5 +1,7 @@
 extends SceneTree
 
+const ModeCatalog = preload("res://scripts/modes/mode_catalog.gd")
+
 var failures := 0
 var checks := 0
 var save_path := ProjectSettings.globalize_path("res://work/verification/ui-save.json")
@@ -82,6 +84,7 @@ func _run_tests() -> void:
 	main._confirm_action()
 	_equal(main.screen, "menu", "常驻返回菜单按钮可用")
 	_equal(main.game, null, "返回菜单清理当前局")
+	_test_retry_failure_lifecycle(main)
 	# A completed game locks the board while gems arrive, but its result
 	# screen must release the primary and secondary navigation buttons.
 	main.save_data["adventure_highest_completed"] = 2
@@ -92,6 +95,8 @@ func _run_tests() -> void:
 	_equal(main.gameplay_ui.call("_target_count", objective_stats, "target_counts", "red_star"), 0, "缺席的红星不按总配额虚构目标")
 	main.gameplay_ui.accept_objective_intro()
 	main.game.status = GameState.Status.LEVEL_COMPLETE
+	main._record_level_completion()
+	_equal(SaveRepository.level_failure_count(main.save_data, 3), 0, "通关记录清除本关此前失败辅助")
 	main.screen = "level_complete"
 	main._refresh_controls()
 	var next_level: Button = main.gameplay_ui.get("_next_level_button")
@@ -132,6 +137,49 @@ func _run_tests() -> void:
 	reloaded.free()
 	await create_timer(0.5).timeout
 	_finish()
+
+func _test_retry_failure_lifecycle(main) -> void:
+	# This fixture only uses the test's isolated save_path. Two legal moves
+	# exhaust its available lines; the final 3x3 block has no legal origin.
+	main.save_data["adventure_highest_completed"] = 2
+	main.save_data["adventure_retry_failures"] = {}
+	main._start_game("adventure", 3)
+	main.gameplay_ui.accept_objective_intro()
+	main.game.board = BoardRules.new(8)
+	main.game.target_cells.clear()
+	for y in range(8):
+		for x in range(8):
+			if (x + y) % 2 == 1:
+				main.game.board.set_cell(x, y, 0)
+	for y in [0, 2]:
+		for x in range(3):
+			main.game.board.set_cell(x, y, -1)
+	var line := PieceData.new(Vector2i.ZERO, [Vector2i.ZERO, Vector2i(1, 0), Vector2i(2, 0)], "retry_test_line")
+	var square_cells: Array[Vector2i] = []
+	for y in range(3):
+		for x in range(3):
+			square_cells.append(Vector2i(x, y))
+	var square := PieceData.new(Vector2i.ZERO, square_cells, "retry_test_square")
+	main.game.remaining_pieces.assign([line, line.duplicate_piece(), square])
+	var first: Dictionary = main.game.place_piece(0, Vector2i.ZERO, 1)
+	_check(bool(first["ok"]) and main.game.total_moves == 1 and not main.game.is_game_over(), "失败统计夹具首先完成一次真实合法落子且仍可继续")
+	main._record_level_failure()
+	_equal(SaveRepository.level_failure_count(main.save_data, 3), 0, "已有落子但仍在进行的棋局不记失败")
+	var final_move: Dictionary = main.game.place_piece(0, Vector2i(0, 2), 1)
+	_check(bool(final_move["ok"]) and main.game.total_moves == 2 and main.game.is_game_over(), "真实落子使最后方块无合法落点才进入失败")
+	main._record_level_failure()
+	main._record_level_failure()
+	_equal(SaveRepository.level_failure_count(main.save_data, 3), 1, "同一真实失败无论记录多少次都只增加一次")
+	_equal(SaveRepository.level_failure_count(SaveRepository.load_data(save_path), 3), 1, "失败次数在任何重开之前已经写入隔离存档")
+	main._start_game("adventure", 3)
+	main.gameplay_ui.accept_objective_intro()
+	_check(not main.level_failure_recorded and is_equal_approx(main.game.retry_assist_strength, ModeCatalog.retry_assistance(3, 1)), "下一次进入读取已保存失败次数并重置本局记录标记")
+	main._toggle_pause()
+	main._record_level_failure()
+	_equal(SaveRepository.level_failure_count(main.save_data, 3), 1, "暂停中的未失败棋局不累加失败次数")
+	main._toggle_pause()
+	main._show_menu()
+	_equal(SaveRepository.level_failure_count(main.save_data, 3), 1, "主动离开未失败棋局不累加失败次数")
 
 func _check(value: bool, message: String) -> void:
 	checks += 1

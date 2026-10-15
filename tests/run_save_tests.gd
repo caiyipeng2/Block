@@ -19,6 +19,11 @@ func _initialize() -> void:
 	_run(_test_sequential_level_unlock)
 	_run(_test_replayed_level_best_score)
 	_run(_test_level_record_rejects_invalid_input)
+	_run(_test_level_failure_count)
+	_run(_test_level_failure_record)
+	_run(_test_level_failure_record_rejects_invalid_input)
+	_run(_test_level_failure_normalization)
+	_run(_test_level_completion_clears_only_its_failure_count)
 	if _supports_isolated_paths():
 		for test: Callable in [
 			_test_missing_file,
@@ -31,11 +36,13 @@ func _initialize() -> void:
 			_test_invalid_score_types,
 			_test_invalid_adventure_progress,
 			_test_invalid_adventure_best_scores,
+			_test_invalid_adventure_retry_failures,
 			_test_invalid_boolean_types,
 			_test_negative_score,
 			_test_round_trip_changed_settings,
 			_test_round_trip_default_settings,
 			_test_round_trip_mode_progress,
+			_test_round_trip_retry_failures,
 			_test_save_normalizes_invalid_fields,
 			_test_save_uses_current_version,
 			_test_overwrites_existing_save,
@@ -62,6 +69,7 @@ func _test_defaults() -> void:
 		"classic_high_score": 0,
 		"adventure_highest_completed": 0,
 		"adventure_best_scores": {},
+		"adventure_retry_failures": {},
 		"sound_enabled": true,
 		"music_enabled": true,
 		"reduced_motion": false,
@@ -114,6 +122,7 @@ func _test_old_save_mode_migration() -> void:
 	var path := _json_fixture("legacy-mode-migration.json", legacy)
 	_expect_equal(_load(path), _changed_settings(), "version-1 score remains the free-mode record and valid settings survive")
 	_expect_equal(FileAccess.get_file_as_string(path), JSON.stringify(legacy), "loading an old save does not rewrite it")
+	_expect_equal(_load(path)["adventure_retry_failures"], {}, "legacy saves start without per-level retry assistance")
 
 func _test_invalid_score_types() -> void:
 	for field: String in ["high_score", "classic_high_score"]:
@@ -187,6 +196,82 @@ func _test_level_record_rejects_invalid_input() -> void:
 	at_limit["adventure_highest_completed"] = 10000
 	_expect_equal(Repository.record_level_completed(at_limit, 10001, 100), at_limit, "completion cannot exceed the bounded supported level range")
 
+func _test_level_failure_count() -> void:
+	var data := Repository.defaults()
+	_expect_equal(Repository.level_failure_count(data, 1), 0, "new levels have no failures")
+	data["adventure_retry_failures"] = {"1": 3.0, "2": 99, "3": 0, "4": true}
+	_expect_equal(Repository.level_failure_count(data, 1), 3, "whole JSON numbers are accepted as failure counts")
+	_expect_equal(Repository.level_failure_count(data, 2), 0, "stored retry count on a locked level is ignored")
+	data["adventure_highest_completed"] = 1
+	_expect_equal(Repository.level_failure_count(data, 2), 99, "maximum retry count is readable once the level is unlocked")
+	_expect_equal(Repository.level_failure_count(data, 3), 0, "zero failure count is safely readable")
+	_expect_equal(Repository.level_failure_count(data, 4), 0, "boolean failure count is rejected")
+	for level_id: int in [0, -1, 10001]:
+		_expect_equal(Repository.level_failure_count(data, level_id), 0, "out-of-range level has no failure count")
+
+func _test_level_failure_record() -> void:
+	var data := _changed_settings()
+	data["classic_high_score"] = 4321
+	var first := Repository.record_level_failed(data, 1)
+	var expected := data.duplicate(true)
+	expected["adventure_retry_failures"] = {"1": 1}
+	_expect_equal(first, expected, "recording a failure increments only that level without scores or unlocks")
+	_expect_equal(data["adventure_retry_failures"], {}, "failure recording does not mutate its input")
+	var second := Repository.record_level_failed(first, 1)
+	_expect_equal(second["adventure_retry_failures"], {"1": 2}, "a second recorded failure increments once")
+	_expect_equal(first["adventure_retry_failures"], {"1": 1}, "failure recording does not mutate nested previous counters")
+	second["adventure_retry_failures"] = {"1": 98}
+	var capped := Repository.record_level_failed(Repository.record_level_failed(second, 1), 1)
+	_expect_equal(capped["adventure_retry_failures"], {"1": 99}, "repeated failures saturate at 99")
+	var unlocked := Repository.record_level_completed(data, 1, 350)
+	_expect_equal(Repository.record_level_failed(unlocked, 2)["adventure_retry_failures"], {"2": 1}, "next unlocked level can record a failure")
+
+func _test_level_failure_record_rejects_invalid_input() -> void:
+	var data := Repository.defaults()
+	for level_id: Variant in [0, -1, 10001, true, false, 1.0, 1.5, "1", null, [], {}, INF, NAN]:
+		_expect_equal(Repository.record_level_failed(data, level_id), data, "invalid failure level id %s is ignored" % [level_id])
+	_expect_equal(Repository.record_level_failed(data, 2), data, "a locked level cannot record a failure")
+	var unlocked := Repository.record_level_completed(data, 1, 350)
+	_expect_equal(Repository.record_level_failed(unlocked, 3), unlocked, "failure recording cannot skip the next unlocked level")
+
+func _test_level_failure_normalization() -> void:
+	var data := _changed_settings()
+	data["adventure_retry_failures"] = {
+		"1": 3.0, "2": 0, "3": true, "4": 1.5, "5": -1,
+		"6": INF, "7": NAN, "8": "3", "9": 100,
+		"10": null, "11": [], "12": {}, "10000": 99,
+		"0": 1, "-1": 1, "01": 1, "+1": 1, "1.0": 1,
+		"10001": 1, "99999999999999999999": 1, 13: 2,
+	}
+	var normalized := Repository.record_level_failed(data, 0)
+	_expect_equal(normalized["adventure_retry_failures"], {"1": 3}, "only canonical unlocked level keys and integer counts 1 to 99 survive")
+	_expect_equal(Repository.level_failure_count(data, 10000), 0, "locked-level counters cannot activate assistance")
+	_expect_equal(normalized["high_score"], data["high_score"], "failure normalization preserves valid score fields")
+	_expect_equal(normalized["sound_enabled"], data["sound_enabled"], "failure normalization preserves valid settings")
+	for value: Variant in [true, false, "counts", 3, [], null]:
+		data["adventure_retry_failures"] = value
+		_expect_equal(Repository.record_level_failed(data, 0)["adventure_retry_failures"], {}, "invalid failure-count containers use an empty dictionary")
+
+func _test_level_completion_clears_only_its_failure_count() -> void:
+	var data := Repository.record_level_completed(_changed_settings(), 1, 350)
+	data["adventure_retry_failures"] = {"1": 2, "2": 5}
+	var invalid := Repository.record_level_completed(data, 2, true)
+	_expect_equal(invalid["adventure_retry_failures"], {"1": 2, "2": 5}, "invalid completion does not clear retry assistance")
+	var completed := Repository.record_level_completed(data, 2, 450)
+	_expect_equal(completed["adventure_retry_failures"], {"1": 2}, "passing a level clears only that level's failure count")
+	_expect_equal(data["adventure_retry_failures"], {"1": 2, "2": 5}, "completion does not mutate the input retry dictionary")
+	_expect_equal(completed["adventure_highest_completed"], 2, "retry cleanup preserves normal sequential unlocking")
+	_expect_equal(completed["adventure_best_scores"], {"1": 350, "2": 450}, "retry cleanup preserves level best-score recording")
+	var replayed := Repository.record_level_completed(completed, 1, 100)
+	_expect_equal(replayed["adventure_retry_failures"], {}, "passing a replayed level also clears its retry assistance")
+
+func _test_invalid_adventure_retry_failures() -> void:
+	var payload := _changed_settings()
+	payload["adventure_retry_failures"] = {"1": 2, "2": 99, "3": 0, "4": true, "5": 2.5, "6": -1, "7": 100, "01": 3, "10001": 2}
+	var expected := _changed_settings()
+	expected["adventure_retry_failures"] = {"1": 2}
+	_expect_equal(_load(_json_fixture("filtered-adventure-retry-failures.json", payload)), expected, "loaded retry counts are strictly normalized without losing settings")
+
 func _test_invalid_boolean_types() -> void:
 	for field: String in ["sound_enabled", "music_enabled", "reduced_motion", "screen_shake"]:
 		for value: Variant in ["false", 0, 1, null, [], {}]:
@@ -222,6 +307,15 @@ func _test_round_trip_mode_progress() -> void:
 	var path := _path("round-trip-modes.json")
 	_expect(_save(payload, path), "write independent scores and adventure progress")
 	_expect_equal(_load(path), payload, "all mode records and settings survive a save/load round trip")
+
+func _test_round_trip_retry_failures() -> void:
+	var payload := Repository.record_level_completed(_changed_settings(), 1, 350)
+	payload = Repository.record_level_failed(payload, 2)
+	payload = Repository.record_level_failed(payload, 2)
+	var path := _path("round-trip-retry-failures.json")
+	_expect(_save(payload, path), "write per-level retry counts")
+	_expect_equal(_load(path), payload, "retry counts round trip through JSON with progress, best scores and settings")
+	_expect_equal(_load(path)["version"], 1, "retry counts do not change the compatible version-1 save format")
 
 func _test_save_normalizes_invalid_fields() -> void:
 	var path := _path("invalid-save.json")

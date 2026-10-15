@@ -58,6 +58,7 @@ var game_mode := "free"
 var current_level := 0
 var level_select: Control
 var level_completion_recorded := false
+var level_failure_recorded := false
 var level_objective: Dictionary = {}
 var display_remaining_counts: Dictionary = {}
 var progress_milestones_shown: Dictionary = {}
@@ -254,6 +255,7 @@ func _handle_release(position: Vector2) -> void:
 	input_locked = true
 	var result: Dictionary = game.place_piece(index, origin, _piece_color_id(piece))
 	if bool(result.get("ok", false)):
+		_record_level_failure()
 		if bool(result.get("tray_adapted", false)):
 			# Tutorial adaptation happens after the legal move. Keep the visual
 			# tray paired with the new instances before their colors are synced.
@@ -336,7 +338,8 @@ func _start_game(mode: String = "", level_id: int = 0) -> void:
 		setup = ModeCatalog.classic_setup(seed, rules_config)
 	elif next_mode == "adventure":
 		next_level = clampi(next_level, 1, _unlocked_level())
-		setup = ModeCatalog.level_setup(next_level, ModeCatalog.MAX_LEVELS, rules_config)
+		var failures := SaveRepository.level_failure_count(save_data, next_level)
+		setup = ModeCatalog.level_setup(next_level, ModeCatalog.MAX_LEVELS, rules_config, failures)
 		if not bool(setup.get("config_valid", false)) or bool(setup.get("initial_setup_invalid", false)):
 			_show_level_config_error("第 %d 关初始配置无法用于当前棋盘：%s" % [next_level, str(setup.get("initial_diagnostics", {}).get("reason", "配置错误"))])
 			return
@@ -355,6 +358,7 @@ func _start_game(mode: String = "", level_id: int = 0) -> void:
 	display_remaining_counts = game.target_remaining_counts.duplicate()
 	progress_milestones_shown.clear()
 	level_completion_recorded = false
+	level_failure_recorded = false
 	board_placement_orders.clear()
 	var initial_cells: Array = setup.get("initial_cells", [])
 	for index in range(initial_cells.size()):
@@ -520,6 +524,16 @@ func _record_level_completion() -> void:
 		if newly_unlocked > previously_unlocked:
 			pending_level_unlock = {"completed": current_level, "unlocked": newly_unlocked}
 		level_completion_recorded = true
+	_persist_data()
+
+func _record_level_failure() -> void:
+	if game == null or game_mode != "adventure" or level_failure_recorded or not game.is_game_over() or game.total_moves < 1:
+		return
+	# Commit once at the logical failure, before feedback or navigation can
+	# invoke another save. Pauses, voluntary restarts and invalid setups do not
+	# satisfy this terminal-state check.
+	level_failure_recorded = true
+	save_data = SaveRepository.record_level_failed(save_data, current_level)
 	_persist_data()
 
 func _create_confirmation_dialog() -> void:
@@ -876,6 +890,7 @@ func _save_high_score() -> void:
 	if game == null:
 		return
 	if game_mode == "adventure":
+		_record_level_failure()
 		_record_level_completion()
 		return
 	var key := "classic_high_score" if game_mode == "classic" else "high_score"

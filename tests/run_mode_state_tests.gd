@@ -12,6 +12,7 @@ func _initialize() -> void:
 	_test_collection_progress()
 	_test_crossing_collection()
 	_test_streamed_collection()
+	_test_retry_supply()
 	if failures == 0:
 		print("MODE STATE TESTS PASSED")
 	quit(0 if failures == 0 else 1)
@@ -265,6 +266,36 @@ func _test_streamed_collection() -> void:
 	_check(float(hard_supplied["diagnostics"]["difficulty_ratio"]) == 1.0 and not bool(hard_supplied["diagnostics"]["whole_level_certified"]), "后期供块记录难度且不宣称整关唯一解")
 	for piece: PieceData in hard_supplied["pieces"]:
 		_check(piece.is_valid_for_config(supplier_rules), "后期难度权重不改变合法形状约束")
+
+func _test_retry_supply() -> void:
+	var setup := _collection_setup()
+	setup["target_counts"] = {"blue_diamond": 50, "gold_gem": 1}
+	setup["target_total"] = 51
+	setup["target_cells"] = {Vector2i(0, 2): "blue_diamond", Vector2i(0, 4): "gold_gem"}
+	setup["difficulty_ratio"] = 0.36
+	setup["retry_assist_strength"] = 0.4
+	setup.erase("initial_pieces")
+	setup.erase("initial_solution")
+	var state := GameState.new(64, 8, GameRulesConfig.new(), setup)
+	_check(not state.is_game_over() and is_equal_approx(state.retry_assist_strength, 0.4), "收集开局保存本次重试辅助强度")
+	_check(is_equal_approx(float(state.generation_diagnostics["retry_assist_strength"]), 0.4) and is_equal_approx(float(state.generation_diagnostics["difficulty_ratio"]), 0.36), "首组供应使用本次有效难度和辅助强度")
+	var before_board := state.board.duplicate_board()
+	var before_targets := state.target_cells.duplicate(true)
+	var before_remaining := state.target_remaining_counts.duplicate(true)
+	state._fill_collection_tray()
+	_check(is_equal_approx(float(state.generation_diagnostics["retry_assist_strength"]), 0.4) and is_equal_approx(float(state.generation_diagnostics["difficulty_ratio"]), 0.36), "后续供应继续使用同一开局辅助参数")
+	_check(state.target_cells == before_targets and state.target_remaining_counts == before_remaining, "候选供块模拟不修改真实盘上标记或剩余配额")
+	var board_unchanged := true
+	for y in range(state.board.size):
+		for x in range(state.board.size):
+			board_unchanged = board_unchanged and state.board.get_cell(x, y) == before_board.get_cell(x, y)
+	_check(board_unchanged and state.scoring.score == 0 and state.total_moves == 0, "重试供块不移动现有方格、不送分也不制造玩家落子")
+	_check(state.generator.find_solution(state.board, state.remaining_pieces).size() == state.rules_config.tray_count, "辅助后的供应仍保留完整三块几何解")
+	var supplier = state.get("_collection_supplier")
+	var markers := {Vector2i(0, 0): "blue_diamond", Vector2i(1, 0): "blue_diamond", Vector2i(2, 0): "gold_gem", Vector2i(3, 0): "red_star"}
+	var cleared: Array = [Vector2i(0, 0), Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0), Vector2i(7, 7)]
+	_check(supplier._needed_target_count(cleared, markers, {"blue_diamond": 1, "gold_gem": 0}) == 1, "辅助评价去重交叉坐标、按需求封顶并忽略已满或不需要种类")
+	_check(supplier._needed_target_count(cleared, markers, {"blue_diamond": 2, "gold_gem": 1}) == 3, "辅助评价按每类真实剩余量计算有效收集进度")
 
 func _check_collection_sums(state: GameState, label: String) -> void:
 	var total := 0

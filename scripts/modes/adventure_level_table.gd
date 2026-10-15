@@ -9,7 +9,9 @@ const COLUMNS := [
 	"level_id", "objective_type", "target_score", "blue_diamond", "gold_gem",
 	"yellow_star", "red_star", "difficulty", "template_id", "mirror",
 	"initial_fill", "initial_markers", "seed", "difficulty_label", "note",
+	"retry_assist_step", "retry_assist_max",
 ]
+const OPTIONAL_DEFAULTS := {"retry_assist_step": "20", "retry_assist_max": "60"}
 const TARGET_COLUMNS := ["blue_diamond", "gold_gem", "yellow_star", "red_star"]
 const TEMPLATE_CAPACITIES := {"wings": 24, "heart": 22, "ring": 20, "steps": 20, "butterfly": 22}
 const MAX_VISIBLE_ERRORS := 12
@@ -158,7 +160,7 @@ static func _validate_headers(headers: PackedStringArray, issues: PackedStringAr
 		if not COLUMNS.has(header):
 			_issue(issues, source, line, header, "未知列名；列名必须与配置说明一致且不能包含额外空格")
 	for column in COLUMNS:
-		if not seen.has(column):
+		if not seen.has(column) and not OPTIONAL_DEFAULTS.has(column):
 			_issue(issues, source, line, column, "缺少必需列")
 
 static func _validate_row(values: Dictionary, issues: PackedStringArray, source: String, line: int) -> Dictionary:
@@ -168,6 +170,8 @@ static func _validate_row(values: Dictionary, issues: PackedStringArray, source:
 	for column in TARGET_COLUMNS:
 		row[column] = _integer(values[column], 0, 999, column, issues, source, line)
 	row["difficulty"] = _number(values["difficulty"], 0.0, 100.0, "difficulty", issues, source, line)
+	for column: String in OPTIONAL_DEFAULTS:
+		row[column] = _number(str(values.get(column, OPTIONAL_DEFAULTS[column])), 0.0, 100.0, column, issues, source, line)
 	row["mirror"] = _integer(values["mirror"], 0, 1, "mirror", issues, source, line)
 	row["initial_fill"] = _integer(values["initial_fill"], 0, 63, "initial_fill", issues, source, line)
 	row["initial_markers"] = _integer(values["initial_markers"], 0, 64, "initial_markers", issues, source, line)
