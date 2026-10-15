@@ -1,6 +1,6 @@
 # Block
 
-Godot 4.7 的桌面方块消除游戏：拖动方块、填满行或列并消除，无时间限制。当前源码为 `0.6.3`，提供自由、经典和闯关三种模式，采用蓝色背景、凹槽棋盘和立体斜面方块。
+Godot 4.7 的桌面方块消除游戏：拖动方块、填满行或列并消除，无时间限制。当前源码为 `0.6.4`，提供自由、经典和闯关三种模式，采用蓝色背景、凹槽棋盘和立体斜面方块。
 
 项目仓库：[caiyipeng2/Block](https://github.com/caiyipeng2/Block)。本地交付、提交和推送状态以本次交付记录为准。
 
@@ -43,6 +43,7 @@ Godot 4.7 的桌面方块消除游戏：拖动方块、填满行或列并消除�
 
 ## 第二阶段美术与反馈
 
+- `0.6.4` 各模式默认托盘统一为 24px 单格（1280×720），窄窗口才整组缩小；新增 Perfect/Excellent/Unbelievable 表扬及收集展示进度首次跨过 50%/90% 的丝带提示，均不阻塞输入或改变计分。
 - `0.6.3` 托盘改为所有槽位共用单格尺寸，按模式形状池包络预留高度；短条、长条和大方块仅分别居中，消费方块后也不变尺。绘制、命中、抓取与回弹使用同一几何，规则和胜利反馈不变。
 - `0.6.2` 强化真正完成目标的最后落子：整块放大、抬起后快落回弹，接触粉紫光、双环、星点与棋盘边框扫光，再清除和收集；普通落子和旧块保持稳定。胜利改为暗场、三宝石大勾、`Well Done` 与绿色 `Next Level` 分阶段登场，尊重减少动画和震动开关。
 - `0.6.1` 修复每次放置时旧方块随反馈接管/恢复而跳动：静态、预览、拖动和反馈共用格内几何，统一先空格后按行列画已占格。新落子自身弹性与正常清除震动保留，独立收集飞行和规则不变。
@@ -73,13 +74,13 @@ Godot 4.7 的桌面方块消除游戏：拖动方块、填满行或列并消除�
 python tools/export_windows.py --godot "E:\Tools\Godot\Godot_v4.7.2-stable_win64.exe" --configuration release
 ```
 
-加 `--check` 仅预检、不导出；`--configuration debug` 生成调试包。版本号来自 `project.godot`，当前源码为 `0.6.3`，后续发布输出遵循 `dist/Block-<版本>-windows-x86_64-release.zip`。须完整解压后按 `START-HERE.txt` 运行，保留 `.pck` 和所有随附文件；若导出生成 DLL 或 `x86_64` 子目录，也须完整保留。包内 `build-info.json` 含文件 SHA256，ZIP 旁 `.sha256` 用于核对压缩包。
+加 `--check` 仅预检、不导出；`--configuration debug` 生成调试包。版本号来自 `project.godot`，当前源码为 `0.6.4`，后续发布输出遵循 `dist/Block-<版本>-windows-x86_64-release.zip`。须完整解压后按 `START-HERE.txt` 运行，保留 `.pck` 和所有随附文件；若导出生成 DLL 或 `x86_64` 子目录，也须完整保留。包内 `build-info.json` 含文件 SHA256，ZIP 旁 `.sha256` 用于核对压缩包。
 
-前一阶段的 `0.1.0` release/debug 包已导出，文件 SHA256、ZIP CRC 与压缩包校验值均匹配，独立 EXE 尚待用户验收。本地已有 `build/`、`dist/` 中的 `0.1.0` 包仍是粉色逻辑基线，**不含当前美术与三种模式**；本轮不重新打包 `0.6.3`，先按 F5 验收源码。当前本机使用已校验的 `work/release-templates/4.7.2.stable` 模板，将来重新打包时追加 `--templates-dir "work/release-templates/4.7.2.stable"`。模板安装、包结构和用户验收步骤见 [Windows 发布说明](docs/Block-Blast-Godot-Windows发布.md)，历史检查证据见 [验收记录](docs/Block-Blast-Godot-验收记录.md)。
+前一阶段的 `0.1.0` release/debug 包已导出，文件 SHA256、ZIP CRC 与压缩包校验值均匹配，独立 EXE 尚待用户验收。本地已有 `build/`、`dist/` 中的 `0.1.0` 包仍是粉色逻辑基线，**不含当前美术与三种模式**；本轮不重新打包 `0.6.4`，先按 F5 验收源码。当前本机使用已校验的 `work/release-templates/4.7.2.stable` 模板，将来重新打包时追加 `--templates-dir "work/release-templates/4.7.2.stable"`。模板安装、包结构和用户验收步骤见 [Windows 发布说明](docs/Block-Blast-Godot-Windows发布.md)，历史检查证据见 [验收记录](docs/Block-Blast-Godot-验收记录.md)。
 
 ## 当前开发状态（2026-10-15）
 
-`0.6.3` 修复托盘按形状单独缩放导致单格大小不一，保留原规则、目标、供块和胜利表现。Feedback/Main/UI action 测试共 3 项 `--check-only` 均退出码 0，无脚本/解析/编译/加载失败错误，最终独立静态审查无阻断；未执行测试、GUI 或打包。请按 F5 验收混合短条/长条/3×3 的单格一致、消费稳定、命中/回弹与窄窗口，详见[验收记录](docs/Block-Blast-Godot-验收记录.md)。
+`0.6.4` 统一模式间托盘大小，增强清除表扬并新增 50%/90% 进度丝带。6 份不同脚本 `--check-only` 均退出码 0、无脚本错误，最后 4 项重检通过，最终独立静态审查完成、无阻断问题；未执行测试用例、GUI 或打包。规则、计分和 Combo 容错不变，用户按 F5 验收，详见[验收记录](docs/Block-Blast-Godot-验收记录.md)。
 
 按用户约定，只进行必要的轻量编译与静态检查；实际界面、输入、声音和导出包启动由用户验收，不自动控制桌面或运行完整自动验收。
 

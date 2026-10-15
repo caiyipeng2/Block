@@ -12,6 +12,7 @@ signal collections_settled
 const BlockArt = preload("res://scripts/ui/block_art.gd")
 const CollectionFlights = preload("res://scripts/ui/collection_flights.gd")
 const FinalImpact = preload("res://scripts/ui/final_impact.gd")
+const ClearPraise = preload("res://scripts/ui/clear_praise.gd")
 const GOLD := Color("#ffdc57")
 const CYAN := Color("#a0f8ff")
 const OUTLINE := Color("#182a71")
@@ -77,12 +78,9 @@ var _rebound_progress := 0.0
 var _score_label: Label
 var _score_origin := Vector2.ZERO
 var _score_target := Vector2.ZERO
-var _combo_label: Label
-var _combo_number: Label
-var _combo_root: Control
-var _combo_base_scale := 1.0
 var _collection_layer: Control
 var _final_impact: Control
+var _praise_layer: Control
 var _final_move := false
 var _final_piece_pivot := Vector2.ZERO
 var _final_piece_scale := Vector2.ONE
@@ -94,6 +92,7 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_ensure_collection_layer()
 	_ensure_final_impact()
+	_ensure_praise_layer()
 
 func is_busy() -> bool:
 	return _busy
@@ -104,6 +103,8 @@ func set_board_offset(offset: Vector2) -> void:
 		_collection_layer.set_board_offset(offset)
 	if is_instance_valid(_final_impact):
 		_final_impact.set_board_offset(offset)
+	if is_instance_valid(_praise_layer):
+		_praise_layer.set_board_offset(offset)
 	queue_redraw()
 
 func has_pending_collections() -> bool:
@@ -138,6 +139,15 @@ func _ensure_final_impact() -> void:
 	_final_impact.z_index = 1
 	add_child(_final_impact)
 	_final_impact.set_paused(_paused)
+
+func _ensure_praise_layer() -> void:
+	if is_instance_valid(_praise_layer):
+		return
+	_praise_layer = ClearPraise.new()
+	_praise_layer.name = "ClearPraise"
+	_praise_layer.z_index = 3
+	add_child(_praise_layer)
+	_praise_layer.set_paused(_paused)
 
 func play_move(
 		before_board: BoardRules,
@@ -266,6 +276,8 @@ func reset() -> void:
 func reset_move() -> void:
 	if is_instance_valid(_final_impact):
 		_final_impact.reset()
+	if is_instance_valid(_praise_layer):
+		_praise_layer.reset()
 	for tween in [_tween, _score_tween, _accent_tween]:
 		if tween != null:
 			tween.kill()
@@ -273,7 +285,6 @@ func reset_move() -> void:
 	_score_tween = null
 	_accent_tween = null
 	_remove_score_label()
-	_remove_combo_label()
 	_busy = false
 	_board_overlay_active = false
 	_overlay_visible = false
@@ -311,6 +322,8 @@ func set_paused(paused: bool) -> void:
 		_collection_layer.set_paused(paused)
 	if is_instance_valid(_final_impact):
 		_final_impact.set_paused(paused)
+	if is_instance_valid(_praise_layer):
+		_praise_layer.set_paused(paused)
 	_apply_paused_state()
 
 func _apply_paused_state() -> void:
@@ -496,64 +509,27 @@ func _make_effect_label(text: String, font_size: int, color: Color, outline_size
 func _start_combo() -> void:
 	var combo := int(_context.get("combo", 0))
 	var line_count := int(_context.get("clear_lines", _clear_rows.size() + _clear_columns.size()))
-	# The contact helper owns Final Block; dispersion can still show Combo.
-	var final_block := bool(_context.get("final_block", false)) and not _final_move
-	if combo < 2 and line_count < 2 and not final_block and not _final_move:
+	if line_count < 1:
 		return
-	var text := "Final Block!" if final_block else ("Combo" if combo >= 2 or _final_move else ("Double!" if line_count == 2 else "Multi Clear!"))
-	var font_size := clampi(int(_board_rect.size.x * 0.105), 24, 58)
-	_combo_root = Control.new()
-	_combo_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_combo_root)
-	_combo_label = _make_effect_label(text, font_size, GOLD if final_block else CYAN, 7)
-	_combo_label.reparent(_combo_root)
-	var italic_font := SystemFont.new()
-	italic_font.font_names = PackedStringArray(["Arial", "Microsoft YaHei", "sans-serif"])
-	italic_font.font_italic = true
-	italic_font.font_weight = 800
-	_combo_label.add_theme_font_override("font", italic_font)
-	var word_size := _combo_label.get_minimum_size()
-	var group_size := word_size
-	if combo >= 2 and not final_block:
-		_combo_number = _make_effect_label(str(combo), int(font_size * 1.45), GOLD, 9)
-		_combo_number.reparent(_combo_root)
-		_combo_number.add_theme_font_override("font", italic_font)
-		var number_size := _combo_number.get_minimum_size()
-		_combo_label.position = Vector2(0.0, maxf(number_size.y - word_size.y, 0.0) * 0.70)
-		_combo_number.position = Vector2(word_size.x + 4.0, 0.0)
-		group_size = Vector2(word_size.x + 4.0 + number_size.x, maxf(word_size.y, number_size.y))
-	_combo_root.size = group_size
-	_combo_root.pivot_offset = group_size * 0.5
-	_combo_base_scale = minf(1.0, maxf(_board_rect.size.x - 24.0, 1.0) / maxf(group_size.x, 1.0))
-	var anchor := _score_anchor() + Vector2(0.0, _cell_size * 0.78)
-	var half := group_size * _combo_base_scale * 0.5
-	anchor.x = clampf(anchor.x, _board_rect.position.x + half.x + 8.0, maxf(_board_rect.position.x + half.x + 8.0, _board_rect.end.x - half.x - 8.0))
-	anchor.y = clampf(anchor.y, _board_rect.position.y + half.y + 12.0, maxf(_board_rect.position.y + half.y + 12.0, _board_rect.end.y - half.y - 6.0))
-	_combo_root.position = anchor - group_size * 0.5
-	_combo_root.scale = Vector2.ONE * _combo_base_scale * 0.75
-	_combo_root.rotation = deg_to_rad(-4.0)
+	var targets: Array[Vector2] = []
+	for key in _target_cells:
+		var coordinate: Vector2i = key
+		if not _clear_cells.has(coordinate):
+			targets.append(_cell_center(coordinate))
+	_ensure_praise_layer()
+	# Final Block belongs exclusively to the contact helper. Delay follow-up
+	# praise until its title has faded; board busy and collection timings stay
+	# unchanged, and the displayed combo is always the real rule result.
+	_praise_layer.play(combo, line_count, _score_anchor(), _board_rect, _cell_size, targets, 0.32 if _final_move else 0.0, _final_move)
 
 func _set_accent_progress(progress: float) -> void:
 	_accent_progress = progress
-	if is_instance_valid(_combo_root):
-		var pop := clampf(progress / 0.20, 0.0, 1.0)
-		_combo_root.scale = Vector2.ONE * _combo_base_scale * (0.75 + 0.25 * sin(pop * PI * 0.5) + 0.08 * sin(pop * PI))
-		_combo_root.modulate.a = 1.0 - clampf((progress - 0.60) / 0.40, 0.0, 1.0)
 	queue_redraw()
 
 func _end_accents() -> void:
 	_accent_tween = null
 	_particles.clear()
-	_remove_combo_label()
 	queue_redraw()
-
-func _remove_combo_label() -> void:
-	if is_instance_valid(_combo_root):
-		_combo_root.hide()
-		_combo_root.queue_free()
-	_combo_root = null
-	_combo_label = null
-	_combo_number = null
 
 func _spawn_particles() -> void:
 	var random := RandomNumberGenerator.new()

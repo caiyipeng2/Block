@@ -60,6 +60,7 @@ var level_select: Control
 var level_completion_recorded := false
 var level_objective: Dictionary = {}
 var display_remaining_counts: Dictionary = {}
+var progress_milestones_shown: Dictionary = {}
 
 func _ready() -> void:
 	set_process_input(true)
@@ -283,6 +284,7 @@ func _handle_release(position: Vector2) -> void:
 			if first_record and not _is_collect_mode():
 				gameplay_ui.show_notice("新纪录！继续挑战", "record", _reduced_motion())
 		if game.is_level_complete():
+			gameplay_ui.clear_progress_milestones()
 			_record_level_completion()
 		_sync_piece_colors()
 		_refresh_controls()
@@ -341,6 +343,7 @@ func _start_game(mode: String = "", level_id: int = 0) -> void:
 	level_objective = ModeCatalog.objective_config(current_level) if game_mode == "adventure" else {}
 	game = GameState.new(seed, rules_config.board_size, rules_config, setup)
 	display_remaining_counts = game.target_remaining_counts.duplicate()
+	progress_milestones_shown.clear()
 	level_completion_recorded = false
 	board_placement_orders.clear()
 	var initial_cells: Array = setup.get("initial_cells", [])
@@ -383,7 +386,24 @@ func _on_target_arrived(kind: String, counted: bool) -> void:
 		display_remaining_counts[kind] = maxi(0, int(display_remaining_counts.get(kind, 0)) - 1)
 	_refresh_controls()
 	gameplay_ui.notify_target_arrival(kind, counted)
+	_check_progress_milestones()
 	queue_redraw()
+
+func _check_progress_milestones() -> void:
+	if not _is_collect_mode() or game.target_total <= 0 or game.status != GameState.Status.PLAYING:
+		return
+	if exiting or screen != "game" or paused or _objective_intro_open() or not confirmation_action.is_empty():
+		return
+	var remaining := 0
+	for count in display_remaining_counts.values():
+		remaining += maxi(0, int(count))
+	var collected := clampi(game.target_total - remaining, 0, game.target_total)
+	if collected >= game.target_total:
+		return
+	for threshold in [50, 90]:
+		if not progress_milestones_shown.has(threshold) and collected * 100 >= game.target_total * threshold:
+			progress_milestones_shown[threshold] = true
+			gameplay_ui.show_progress_milestone(threshold, _reduced_motion())
 
 func _on_collections_settled() -> void:
 	_try_show_level_complete()
@@ -391,6 +411,8 @@ func _on_collections_settled() -> void:
 func _try_show_level_complete() -> void:
 	if exiting or game == null or screen != "game" or not game.is_level_complete() or _result_feedback_pending():
 		return
+	# Praise can outlive the board animation, but must not linger under victory.
+	move_feedback.reset_move()
 	_record_level_completion()
 	screen = "level_complete"
 	paused = false
@@ -532,6 +554,7 @@ func _cancel_confirmation() -> void:
 	paused = restore_paused
 	move_feedback.set_paused(paused)
 	_refresh_controls()
+	_check_progress_milestones()
 	queue_redraw()
 
 func _clear_confirmation() -> void:
@@ -554,6 +577,7 @@ func _toggle_pause() -> void:
 	_cancel_drag()
 	move_feedback.set_paused(paused)
 	_refresh_controls()
+	_check_progress_milestones()
 
 func _on_window_focus_lost() -> void:
 	_cancel_drag()
@@ -634,6 +658,7 @@ func _close_settings() -> void:
 		paused = settings_was_paused if screen == "game" else false
 		move_feedback.set_paused(paused)
 		_refresh_controls()
+		_check_progress_milestones()
 		queue_redraw()
 	else:
 		_show_menu()
@@ -715,6 +740,7 @@ func _reset_visual_feedback() -> void:
 	_stop_board_shake()
 	if gameplay_ui != null:
 		gameplay_ui.clear_notice()
+		gameplay_ui.clear_progress_milestones()
 		gameplay_ui.hide_objective_intro()
 	if move_feedback != null:
 		move_feedback.reset()
@@ -915,6 +941,7 @@ func _layout_controls() -> void:
 	_set_control_rect(setting_controls["screen_shake"], _settings_shake_rect())
 	_set_control_rect(settings_controls.get_node("BackButton"), _settings_back_button_rect())
 	_set_control_rect(settings_controls.get_node("PreviewSoundButton"), _settings_preview_button_rect())
+	_check_progress_milestones()
 
 func _set_control_rect(control: Control, rect: Rect2) -> void:
 	control.position = rect.position
@@ -1014,9 +1041,15 @@ func _header_height() -> float:
 	return height
 
 func _tray_height() -> float:
-	if _is_collect_mode():
-		return clampf(size.y * 0.21, 148.0, 230.0)
-	return clampf(size.y * 0.16, 128.0, 190.0)
+	var base_height := clampf(size.y * 0.21, 148.0, 230.0) if _is_collect_mode() else clampf(size.y * 0.16, 128.0, 190.0)
+	var padding := 32.0 if _is_collect_mode() else 52.0
+	return maxf(base_height, float(_tray_max_bounds().y) * _tray_preferred_unit() + padding)
+
+func _tray_preferred_unit() -> float:
+	# A common UI scale keeps the same cell size across game modes. Reserve
+	# space for long shapes first, rather than reducing collection pieces.
+	var ui_scale := minf(size.x / 1280.0, size.y / 720.0)
+	return clampf(roundf(24.0 * ui_scale), 8.0, 48.0)
 
 func _visible_tray() -> Array[PieceData]:
 	if input_locked and not pending_move.is_empty():
@@ -1025,7 +1058,10 @@ func _visible_tray() -> Array[PieceData]:
 
 func _tray_slot_rect(index: int) -> Rect2:
 	var count := maxi(1, rules_config.tray_count)
-	var tray_width := minf(size.x - BOARD_MARGIN * 2.0, maxf(_board_rect().size.x, 320.0 if _is_collect_mode() else 440.0))
+	var inner_padding := 12.0 if _is_collect_mode() else 24.0
+	var required_slot_width := float(_tray_max_bounds().x) * _tray_preferred_unit() + inner_padding
+	var required_width := float(count) * required_slot_width + float(count - 1) * 16.0
+	var tray_width := minf(size.x - BOARD_MARGIN * 2.0, maxf(maxf(_board_rect().size.x, 440.0), required_width))
 	var slot_width := (tray_width - float(count - 1) * 16.0) / float(count)
 	var tray_top := _board_rect().end.y + (clampf(_cell_size() * 0.6, 12.0, 40.0) if _is_collect_mode() else 84.0)
 	return Rect2(Vector2((size.x - tray_width) * 0.5 + float(index) * (slot_width + 16.0), tray_top), Vector2(slot_width, _tray_height() - (20.0 if _is_collect_mode() else 32.0)))
@@ -1068,10 +1104,10 @@ func _tray_unit(_index: int, _piece: PieceData) -> float:
 	var padding := Vector2(12.0, 12.0) if _is_collect_mode() else Vector2(24.0, 20.0)
 	var available := (slot.size - padding).max(Vector2.ONE)
 	var fit := minf(available.x / float(extent.x), available.y / float(extent.y))
-	return minf(_cell_size() * (0.48 if _is_collect_mode() else 0.57), fit)
+	return minf(_tray_preferred_unit(), fit)
 
 func _tray_cell_inset() -> float:
-	return 0.2 if _is_collect_mode() else 1.0
+	return 0.2
 
 func _tray_piece_origin(index: int, piece: PieceData) -> Vector2:
 	var slot := _tray_slot_rect(index)

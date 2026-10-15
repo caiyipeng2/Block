@@ -14,6 +14,7 @@ signal objective_intro_dismissed
 
 const BlockArt := preload("res://scripts/ui/block_art.gd")
 const ArtIconButton := preload("res://scripts/ui/art_icon_button.gd")
+const ProgressBanner := preload("res://scripts/ui/progress_banner.gd")
 const MODE_HIDDEN := "hidden"
 const MODE_PLAYING := "playing"
 const MODE_PAUSED := "paused"
@@ -116,6 +117,8 @@ var _victory_particles: Array[Dictionary] = []
 var _victory_ambient_running := false
 var _victory_ambient_time := 0.0
 var _victory_button_ready := true
+var _progress_banner: ProgressBanner
+var _progress_banner_paused := false
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -125,6 +128,7 @@ func _ready() -> void:
 	_apply_state(false)
 
 func _exit_tree() -> void:
+	clear_progress_milestones()
 	hide_objective_intro()
 	_stop_score_animation()
 	_stop_overlay_animation()
@@ -223,6 +227,24 @@ func sync_target_display() -> void:
 
 func reset_target_display() -> void:
 	sync_target_display()
+
+## Presentation only: milestones are detected from arrival counts by the owner.
+func show_progress_milestone(percent: int, reduced_motion: bool = false) -> void:
+	if not _configured or not _is_collect_objective() or _mode not in [MODE_PLAYING, MODE_PAUSED] or is_objective_intro_visible():
+		return
+	_progress_banner.set_playfield(_effective_playfield(), size)
+	_progress_banner.set_paused(_progress_banner_paused or _mode == MODE_PAUSED)
+	_progress_banner.show_milestone(percent, reduced_motion)
+
+func clear_progress_milestones() -> void:
+	_progress_banner_paused = false
+	if is_instance_valid(_progress_banner):
+		_progress_banner.clear()
+
+func set_progress_banner_paused(paused: bool) -> void:
+	_progress_banner_paused = paused
+	if is_instance_valid(_progress_banner):
+		_progress_banner.set_paused(paused or _mode != MODE_PLAYING or is_objective_intro_visible())
 
 func _target_summary(source: Dictionary, remaining: bool = false) -> String:
 	var parts := PackedStringArray()
@@ -452,6 +474,7 @@ func objective_target(kind: String = "red_star") -> Vector2:
 func show_objective_intro(stats: Dictionary, reduced_motion: bool = false) -> void:
 	if not _configured or _mode != MODE_PLAYING:
 		return
+	clear_progress_milestones()
 	hide_objective_intro()
 	clear_notice()
 	_intro_stats = stats.duplicate(true)
@@ -811,6 +834,10 @@ func _build_controls() -> void:
 	_notice_label.custom_minimum_size = Vector2(0.0, 24.0)
 	_notice.add_child(_notice_label)
 	_build_objective_intro()
+	_progress_banner = ProgressBanner.new()
+	_progress_banner.name = "ProgressMilestones"
+	_progress_banner.z_index = 4
+	add_child(_progress_banner)
 
 func _build_objective_intro() -> void:
 	_intro_root = Control.new()
@@ -1111,6 +1138,10 @@ func _apply_state(mode_changed: bool) -> void:
 		clear_notice()
 	if not _configured:
 		return
+	if _mode in [MODE_PLAYING, MODE_PAUSED] and _is_collect_objective():
+		_progress_banner.set_paused(_progress_banner_paused or _mode == MODE_PAUSED or is_objective_intro_visible())
+	else:
+		clear_progress_milestones()
 	_update_texts(mode_changed)
 	if bool(_stats.get("reduced_motion", false)):
 		_stop_overlay_animation()
@@ -1535,6 +1566,7 @@ func _layout_controls() -> void:
 	_layout_overlay()
 	_layout_notice()
 	_layout_objective_intro()
+	_progress_banner.set_playfield(field, size)
 	queue_redraw()
 
 func _layout_collect_hud(stage_left: float, stage_width: float) -> void:
