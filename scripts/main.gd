@@ -57,6 +57,7 @@ var game_mode := "free"
 var current_level := 0
 var level_select: Control
 var level_completion_recorded := false
+var level_objective: Dictionary = {}
 
 func _ready() -> void:
 	set_process_input(true)
@@ -83,6 +84,7 @@ func _ready() -> void:
 	gameplay_ui.settings_requested.connect(_request_game_settings)
 	gameplay_ui.next_level_requested.connect(_start_next_level)
 	gameplay_ui.levels_requested.connect(_return_to_menu)
+	gameplay_ui.objective_intro_dismissed.connect(_on_objective_intro_dismissed)
 	level_select = LevelSelectScript.new()
 	level_select.name = "LevelSelect"
 	level_select.z_index = 12
@@ -112,6 +114,13 @@ func _process(delta: float) -> void:
 
 func _input(event: InputEvent) -> void:
 	if exiting:
+		return
+	if _objective_intro_open():
+		if event is InputEventKey and event.pressed and not event.echo and event.keycode in [KEY_ENTER, KEY_KP_ENTER, KEY_SPACE, KEY_ESCAPE]:
+			gameplay_ui.accept_objective_intro()
+			get_viewport().set_input_as_handled()
+		# Leave mouse/Tab events to the native modal controls. No tray or
+		# gameplay shortcut can act before the player accepts the objective.
 		return
 	if not confirmation_action.is_empty():
 		if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
@@ -148,7 +157,7 @@ func _input(event: InputEvent) -> void:
 		_update_drag_preview()
 
 func _handle_press(position: Vector2) -> void:
-	if exiting or input_locked or not confirmation_action.is_empty():
+	if exiting or input_locked or _objective_intro_open() or not confirmation_action.is_empty():
 		return
 	if screen == "menu":
 		if _menu_start_button_rect().has_point(position):
@@ -196,7 +205,7 @@ func _handle_press(position: Vector2) -> void:
 func _handle_release(position: Vector2) -> void:
 	if dragging_index < 0:
 		return
-	if exiting or input_locked or game == null or screen != "game" or paused or not confirmation_action.is_empty():
+	if exiting or input_locked or _objective_intro_open() or game == null or screen != "game" or paused or not confirmation_action.is_empty():
 		_cancel_drag()
 		return
 	# The release may arrive without a final motion event; validate its own position.
@@ -274,7 +283,12 @@ func _handle_release(position: Vector2) -> void:
 			"clear_column_colors": clear_appearance["column_colors"],
 			"target_cells": before_targets,
 			"collected_targets": result.get("collected_targets", []),
+			"collected_target_events": result.get("collected_target_events", []),
 			"objective_target": gameplay_ui.score_target(),
+			"objective_targets": {
+				"red_star": gameplay_ui.objective_target("red_star"),
+				"gold_gem": gameplay_ui.objective_target("gold_gem"),
+			},
 			"score_flight_enabled": game.objective_type != "collect",
 		})
 	else:
@@ -303,6 +317,7 @@ func _start_game(mode: String = "", level_id: int = 0) -> void:
 	else:
 		game_mode = "free"
 		current_level = 0
+	level_objective = ModeCatalog.objective_config(current_level) if game_mode == "adventure" else {}
 	game = GameState.new(seed, rules_config.board_size, rules_config, setup)
 	level_completion_recorded = false
 	board_placement_orders.clear()
@@ -322,8 +337,37 @@ func _start_game(mode: String = "", level_id: int = 0) -> void:
 	last_gain = 0
 	_play_feedback("click")
 	_refresh_controls()
-	var notice := ModeCatalog.objective_description(current_level) if game_mode == "adventure" else "拖动方块，填满一行或一列"
-	gameplay_ui.show_notice(notice, "info", _reduced_motion())
+	if screen == "game" and game.objective_type == "collect":
+		gameplay_ui.show_objective_intro(_collection_intro_stats(), _reduced_motion())
+		_refresh_controls()
+	else:
+		var notice := ModeCatalog.objective_description(current_level) if game_mode == "adventure" else "拖动方块，填满一行或一列"
+		gameplay_ui.show_notice(notice, "info", _reduced_motion())
+	queue_redraw()
+
+func _objective_intro_open() -> bool:
+	return gameplay_ui != null and gameplay_ui.is_objective_intro_visible()
+
+func _collection_intro_stats() -> Dictionary:
+	var stats := level_objective.duplicate(true)
+	if game != null:
+		stats.merge({
+			"level_id": current_level,
+			"objective_type": game.objective_type,
+			"target_counts": game.target_counts.duplicate(),
+			"collected_counts": game.target_collected_counts.duplicate(),
+			"remaining_counts": game.target_remaining_counts.duplicate(),
+			"target_total": game.target_total,
+			"difficulty_description": str(level_objective.get("description", "")),
+		}, true)
+	return stats
+
+func _on_objective_intro_dismissed() -> void:
+	if exiting or game == null or screen != "game":
+		return
+	_cancel_drag()
+	_play_feedback("click")
+	_refresh_controls()
 	queue_redraw()
 
 func _unlocked_level() -> int:
@@ -384,7 +428,7 @@ func _create_confirmation_dialog() -> void:
 	add_child(confirmation_dialog)
 
 func _request_restart() -> void:
-	if exiting or input_locked or not confirmation_action.is_empty():
+	if exiting or input_locked or _objective_intro_open() or not confirmation_action.is_empty():
 		return
 	if screen == "game_over" or screen == "level_complete":
 		_start_game()
@@ -392,7 +436,7 @@ func _request_restart() -> void:
 		_show_confirmation("restart")
 
 func _request_menu() -> void:
-	if exiting or input_locked or not confirmation_action.is_empty():
+	if exiting or input_locked or _objective_intro_open() or not confirmation_action.is_empty():
 		return
 	if screen == "game_over" or screen == "level_complete":
 		_return_to_menu()
@@ -454,7 +498,7 @@ func _cancel_drag() -> void:
 	queue_redraw()
 
 func _toggle_pause() -> void:
-	if screen != "game" or not confirmation_action.is_empty():
+	if screen != "game" or _objective_intro_open() or not confirmation_action.is_empty():
 		return
 	paused = not paused
 	_cancel_drag()
@@ -463,6 +507,8 @@ func _toggle_pause() -> void:
 
 func _on_window_focus_lost() -> void:
 	_cancel_drag()
+	if _objective_intro_open():
+		return
 	if screen == "game" and confirmation_action.is_empty():
 		paused = true
 		move_feedback.set_paused(true)
@@ -507,7 +553,7 @@ func _show_settings() -> void:
 	queue_redraw()
 
 func _request_game_settings() -> void:
-	if screen != "game" or not confirmation_action.is_empty():
+	if screen != "game" or _objective_intro_open() or not confirmation_action.is_empty():
 		return
 	settings_origin = "game"
 	settings_was_paused = paused
@@ -612,6 +658,7 @@ func _reset_visual_feedback() -> void:
 	_stop_board_shake()
 	if gameplay_ui != null:
 		gameplay_ui.clear_notice()
+		gameplay_ui.hide_objective_intro()
 	if move_feedback != null:
 		move_feedback.reset()
 		move_feedback.set_paused(false)
@@ -810,6 +857,8 @@ func _refresh_controls() -> void:
 	level_select.visible = screen == "levels"
 	move_feedback.visible = screen in ["game", "game_over", "level_complete"]
 	if gameplay_ui != null:
+		if screen != "game" or exiting:
+			gameplay_ui.hide_objective_intro()
 		var mode := "hidden"
 		if game != null and confirmation_action.is_empty() and not exiting:
 			if screen == "game_over":
@@ -830,7 +879,7 @@ func _refresh_controls() -> void:
 				"clear_points": game.last_clear_points,
 				"clear_lines": game.last_clear_lines,
 				"new_record": new_record,
-				"input_locked": input_locked,
+				"input_locked": input_locked or _objective_intro_open(),
 				"reduced_motion": _reduced_motion(),
 				"mode": game_mode,
 				"level_id": current_level,
@@ -839,6 +888,10 @@ func _refresh_controls() -> void:
 				"target_total": game.target_total,
 				"target_collected": game.target_collected,
 				"target_remaining": game.target_cells.size(),
+				"target_counts": game.target_counts.duplicate(),
+				"collected_counts": game.target_collected_counts.duplicate(),
+				"remaining_counts": game.target_remaining_counts.duplicate(),
+				"difficulty_label": str(level_objective.get("difficulty_label", "")),
 				"highest_completed": int(save_data.get("adventure_highest_completed", 0)),
 				"has_next_level": current_level < ModeCatalog.MAX_LEVELS,
 				"total_levels": ModeCatalog.MAX_LEVELS,
@@ -1071,9 +1124,11 @@ func _draw_board() -> void:
 			if value < 0:
 				Art.draw_empty_cell(self, cell_rect, color)
 			else:
+				if game.target_cells.has(Vector2i(x, y)) and not preview_clear_colors.has(Vector2i(x, y)):
+					color = Art.target_tile_color(_target_kind_at(Vector2i(x, y)))
 				Art.draw_block(self, cell_rect, color, 1.0, 0.20 if preview_clear_colors.has(Vector2i(x, y)) else 0.0)
 				if game.target_cells.has(Vector2i(x, y)):
-					Art.draw_target_marker(self, cell_rect)
+					Art.draw_target_marker(self, cell_rect, 1.0, 1.0, _target_kind_at(Vector2i(x, y)))
 	if dragging_index >= 0 and game != null:
 		var piece: PieceData = game.remaining_pieces[dragging_index]
 		var preview_color := _piece_color(piece) if drag_valid else Color("#ff7575")
@@ -1086,6 +1141,9 @@ func _draw_board() -> void:
 				else:
 					Art.draw_block(self, preview_rect, preview_color, 0.72 if drag_valid else 0.40, 0.2)
 					draw_rect(preview_rect.grow(-1.0), Color("#b3fff1") if drag_valid else Color("#ffb3a9"), false, 1.5)
+
+func _target_kind_at(cell: Vector2i) -> String:
+	return "gold_gem" if game != null and str(game.target_cells.get(cell, "red_star")) == "gold_gem" else "red_star"
 
 func _draw_tray() -> void:
 	var pieces := _visible_tray()

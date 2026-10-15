@@ -1,5 +1,7 @@
 extends SceneTree
 
+const ModeCatalog = preload("res://scripts/modes/mode_catalog.gd")
+
 ## Maintained coverage; normal delivery compiles this script without running it.
 var failures := 0
 
@@ -8,6 +10,7 @@ func _initialize() -> void:
 	_test_tutorial_adaptation()
 	_test_collection_progress()
 	_test_crossing_collection()
+	_test_certified_rounds()
 	if failures == 0:
 		print("MODE STATE TESTS PASSED")
 	quit(0 if failures == 0 else 1)
@@ -164,7 +167,8 @@ func _test_crossing_collection() -> void:
 		initial.append({"x": cell.x, "y": cell.y, "color": 1})
 	var setup := {
 		"mode": "adventure", "level_id": 3, "objective_type": "collect",
-		"target_cells": [Vector2i(6, 0)], "initial_cells": initial,
+		"target_cells": {Vector2i(6, 0): "red_star", Vector2i(0, 0): "gold_gem"},
+		"target_counts": {"red_star": 1, "gold_gem": 1}, "target_total": 2, "initial_cells": initial,
 		"initial_pieces": [step, line, line.duplicate_piece()],
 		"initial_solution": [
 			{"piece_index": 0, "origin": Vector2i(5, 0)},
@@ -175,8 +179,83 @@ func _test_crossing_collection() -> void:
 	var adventure := GameState.new(23, 8, config, setup)
 	var result := adventure.place_piece(0, Vector2i(5, 0), 2)
 	_check(result["clear"]["rows"] == 1 and result["clear"]["columns"] == 1, "交叉消除场景真实包含行列")
-	_check(result["target_collected"] == 1 and result["collected_targets"].size() == 1, "行列交叉特殊格只收集一次")
+	_check(result["target_collected"] == 2 and result["collected_targets"].size() == 2, "行列交叉特殊格去重，两类目标各收集一次")
+	_check(result["target_collected_counts"] == {"red_star": 1, "gold_gem": 1} and result["collected_target_events"].size() == 2, "分类进度和动画事件与真实目标一致")
 	_check(adventure.is_level_complete() and adventure.remaining_pieces.size() == 2, "目标清完后即便仍有托盘方块也立即胜利")
+	_check_collection_sums(adventure, "交叉消除")
+	var restarted := GameState.new(23, 8, config, setup)
+	_check(restarted.target_counts == {"red_star": 1, "gold_gem": 1} and restarted.target_collected_counts == {"red_star": 0, "gold_gem": 0}, "重开恢复两类目标总数和零进度")
+	_check_collection_sums(restarted, "重开")
+	var malformed := setup.duplicate(true)
+	malformed["target_counts"] = {"red_star": 2, "gold_gem": 1}
+	_check(GameState.new(23, 8, config, malformed).is_game_over(), "声明分类数量与真实目标不符时拒绝开局")
+	malformed = setup.duplicate(true)
+	malformed["target_cells"][Vector2i(7, 7)] = "red_star"
+	_check(GameState.new(23, 8, config, malformed).is_game_over(), "包含空白格的目标集不能静默缩减后开局")
+
+func _planned_collection_setup() -> Dictionary:
+	var line := PieceData.new(Vector2i.ZERO, [Vector2i.ZERO, Vector2i(1, 0), Vector2i(2, 0)], "line3")
+	var initial: Array[Dictionary] = []
+	var board := BoardRules.new(8)
+	for y in range(4):
+		for x in range(5):
+			initial.append({"x": x, "y": y, "color": 1})
+			board.set_cell(x, y, 1)
+	var targets := {Vector2i(0, 0): "red_star", Vector2i(0, 3): "gold_gem"}
+	var remaining := targets.duplicate()
+	var origins: Array[Vector2i] = [Vector2i(5, 0), Vector2i(5, 1), Vector2i(5, 2), Vector2i(5, 3), Vector2i(0, 0), Vector2i(3, 0)]
+	var rounds: Array[Dictionary] = []
+	for offset in range(0, 6, 3):
+		var pieces: Array[PieceData] = []
+		var solution: Array[Dictionary] = []
+		var board_key := ModeCatalog.occupancy_key(board)
+		var targets_key := ModeCatalog.target_key(remaining)
+		for index in range(3):
+			pieces.append(line.duplicate_piece())
+			var origin := origins[offset + index]
+			solution.append({"piece_index": index, "origin": origin})
+			board.place(line, origin, 1)
+			var cleared := board.clear_full_lines()
+			for cell in cleared["cells"]:
+				remaining.erase(cell)
+		rounds.append({"occupancy_key": board_key, "target_key": targets_key, "pieces": pieces, "solution": solution})
+	return {
+		"mode": "adventure", "level_id": 6, "objective_type": "collect", "initial_cells": initial,
+		"target_cells": targets, "target_counts": {"red_star": 1, "gold_gem": 1}, "target_total": 2,
+		"initial_pieces": rounds[0]["pieces"], "initial_solution": rounds[0]["solution"], "certified_rounds": rounds,
+	}
+
+func _test_certified_rounds() -> void:
+	var config := GameRulesConfig.new()
+	var setup := _planned_collection_setup()
+	var adventure := GameState.new(40, 8, config, setup)
+	_check(not adventure.is_game_over(), "初始托盘不收齐全部目标但多轮完整证书可以开局")
+	var result: Dictionary = {}
+	for row in range(3):
+		result = adventure.place_piece(0, Vector2i(5, row), 5 - row)
+		_check_collection_sums(adventure, "多轮认证第" + str(row))
+	_check(bool(result["certified_round_supplied"]) and adventure.round_index == 1, "占用与目标匹配后供应下一轮认证托盘")
+	_check(adventure.target_remaining_counts == {"red_star": 0, "gold_gem": 1}, "首轮结束保留后轮目标且不新增目标")
+	var won := adventure.place_piece(0, Vector2i(5, 3), 5)
+	_check(adventure.is_level_complete() and adventure.remaining_pieces.size() == 2 and not bool(won["round_refilled"]), "最后目标清除优先胜利，无需放完末轮填充块")
+	_check_collection_sums(adventure, "多轮通关")
+	var restarted := GameState.new(40, 8, config, setup)
+	_check(restarted.target_remaining_counts == {"red_star": 1, "gold_gem": 1} and restarted.round_index == 0, "重开恢复完整目标及第一轮计划")
+	var deviated := GameState.new(41, 8, config, setup)
+	for row in [5, 6, 7]:
+		result = deviated.place_piece(0, Vector2i(0, row), 4)
+	_check(not bool(result["certified_round_supplied"]) and bool(result["generation_diagnostics"].get("certified_plan_deviated", false)), "偏离后的占用不匹配时不能误用后轮计划")
+	_check(deviated.board.get_cell(0, 5) == 4 and deviated.target_cells.size() == 2, "放弃计划保留真实棋盘与原有目标")
+	_check_collection_sums(deviated, "偏离路线")
+	var wrong_key := setup.duplicate(true)
+	wrong_key["certified_rounds"][1]["target_key"] = "wrong"
+	_check(GameState.new(42, 8, config, wrong_key).is_game_over(), "后轮目标签名错误会在开局完整验证时被拒绝")
+
+func _check_collection_sums(state: GameState, label: String) -> void:
+	_check(int(state.target_counts["red_star"]) + int(state.target_counts["gold_gem"]) == state.target_total, label + "：分类总量和总数一致")
+	_check(int(state.target_collected_counts["red_star"]) + int(state.target_collected_counts["gold_gem"]) == state.target_collected, label + "：分类已收集和总进度一致")
+	_check(int(state.target_remaining_counts["red_star"]) + int(state.target_remaining_counts["gold_gem"]) == state.target_cells.size(), label + "：分类剩余和实际坐标一致")
+	_check(state.target_collected + state.target_cells.size() == state.target_total, label + "：目标不会凭空增加或丢失")
 
 func _check(value: bool, message: String) -> void:
 	if not value:

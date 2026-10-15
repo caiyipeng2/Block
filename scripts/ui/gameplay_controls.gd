@@ -9,6 +9,7 @@ signal resume_requested
 signal settings_requested
 signal next_level_requested
 signal levels_requested
+signal objective_intro_dismissed
 
 const BlockArt := preload("res://scripts/ui/block_art.gd")
 const ArtIconButton := preload("res://scripts/ui/art_icon_button.gd")
@@ -21,6 +22,7 @@ const MIN_BUTTON_HEIGHT := 52.0
 const GOLD := Color("#ffd05a")
 const AQUA := Color("#73f8e4")
 const MUTED := Color("#aec3eb")
+const TARGET_KINDS := ["red_star", "gold_gem"]
 
 var _mode := MODE_HIDDEN
 var _stats: Dictionary = {}
@@ -70,6 +72,18 @@ var _notice: PanelContainer
 var _notice_label: Label
 var _notice_tween: Tween
 var _overlay_tween: Tween
+var _objective_rects: Dictionary = {}
+var _intro_root: Control
+var _intro_scrim: ColorRect
+var _intro_scroll: ScrollContainer
+var _intro_card: Control
+var _intro_title: Label
+var _intro_subtitle: Label
+var _intro_description: Label
+var _intro_targets: Control
+var _intro_start_button: Button
+var _intro_stats: Dictionary = {}
+var _intro_tween: Tween
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -79,6 +93,7 @@ func _ready() -> void:
 	_apply_state(false)
 
 func _exit_tree() -> void:
+	hide_objective_intro()
 	_stop_score_animation()
 	_stop_overlay_animation()
 	clear_notice()
@@ -90,7 +105,10 @@ func _notification(what: int) -> void:
 func _draw() -> void:
 	if _configured and _mode == MODE_PLAYING:
 		if _is_adventure():
-			_draw_level_progress()
+			if _is_collect_objective():
+				_draw_collect_targets()
+			else:
+				_draw_level_progress()
 		else:
 			BlockArt.draw_icon(self, "crown", _crown_rect, GOLD)
 
@@ -105,6 +123,66 @@ func _objective_total() -> int:
 
 func _objective_current() -> int:
 	return maxi(0, int(_stats.get("target_collected", 0))) if _is_collect_objective() else maxi(0, int(roundf(_display_score)))
+
+func _target_count(source: Dictionary, field: String, kind: String) -> int:
+	var counts: Variant = source.get(field, {})
+	if counts is Dictionary and counts.has(kind):
+		return maxi(0, int(counts[kind]))
+	if field == "remaining_counts":
+		if kind == "red_star" and not source.has("target_counts") and source.has("target_remaining"):
+			return maxi(0, int(source["target_remaining"]))
+		return maxi(0, _target_count(source, "target_counts", kind) - _target_count(source, "collected_counts", kind))
+	if kind != "red_star":
+		return 0
+	match field:
+		"target_counts":
+			return maxi(0, int(source.get("target_total", 0)))
+		"collected_counts":
+			return maxi(0, int(source.get("target_collected", 0)))
+	return 0
+
+func _active_target_kinds(source: Dictionary) -> Array[String]:
+	var kinds: Array[String] = []
+	for kind: String in TARGET_KINDS:
+		if _target_count(source, "target_counts", kind) > 0:
+			kinds.append(kind)
+	if kinds.is_empty():
+		kinds.append("red_star")
+	return kinds
+
+func _remaining_count(kind: String) -> int:
+	var counts: Variant = _stats.get("remaining_counts", {})
+	if counts is Dictionary and counts.has(kind):
+		return maxi(0, int(counts[kind]))
+	return maxi(0, _target_count(_stats, "target_counts", kind) - _target_count(_stats, "collected_counts", kind))
+
+func _target_summary(source: Dictionary, remaining: bool = false) -> String:
+	var parts := PackedStringArray()
+	for kind: String in _active_target_kinds(source):
+		if remaining:
+			var left := _target_count(source, "remaining_counts", kind)
+			parts.append("%s %d" % [BlockArt.target_name(kind), left])
+		else:
+			parts.append("%s %d/%d" % [BlockArt.target_name(kind), _target_count(source, "collected_counts", kind), _target_count(source, "target_counts", kind)])
+	return "  ·  ".join(parts)
+
+func _draw_collect_targets() -> void:
+	for kind: String in _active_target_kinds(_stats):
+		var rect: Rect2 = _objective_rects.get(kind, Rect2())
+		if rect.size.x <= 0.0:
+			continue
+		BlockArt.draw_target_marker(self, rect, 1.0, 1.0, kind)
+		var count_rect := Rect2(rect.get_center().x - 35.0, rect.end.y + 1.0, 70.0, 24.0)
+		_draw_centered_text(self, str(_remaining_count(kind)), count_rect, 22, Color.WHITE)
+
+func _draw_centered_text(canvas: CanvasItem, value: String, rect: Rect2, max_font_size: int, color: Color) -> void:
+	var font := _stats_label.get_theme_font("font")
+	var font_size := max_font_size
+	while font_size > 10 and (font.get_string_size(value, HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size).x > rect.size.x or font.get_height(font_size) > rect.size.y):
+		font_size -= 1
+	var text_width := font.get_string_size(value, HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size).x
+	var baseline := rect.get_center() + Vector2(-text_width * 0.5, (font.get_ascent(font_size) - font.get_descent(font_size)) * 0.5)
+	canvas.draw_string(font, baseline, value, HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size, color)
 
 func _draw_level_progress() -> void:
 	if _current_badge.size.x <= 0.0:
@@ -137,8 +215,6 @@ func _draw_level_progress() -> void:
 	draw_arc(goal_center, radius - 1.0, 0.0, TAU, 64, Color("#5d7aac"), 2.0, true)
 	_draw_badge_number(str(_objective_current()), _current_badge, Color("#f3ffff"))
 	_draw_badge_number(str(_objective_total()), _goal_badge, GOLD)
-	if _is_collect_objective():
-		_draw_gem(self, Vector2(_progress_track.get_center().x, _current_badge.position.y - 7.0), 8.0)
 
 func _draw_badge_number(value: String, rect: Rect2, color: Color) -> void:
 	var font := _stats_label.get_theme_font("font")
@@ -149,22 +225,16 @@ func _draw_badge_number(value: String, rect: Rect2, color: Color) -> void:
 	draw_string(font, baseline + Vector2(0.0, 1.0), value, HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size, Color(0.0, 0.06, 0.16, 0.25))
 	draw_string(font, baseline, value, HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size, color)
 
-func _draw_gem(canvas: CanvasItem, center: Vector2, radius: float) -> void:
-	var top := center + Vector2(0.0, -radius)
-	var right := center + Vector2(radius * 0.78, 0.0)
-	var bottom := center + Vector2(0.0, radius)
-	var left := center + Vector2(-radius * 0.78, 0.0)
-	canvas.draw_colored_polygon(PackedVector2Array([top, right, bottom, left]), Color("#a88cff"))
-	canvas.draw_colored_polygon(PackedVector2Array([top, center, left]), Color("#eee7ff"))
-	canvas.draw_colored_polygon(PackedVector2Array([center, right, bottom]), Color("#7652d1"))
-	canvas.draw_polyline(PackedVector2Array([top, right, bottom, left, top]), Color("#f4efff"), maxf(1.0, radius * 0.08), true)
-
 func _draw_overlay_objective_badge() -> void:
 	var center := _overlay_objective_badge.size * 0.5
-	_overlay_objective_badge.draw_circle(center, 25.0, Color("#293660"))
 	if _is_collect_objective():
-		_draw_gem(_overlay_objective_badge, center, 20.0)
+		var kinds := _active_target_kinds(_stats)
+		var spacing := 58.0
+		for index in range(kinds.size()):
+			var marker_center := center + Vector2((float(index) - float(kinds.size() - 1) * 0.5) * spacing, 0.0)
+			BlockArt.draw_target_marker(_overlay_objective_badge, Rect2(marker_center - Vector2.ONE * 24.0, Vector2.ONE * 48.0), 1.0, 1.0, kinds[index])
 	else:
+		_overlay_objective_badge.draw_circle(center, 25.0, Color("#293660"))
 		BlockArt.draw_icon(_overlay_objective_badge, "crown", Rect2(center - Vector2.ONE * 20.0, Vector2.ONE * 40.0), GOLD)
 
 func configure(primary: Color, secondary: Color, text: Color, surface: Color) -> void:
@@ -183,19 +253,115 @@ func set_playfield(rect: Rect2) -> void:
 		_layout_controls()
 
 func score_target() -> Vector2:
+	if _is_collect_objective():
+		var center := Vector2.ZERO
+		var kinds := _active_target_kinds(_stats)
+		for kind: String in kinds:
+			center += objective_target(kind)
+		return center / float(kinds.size())
 	if _is_adventure():
 		return _current_badge.get_center()
 	if is_instance_valid(_stats_label):
 		return _stats_label.position + _stats_label.size * 0.5
 	return Vector2(size.x * 0.5, header_height() * 0.65)
 
+func objective_target(kind: String = "red_star") -> Vector2:
+	var rect: Rect2 = _objective_rects.get(kind, Rect2())
+	if _is_collect_objective() and rect.size.x > 0.0:
+		return rect.get_center()
+	return _current_badge.get_center() if _is_adventure() else score_target()
+
+## The owner locks gameplay input while this independent introduction is visible.
+func show_objective_intro(stats: Dictionary, reduced_motion: bool = false) -> void:
+	if not _configured or _mode != MODE_PLAYING:
+		return
+	hide_objective_intro()
+	clear_notice()
+	_intro_stats = stats.duplicate(true)
+	_intro_title.text = "收集目标"
+	var level_id := maxi(1, int(_intro_stats.get("level_id", 1)))
+	var difficulty := str(_intro_stats.get("difficulty_label", _intro_stats.get("stage_name", "")))
+	_intro_subtitle.text = "第 %d 关" % level_id
+	if not difficulty.is_empty():
+		_intro_subtitle.text += "  ·  " + difficulty
+	var description := str(_intro_stats.get("difficulty_description", ""))
+	_intro_description.text = description if not description.is_empty() else "清除带标记的方块，收集全部目标"
+	_intro_root.visible = true
+	_set_intro_action_lock(true)
+	_intro_scroll.scroll_vertical = 0
+	_layout_objective_intro()
+	_intro_targets.queue_redraw()
+	_intro_card.queue_redraw()
+	_intro_start_button.grab_focus()
+	_ensure_intro_start_visible.call_deferred()
+	if reduced_motion:
+		return
+	_intro_card.pivot_offset = _intro_card.size * 0.5
+	_intro_card.scale = Vector2.ONE * 0.94
+	_intro_card.modulate.a = 0.0
+	_intro_scrim.modulate.a = 0.0
+	_intro_tween = create_tween().set_parallel(true)
+	_intro_tween.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	_intro_tween.tween_property(_intro_card, "scale", Vector2.ONE, 0.20).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_intro_tween.tween_property(_intro_card, "modulate:a", 1.0, 0.20)
+	_intro_tween.tween_property(_intro_scrim, "modulate:a", 1.0, 0.20)
+	_intro_tween.chain().tween_callback(func() -> void: _intro_tween = null)
+
+func hide_objective_intro() -> void:
+	_stop_intro_animation()
+	if is_instance_valid(_intro_root):
+		_intro_root.visible = false
+	if is_instance_valid(_intro_start_button):
+		_intro_start_button.release_focus()
+	_intro_stats.clear()
+	_set_intro_action_lock(false)
+
+func is_objective_intro_visible() -> bool:
+	return is_instance_valid(_intro_root) and _intro_root.visible
+
+## Both button and owner keyboard actions converge here; it can emit only once.
+func accept_objective_intro() -> void:
+	if not is_objective_intro_visible():
+		return
+	hide_objective_intro()
+	_focus_mode = ""
+	_focus_pending = true
+	objective_intro_dismissed.emit()
+	_restore_objective_focus.call_deferred()
+
+func _restore_objective_focus() -> void:
+	if not _configured or not is_inside_tree() or _mode != MODE_PLAYING or is_objective_intro_visible():
+		return
+	_grab_first_focus()
+	_focus_pending = false
+
+func _stop_intro_animation() -> void:
+	if is_instance_valid(_intro_tween):
+		_intro_tween.kill()
+	_intro_tween = null
+	if is_instance_valid(_intro_card):
+		_intro_card.scale = Vector2.ONE
+		_intro_card.modulate = Color.WHITE
+	if is_instance_valid(_intro_scrim):
+		_intro_scrim.modulate = Color.WHITE
+
+func _set_intro_action_lock(locked: bool) -> void:
+	if not is_instance_valid(_pause_button):
+		return
+	_pause_button.disabled = locked
+	for button: Button in [_settings_button, _playing_restart_button, _playing_menu_button]:
+		button.disabled = locked or bool(_stats.get("input_locked", false))
+
 ## Objective stats: objective_type (score/collect), target_total,
-## target_collected and target_remaining. Score and score breakdown stay separate.
+## target_collected/target_remaining, plus dictionaries target_counts,
+## collected_counts/remaining_counts keyed by red_star/gold_gem.
 func set_mode(mode: String, stats: Dictionary = {}) -> void:
 	var next_mode := mode if mode in [MODE_HIDDEN, MODE_PLAYING, MODE_PAUSED, MODE_GAME_OVER, MODE_LEVEL_COMPLETE] else MODE_HIDDEN
 	var mode_changed := next_mode != _mode
 	_mode = next_mode
 	_stats = stats.duplicate(true)
+	if next_mode != MODE_PLAYING:
+		hide_objective_intro()
 	_apply_state(mode_changed)
 
 func header_height() -> float:
@@ -377,6 +543,127 @@ func _build_controls() -> void:
 	_notice_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_notice_label.custom_minimum_size = Vector2(0.0, 24.0)
 	_notice.add_child(_notice_label)
+	_build_objective_intro()
+
+func _build_objective_intro() -> void:
+	_intro_root = Control.new()
+	_intro_root.name = "ObjectiveIntro"
+	_intro_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_intro_root.z_index = 30
+	_intro_root.visible = false
+	add_child(_intro_root)
+	_intro_scrim = ColorRect.new()
+	_intro_scrim.name = "Scrim"
+	_intro_scrim.color = Color(0.025, 0.045, 0.105, 0.78)
+	_intro_scrim.mouse_filter = Control.MOUSE_FILTER_STOP
+	_intro_root.add_child(_intro_scrim)
+	_intro_scroll = ScrollContainer.new()
+	_intro_scroll.name = "RibbonViewport"
+	_intro_scroll.mouse_filter = Control.MOUSE_FILTER_STOP
+	_intro_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_intro_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	_intro_scroll.follow_focus = true
+	_intro_scroll.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+	_intro_root.add_child(_intro_scroll)
+	_intro_card = Control.new()
+	_intro_card.name = "Ribbon"
+	_intro_card.mouse_filter = Control.MOUSE_FILTER_STOP
+	_intro_card.custom_minimum_size = Vector2(0.0, 390.0)
+	_intro_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_intro_card.draw.connect(_draw_intro_ribbon)
+	_intro_scroll.add_child(_intro_card)
+	_intro_title = _new_label("Title", 32)
+	_intro_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_intro_title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_intro_card.add_child(_intro_title)
+	_intro_subtitle = _new_label("Level", 18)
+	_intro_subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_intro_subtitle.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_intro_card.add_child(_intro_subtitle)
+	_intro_description = _new_label("Description", 16)
+	_intro_description.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_intro_description.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_intro_description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_intro_description.max_lines_visible = 2
+	_intro_card.add_child(_intro_description)
+	_intro_targets = Control.new()
+	_intro_targets.name = "Targets"
+	_intro_targets.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_intro_targets.draw.connect(_draw_intro_targets)
+	_intro_card.add_child(_intro_targets)
+	_intro_start_button = _new_button("StartChallengeButton", "开始挑战")
+	_intro_start_button.pressed.connect(accept_objective_intro)
+	_intro_card.add_child(_intro_start_button)
+	_intro_card.resized.connect(_layout_objective_intro_content)
+
+func _draw_intro_ribbon() -> void:
+	var width := _intro_card.size.x
+	var height := _intro_card.size.y
+	var panel := Rect2(14.0, 0.0, maxf(1.0, width - 28.0), height)
+	_intro_card.draw_colored_polygon(PackedVector2Array([Vector2(0.0, 18.0), Vector2(32.0, 18.0), Vector2(32.0, 106.0), Vector2(0.0, 106.0), Vector2(10.0, 62.0)]), Color("#2456ac"))
+	_intro_card.draw_colored_polygon(PackedVector2Array([Vector2(width, 18.0), Vector2(width - 32.0, 18.0), Vector2(width - 32.0, 106.0), Vector2(width, 106.0), Vector2(width - 10.0, 62.0)]), Color("#2456ac"))
+	var shadow := BlockArt.panel_style(Color(0.025, 0.045, 0.13, 0.55), 20, Color.TRANSPARENT)
+	_intro_card.draw_style_box(shadow, Rect2(panel.position + Vector2(0.0, 6.0), panel.size))
+	var style := BlockArt.panel_style(Color("#2c62b4"), 20, Color("#73a9ef"))
+	style.set_border_width_all(2)
+	_intro_card.draw_style_box(style, panel)
+	_intro_card.draw_line(Vector2(32.0, 86.0), Vector2(width - 32.0, 86.0), Color(0.6, 0.8, 1.0, 0.24), 1.0, true)
+
+func _draw_intro_targets() -> void:
+	var kinds := _active_target_kinds(_intro_stats)
+	var slot_width := minf(156.0, _intro_targets.size.x / float(kinds.size()))
+	var icon_side := minf(72.0, slot_width * 0.58)
+	for index in range(kinds.size()):
+		var kind := kinds[index]
+		var center_x := _intro_targets.size.x * 0.5 + (float(index) - float(kinds.size() - 1) * 0.5) * slot_width
+		var icon_rect := Rect2(center_x - icon_side * 0.5, 0.0, icon_side, icon_side)
+		BlockArt.draw_target_marker(_intro_targets, icon_rect, 1.0, 1.0, kind)
+		_draw_centered_text(_intro_targets, str(_target_count(_intro_stats, "target_counts", kind)), Rect2(center_x - slot_width * 0.5 + 4.0, icon_side + 2.0, slot_width - 8.0, 38.0), 34, Color.WHITE)
+		_draw_centered_text(_intro_targets, BlockArt.target_name(kind), Rect2(center_x - slot_width * 0.5 + 4.0, icon_side + 42.0, slot_width - 8.0, 22.0), 16, Color("#d9ebff"))
+
+func _layout_objective_intro() -> void:
+	if not is_instance_valid(_intro_root):
+		return
+	_intro_root.position = Vector2.ZERO
+	_intro_root.size = size
+	_intro_scrim.position = Vector2.ZERO
+	_intro_scrim.size = size
+	var width := minf(680.0, maxf(size.x - 24.0, 1.0))
+	var viewport_height := minf(390.0, maxf(size.y - 24.0, 1.0))
+	_intro_scroll.size = Vector2(width, viewport_height)
+	_intro_scroll.position = Vector2((size.x - width) * 0.5, maxf(12.0, (size.y - viewport_height) * 0.5))
+	# ScrollContainer owns the content width; its viewport stays within the window.
+	_intro_scroll.queue_sort()
+	_layout_objective_intro_content()
+	if is_objective_intro_visible() and viewport_height < 390.0:
+		_ensure_intro_start_visible.call_deferred()
+
+func _layout_objective_intro_content() -> void:
+	if not is_instance_valid(_intro_start_button):
+		return
+	var width := _intro_card.size.x
+	_intro_card.pivot_offset = _intro_card.size * 0.5
+	var inner_width := maxf(width - 64.0, 1.0)
+	_intro_title.position = Vector2(32.0, 12.0)
+	_intro_title.size = Vector2(inner_width, 42.0)
+	_intro_title.add_theme_font_size_override("font_size", 26 if width < 360.0 else 32)
+	_intro_subtitle.position = Vector2(32.0, 54.0)
+	_intro_subtitle.size = Vector2(inner_width, 28.0)
+	_intro_subtitle.add_theme_font_size_override("font_size", 15 if width < 360.0 else 18)
+	_intro_targets.position = Vector2(32.0, 100.0)
+	_intro_targets.size = Vector2(inner_width, 140.0)
+	_intro_description.position = Vector2(32.0, 254.0)
+	_intro_description.size = Vector2(inner_width, 50.0)
+	_intro_description.add_theme_font_size_override("font_size", 14 if width < 360.0 else 16)
+	var button_width := minf(320.0, inner_width)
+	_intro_start_button.position = Vector2((width - button_width) * 0.5, 320.0)
+	_intro_start_button.size = Vector2(button_width, 52.0)
+	_intro_card.queue_redraw()
+	_intro_targets.queue_redraw()
+
+func _ensure_intro_start_visible() -> void:
+	if is_objective_intro_visible() and is_instance_valid(_intro_start_button):
+		_intro_scroll.ensure_control_visible(_intro_start_button)
 
 func _new_label(node_name: String, font_size: int) -> Label:
 	var label := Label.new()
@@ -432,6 +719,10 @@ func _apply_theme() -> void:
 	_style_button(_next_level_button, GOLD, Color("#213759"))
 	_style_button(_overlay_restart_button, GOLD, Color("#213759"))
 	_style_button(_overlay_menu_button, Color("#2c4677"), _text)
+	_style_button(_intro_start_button, GOLD, Color("#213759"))
+	_intro_title.add_theme_color_override("font_color", Color.WHITE)
+	_intro_subtitle.add_theme_color_override("font_color", Color("#d8e9ff"))
+	_intro_description.add_theme_color_override("font_color", Color("#e2edff"))
 	for button: Button in [_settings_button, _pause_button, _playing_restart_button, _playing_menu_button]:
 		button.set("icon_color", _text)
 		button.queue_redraw()
@@ -498,9 +789,10 @@ func _apply_state(mode_changed: bool) -> void:
 	_update_texts(mode_changed)
 	if bool(_stats.get("reduced_motion", false)):
 		_stop_overlay_animation()
-	var input_locked := bool(_stats.get("input_locked", false))
+	var intro_visible := is_objective_intro_visible()
+	var input_locked := bool(_stats.get("input_locked", false)) or intro_visible
 	# A paused feedback animation must always be resumable.
-	_pause_button.disabled = false
+	_pause_button.disabled = intro_visible
 	_resume_button.disabled = false
 	_next_level_button.disabled = input_locked or not bool(_stats.get("has_next_level", false))
 	for button: Button in [_settings_button, _playing_restart_button, _playing_menu_button, _overlay_restart_button, _overlay_menu_button]:
@@ -552,7 +844,7 @@ func _update_texts(mode_changed: bool) -> void:
 	var remaining := maxi(0, int(_stats.get("target_remaining", target_total - collected)))
 	var gameplay_mode := str(_stats.get("mode", "free"))
 	_mode_label.text = "第 %d 关" % level_id if adventure else ("经典模式" if gameplay_mode == "classic" else "自由模式")
-	_goal_label.text = "消除菱形标记  %d / %d" % [collected, target_total] if collect else "第 %d 关 · 目标 %d 分" % [level_id, goal]
+	_goal_label.text = "收集全部目标  ·  剩余 %d" % remaining if collect else "第 %d 关 · 目标 %d 分" % [level_id, goal]
 	_goal_score_label.text = str(goal)
 	_title_label.text = str(high_score)
 	_title_label.tooltip_text = "最高分：%d" % high_score
@@ -564,7 +856,7 @@ func _update_texts(mode_changed: bool) -> void:
 	_overlay_title.text = "目标完成" if _mode == MODE_LEVEL_COMPLETE else ("已暂停" if _mode == MODE_PAUSED else ("第 %d 关未通过" % level_id if adventure else "游戏结束"))
 	_overlay_score.text = "%d / %d" % [collected, target_total] if collect and _mode == MODE_LEVEL_COMPLETE else str(score)
 	if collect:
-		_overlay_best.text = "第 %d 关  ·  总分 %d" % [level_id, score] if _mode == MODE_LEVEL_COMPLETE else "菱形标记  %d / %d  ·  还需 %d" % [collected, target_total, remaining]
+		_overlay_best.text = "第 %d 关  ·  总分 %d" % [level_id, score] if _mode == MODE_LEVEL_COMPLETE else "剩余  " + _target_summary(_stats, true)
 	else:
 		_overlay_best.text = "第 %d 关  ·  目标 %d 分" % [level_id, goal] if adventure else "最高分  %d" % high_score
 	if _mode == MODE_PAUSED:
@@ -572,7 +864,7 @@ func _update_texts(mode_changed: bool) -> void:
 	else:
 		_overlay_stats.text = "消除 %d 行/列   ·   完成 %d 回合\n最近放置 +%d   消除 +%d   ·   %d 线" % [total_cleared, round_index + 1, placement_points, clear_points, clear_lines]
 	if collect and _mode == MODE_LEVEL_COMPLETE:
-		_overlay_stats.text = "已收集全部 %d 个菱形标记\n消除 %d 行/列  ·  完成 %d 回合" % [target_total, total_cleared, round_index + 1]
+		_overlay_stats.text = _target_summary(_stats) + "\n消除 %d 行/列  ·  完成 %d 回合" % [total_cleared, round_index + 1]
 	if _mode == MODE_LEVEL_COMPLETE:
 		if bool(_stats.get("save_failed", false)):
 			_new_record_label.text = "进度保存失败，本次运行已解锁"
@@ -644,6 +936,7 @@ func _stop_overlay_animation() -> void:
 func _layout_controls() -> void:
 	if not _configured:
 		return
+	_objective_rects.clear()
 	_playing_root.position = Vector2.ZERO
 	_playing_root.size = Vector2(size.x, header_height())
 	_overlay_root.position = Vector2.ZERO
@@ -711,12 +1004,20 @@ func _layout_controls() -> void:
 		_goal_label.position = Vector2(stage_left, band_y + badge_side + 2.0)
 		_goal_label.size = Vector2(stage_width, 20.0)
 		_goal_label.add_theme_font_size_override("font_size", 14 if portrait else 12)
+		if _is_collect_objective():
+			var kinds := _active_target_kinds(_stats)
+			var target_side := clampf(badge_side * 0.60, 32.0, 56.0)
+			var spacing := minf(120.0, stage_width * 0.24)
+			for index in range(kinds.size()):
+				var center_x := stage_left + stage_width * 0.5 + (float(index) - float(kinds.size() - 1) * 0.5) * spacing
+				_objective_rects[kinds[index]] = Rect2(center_x - target_side * 0.5, band_y, target_side, target_side)
 	var detail_y := field.position.y - 52.0
 	_detail_label.position = Vector2(stage_left, detail_y)
 	_detail_label.size = Vector2(stage_width, 24.0)
 	_detail_label.add_theme_font_size_override("font_size", 12 if narrow else (clampi(int(stage_width * 0.018), 14, 22) if portrait else 14))
 	_layout_overlay()
 	_layout_notice()
+	_layout_objective_intro()
 	queue_redraw()
 
 func _badge_font(value: int, diameter: float) -> int:
@@ -745,7 +1046,7 @@ func _layout_notice() -> void:
 	_notice.position = Vector2(field.get_center().x - width * 0.5, field.end.y + 28.0)
 
 func _layout_overlay() -> void:
-	_overlay_objective_badge.custom_minimum_size = Vector2(56.0, 56.0)
+	_overlay_objective_badge.custom_minimum_size = Vector2(132.0 if _is_collect_objective() else 56.0, 56.0)
 	_overlay_title.custom_minimum_size = Vector2(0.0, 32.0)
 	_overlay_score.custom_minimum_size = Vector2(0.0, 78.0)
 	_overlay_best.custom_minimum_size = Vector2(0.0, 28.0)

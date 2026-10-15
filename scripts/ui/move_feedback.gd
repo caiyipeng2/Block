@@ -40,7 +40,7 @@ var _clear_colors: Dictionary = {}
 var _clear_row_colors: Dictionary = {}
 var _clear_column_colors: Dictionary = {}
 var _target_cells: Dictionary = {}
-var _collected_targets: Array[Vector2i] = []
+var _collected_target_events: Array[Dictionary] = []
 var _clear_rows: Array[int] = []
 var _clear_columns: Array[int] = []
 var _placed_scale := 1.0
@@ -102,8 +102,7 @@ func play_move(
 	_clear_colors = context.get("clear_colors", {}).duplicate()
 	_clear_row_colors = context.get("clear_row_colors", {}).duplicate()
 	_clear_column_colors = context.get("clear_column_colors", {}).duplicate()
-	_target_cells = context.get("target_cells", {}).duplicate()
-	_collected_targets.assign(context.get("collected_targets", []))
+	_capture_target_context(context)
 	_gained = gained
 	_overlay_visible = true
 	_board_overlay_active = true
@@ -197,7 +196,7 @@ func reset() -> void:
 	_clear_row_colors.clear()
 	_clear_column_colors.clear()
 	_target_cells.clear()
-	_collected_targets.clear()
+	_collected_target_events.clear()
 	_clear_rows.clear()
 	_clear_columns.clear()
 	_context.clear()
@@ -437,22 +436,52 @@ func _draw_board_cell(coordinate: Vector2i, color: Color, block_scale: float, al
 		return
 	var source_rect := Rect2(_board_rect.position + _board_offset + Vector2(coordinate) * _cell_size, Vector2.ONE * _cell_size)
 	var draw_size := Vector2.ONE * maxf(_cell_size - 2.0, 1.0) * block_scale
-	BlockArt.draw_block(self, Rect2(source_rect.get_center() - draw_size * 0.5, draw_size), color, alpha, highlight)
+	var block_rect := Rect2(source_rect.get_center() - draw_size * 0.5, draw_size)
+	var tile_color := color
+	if _target_cells.has(coordinate) and not _clear_cells.has(coordinate):
+		tile_color = BlockArt.target_tile_color(_target_kind(_target_cells[coordinate]))
+	BlockArt.draw_block(self, block_rect, tile_color, alpha, highlight)
 	if _target_cells.has(coordinate):
-		BlockArt.draw_target_marker(self, Rect2(source_rect.get_center() - draw_size * 0.5, draw_size), alpha)
+		BlockArt.draw_target_marker(self, block_rect, alpha, 1.0, _target_kind(_target_cells[coordinate]))
 
 func _draw_target_flights() -> void:
-	if not _dispersing or _accent_tween == null or _collected_targets.is_empty():
+	if not _dispersing or _accent_tween == null or _collected_target_events.is_empty():
 		return
-	var destination: Vector2 = _context.get("objective_target", Vector2(_board_rect.get_center().x, _board_rect.position.y - 50.0))
-	for index in range(_collected_targets.size()):
+	var fallback_destination: Vector2 = _context.get("objective_target", Vector2(_board_rect.get_center().x, _board_rect.position.y - 50.0))
+	var objective_targets: Dictionary = _context.get("objective_targets", {})
+	for index in range(_collected_target_events.size()):
+		var event := _collected_target_events[index]
+		var kind := _target_kind(event["kind"])
+		var destination: Vector2 = objective_targets.get(kind, fallback_destination)
 		var progress := clampf((_accent_progress - float(index % 4) * 0.025) / 0.90, 0.0, 1.0)
-		var origin := _cell_center(_collected_targets[index])
+		var origin := _cell_center(event["cell"])
 		var eased := progress * progress * (3.0 - 2.0 * progress)
 		var point := origin.lerp(destination, eased)
 		point.y -= sin(progress * PI) * minf(_cell_size * 0.9, 56.0)
 		var side := maxf(12.0, _cell_size * lerpf(0.95, 0.55, progress))
-		BlockArt.draw_target_marker(self, Rect2(point - Vector2.ONE * side * 0.5, Vector2.ONE * side), 1.0 - clampf((progress - 0.82) / 0.18, 0.0, 1.0), 1.5)
+		BlockArt.draw_target_marker(self, Rect2(point - Vector2.ONE * side * 0.5, Vector2.ONE * side), 1.0 - clampf((progress - 0.82) / 0.18, 0.0, 1.0), 1.5, kind)
+
+func _capture_target_context(context: Dictionary) -> void:
+	var before_targets: Dictionary = context.get("target_cells", {})
+	for cell in before_targets:
+		if cell is Vector2i:
+			_target_cells[cell] = _target_kind(before_targets[cell])
+	# Typed events retain each collected kind even after the state removes it.
+	# The old coordinate-only payload remains compatible through the snapshot.
+	var events: Array = context.get("collected_target_events", [])
+	if events.is_empty():
+		events = context.get("collected_targets", [])
+	var seen: Dictionary = {}
+	for entry in events:
+		var coordinate: Variant = entry.get("cell") if entry is Dictionary else entry
+		if not coordinate is Vector2i or seen.has(coordinate):
+			continue
+		var kind := _target_kind(entry.get("kind", _target_cells.get(coordinate, "red_star"))) if entry is Dictionary else _target_kind(_target_cells.get(coordinate, "red_star"))
+		_collected_target_events.append({"cell": coordinate, "kind": kind})
+		seen[coordinate] = true
+
+func _target_kind(value: Variant) -> String:
+	return "gold_gem" if value is String and value == "gold_gem" else "red_star"
 
 func _draw_clear_lines() -> void:
 	if not _clear_started or _dispersing:
