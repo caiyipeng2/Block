@@ -61,6 +61,7 @@ var level_completion_recorded := false
 var level_objective: Dictionary = {}
 var display_remaining_counts: Dictionary = {}
 var progress_milestones_shown: Dictionary = {}
+var pending_level_unlock: Dictionary = {}
 
 func _ready() -> void:
 	set_process_input(true)
@@ -453,7 +454,9 @@ func _open_levels() -> void:
 	level_select.set_save_status("进度保存失败，仅本次运行有效" if not save_status_text.is_empty() else "")
 	_refresh_controls()
 	_update_level_description(level_select.selected_level)
-	level_select.activate()
+	var unlock_event := pending_level_unlock
+	pending_level_unlock = {}
+	level_select.activate(int(unlock_event.get("completed", 0)), int(unlock_event.get("unlocked", 0)))
 	_play_feedback("click")
 	queue_redraw()
 
@@ -466,13 +469,17 @@ func _start_adventure_level(level_id: int) -> void:
 
 func _start_next_level() -> void:
 	if game != null and game.is_level_complete() and current_level < ModeCatalog.MAX_LEVELS:
-		_start_adventure_level(current_level + 1)
+		_return_to_menu()
 
 func _record_level_completion() -> void:
 	if game == null or game_mode != "adventure" or not game.is_level_complete():
 		return
 	if not level_completion_recorded:
+		var previously_unlocked := _unlocked_level()
 		save_data = SaveRepository.record_level_completed(save_data, current_level, game.scoring.score)
+		var newly_unlocked := _unlocked_level()
+		if newly_unlocked > previously_unlocked:
+			pending_level_unlock = {"completed": current_level, "unlocked": newly_unlocked}
 		level_completion_recorded = true
 	_persist_data()
 

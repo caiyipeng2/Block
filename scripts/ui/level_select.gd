@@ -3,6 +3,7 @@ extends Control
 ## Native, scrollable adventure map. The owner supplies progress and level goals.
 const Art := preload("res://scripts/ui/block_art.gd")
 const IconButton := preload("res://scripts/ui/art_icon_button.gd")
+const UnlockEffect := preload("res://scripts/ui/level_unlock_effect.gd")
 
 signal back_requested
 signal level_started(level_id: int)
@@ -39,6 +40,12 @@ var _scroll_tween: Tween
 var _manual_scroll_epoch: int = 0
 var _programmatic_focus: bool = false
 var _reveal_level: int = 0
+var _unlock_effect: Control
+var _unlock_source: int = 0
+var _unlock_destination: int = 0
+var _unlock_running := false
+var _unlock_waiting := false
+var _unlock_epoch := 0
 
 
 class GoldDiamond extends Control:
@@ -96,6 +103,11 @@ class LevelTile extends Button:
 	var selected: bool = false
 	var visual_side: float = 32.0
 	var _number: Label
+	var _presentation_color := Color.TRANSPARENT
+	var _presentation_number_color := Color.TRANSPARENT
+	var _presentation_scale := 1.0
+	var _presentation_flash := 0.0
+	var _presentation_active := false
 
 	func _ready() -> void:
 		custom_minimum_size = Vector2(32.0, 32.0)
@@ -123,7 +135,25 @@ class LevelTile extends Button:
 			_number.text = str(level_id)
 			_number.add_theme_font_size_override("font_size", clampi(roundi(visual_side * 0.45), 13, 16))
 			_number.add_theme_color_override("font_color", Color("#273451") if selected else (Color("#efffff") if completed else Color("#91a6ce")))
+			if _presentation_active:
+				_number.add_theme_color_override("font_color", _presentation_number_color)
+			_number.pivot_offset = size * 0.5
+			_number.scale = Vector2.ONE * _presentation_scale
 		queue_redraw()
+
+	func set_presentation(color: Color, number_color: Color, scale_factor: float = 1.0, flash: float = 0.0) -> void:
+		_presentation_active = true
+		_presentation_color = color
+		_presentation_number_color = number_color
+		_presentation_scale = scale_factor
+		_presentation_flash = flash
+		refresh()
+
+	func reset_presentation() -> void:
+		_presentation_active = false
+		_presentation_scale = 1.0
+		_presentation_flash = 0.0
+		refresh()
 
 	func _draw() -> void:
 		var color := Color("#263c68")
@@ -133,15 +163,17 @@ class LevelTile extends Button:
 			color = Color("#31bddc")
 		elif not disabled:
 			color = Color("#4f83ce")
+		if _presentation_active:
+			color = _presentation_color.lerp(Color.WHITE, _presentation_flash * 0.55)
 		if is_pressed() and not disabled:
 			color = color.darkened(0.08)
 		# A compact drawing retains a comfortable native hit target around it.
-		var side := minf(visual_side, minf(size.x, size.y))
+		var side := minf(visual_side, minf(size.x, size.y)) * _presentation_scale
 		var rect := Rect2((size - Vector2.ONE * side) * 0.5, Vector2.ONE * side)
 		TileArt.draw_block(self, rect, color, 0.76 if disabled else 1.0, 0.12 if is_hovered() and not disabled else 0.0)
-		if selected:
+		if selected and not _presentation_active:
 			draw_rect(rect.grow(1.0), Color("#fff2ac"), false, 2.0)
-		if has_focus():
+		if has_focus() and not _presentation_active:
 			# An outline cannot tint the fill, unlike a translucent focus panel.
 			draw_rect(rect.grow(2.5), Color("#82f5e9"), false, 1.6)
 
@@ -184,6 +216,7 @@ func _ready() -> void:
 
 
 func configure(level_count: int, completed_count: int, initial_selection: int = 0) -> void:
+	_cancel_unlock_animation()
 	_cancel_scroll_animation()
 	total_levels = maxi(1, level_count)
 	highest_completed = clampi(completed_count, 0, total_levels)
@@ -206,9 +239,14 @@ func set_save_status(message: String) -> void:
 		_save_warning.visible = not message.is_empty()
 
 
-func activate() -> void:
+func activate(completed_level: int = 0, newly_unlocked_level: int = 0) -> void:
+	_cancel_unlock_animation()
 	var animate_upward := _last_activated_level > 0 and _unlocked_level > _last_activated_level
 	select_latest()
+	if not _reduced_motion and completed_level >= 1 and completed_level <= highest_completed and newly_unlocked_level == _unlocked_level and newly_unlocked_level == completed_level + 1:
+		_unlock_source = completed_level
+		_unlock_destination = newly_unlocked_level
+		_prepare_unlock_visuals()
 	_schedule_reveal(true, true, animate_upward)
 	_last_activated_level = selected_level
 
@@ -218,15 +256,18 @@ func set_reduced_motion(enabled: bool) -> void:
 	if is_instance_valid(_marker):
 		_marker.set_reduced_motion(enabled)
 	if enabled:
+		_cancel_unlock_animation()
 		_cancel_scroll_animation()
 
 
 func _exit_tree() -> void:
+	_cancel_unlock_animation()
 	_cancel_scroll_animation()
 
 
 func _on_visibility_changed() -> void:
 	if not is_visible_in_tree():
+		_cancel_unlock_animation()
 		_cancel_scroll_animation()
 
 
@@ -243,6 +284,7 @@ func _input(event: InputEvent) -> void:
 		user_scroll = event.keycode in [KEY_PAGEUP, KEY_PAGEDOWN, KEY_HOME, KEY_END, KEY_UP, KEY_DOWN]
 	if user_scroll:
 		_manual_scroll_epoch += 1
+		_cancel_unlock_animation()
 		_cancel_scroll_animation()
 
 
@@ -322,6 +364,12 @@ func _build_controls() -> void:
 	_save_warning = _label(12, Color("#ffbb8e"))
 	_footer.add_child(_save_warning)
 	set_save_status(_save_status)
+	_unlock_effect = UnlockEffect.new()
+	_unlock_effect.name = "LevelUnlockEffect"
+	_unlock_effect.z_index = 8
+	_unlock_effect.frame_changed.connect(_on_unlock_frame)
+	_unlock_effect.finished.connect(_cancel_unlock_animation)
+	add_child(_unlock_effect)
 
 
 func _label(font_size: int, color: Color) -> Label:
@@ -358,6 +406,9 @@ func _rebuild_tiles() -> void:
 func _layout_controls() -> void:
 	if not is_instance_valid(_header):
 		return
+	_cancel_unlock_animation()
+	_unlock_effect.position = Vector2.ZERO
+	_unlock_effect.size = size
 	var header_height := 104.0
 	var footer_height := 132.0
 	_header.position = Vector2.ZERO
@@ -434,7 +485,7 @@ func _layout_map() -> void:
 
 
 func _position_marker() -> void:
-	var tile: LevelTile = _tiles.get(selected_level)
+	var tile: LevelTile = _tiles.get(_unlock_source if _unlock_destination > 0 else selected_level)
 	if not is_instance_valid(tile) or not is_instance_valid(_marker):
 		return
 	# A small badge at the tile's upper edge leaves both rows' numbers clear.
@@ -443,9 +494,93 @@ func _position_marker() -> void:
 	_marker.position = Vector2(tile.position.x + tile.size.x * 0.5 - 11.05, tile.position.y - 12.0)
 
 
+func _prepare_unlock_visuals() -> void:
+	var source: LevelTile = _tiles.get(_unlock_source)
+	var destination: LevelTile = _tiles.get(_unlock_destination)
+	if not is_instance_valid(source) or not is_instance_valid(destination):
+		_cancel_unlock_animation()
+		return
+	source.set_presentation(Color("#ffd154"), Color("#273451"))
+	destination.set_presentation(Color("#263c68"), Color("#91a6ce"))
+	_position_marker()
+
+
+func _begin_unlock_animation() -> void:
+	if _unlock_destination <= 0 or _unlock_running or _unlock_waiting:
+		return
+	# ScrollContainer applies its last scroll value during the next sort.
+	# Read the tile's screen position only after that, and never revive a
+	# sequence cancelled while this frame was pending.
+	_unlock_waiting = true
+	var epoch := _unlock_epoch
+	await get_tree().process_frame
+	if epoch != _unlock_epoch or not is_inside_tree():
+		return
+	_unlock_waiting = false
+	if _reduced_motion or not is_visible_in_tree() or _scroll.size.y < 96.0:
+		_cancel_unlock_animation()
+		return
+	var source: LevelTile = _tiles.get(_unlock_source)
+	var destination: LevelTile = _tiles.get(_unlock_destination)
+	if not is_instance_valid(source) or not is_instance_valid(destination):
+		_cancel_unlock_animation()
+		return
+	var source_rect := _tile_view_rect(source)
+	var destination_rect := _tile_view_rect(destination)
+	if not _scroll.get_rect().encloses(source_rect) or not _scroll.get_rect().encloses(destination_rect):
+		_cancel_unlock_animation()
+		return
+	_unlock_running = true
+	_unlock_effect.play(_unlock_source, _unlock_destination, source_rect, destination_rect, _scroll.get_rect())
+
+
+func _tile_view_rect(tile: LevelTile) -> Rect2:
+	var origin := tile.get_global_rect().position - global_position
+	return Rect2(origin + (tile.size - Vector2.ONE * tile.visual_side) * 0.5, Vector2.ONE * tile.visual_side)
+
+
+func _on_unlock_frame(elapsed: float) -> void:
+	if not _unlock_running:
+		return
+	var source: LevelTile = _tiles.get(_unlock_source)
+	var destination: LevelTile = _tiles.get(_unlock_destination)
+	if not is_instance_valid(source) or not is_instance_valid(destination):
+		_cancel_unlock_animation()
+		return
+	var landing := clampf((elapsed - UnlockEffect.LAND_TIME) / 0.22, 0.0, 1.0)
+	var unlocking := clampf((elapsed - UnlockEffect.UNLOCK_TIME) / 0.34, 0.0, 1.0)
+	var source_color := Color("#ffd154").lerp(Color("#31bddc"), clampf(landing * 2.5, 0.0, 1.0))
+	var source_text := Color("#273451").lerp(Color("#efffff"), landing)
+	source.set_presentation(source_color, source_text, 1.0 + sin(landing * PI) * 0.14, sin(landing * PI) * 0.65)
+	var destination_color := Color("#263c68").lerp(Color("#ffd154"), smoothstep(0.0, 1.0, unlocking))
+	var destination_text := Color("#91a6ce").lerp(Color("#273451"), unlocking)
+	destination.set_presentation(destination_color, destination_text, 1.0 + sin(unlocking * PI) * 0.20, sin(unlocking * PI) * 0.42)
+	var start := Vector2(source.position.x + source.size.x * 0.5 - 11.05, source.position.y - 12.0)
+	var finish := Vector2(destination.position.x + destination.size.x * 0.5 - 11.05, destination.position.y - 12.0)
+	_marker.position = start.lerp(finish, smoothstep(0.0, 1.0, unlocking)) + Vector2(0.0, -sin(unlocking * PI) * 20.0)
+
+
+func _cancel_unlock_animation() -> void:
+	if _unlock_destination <= 0 and not _unlock_running and not _unlock_waiting:
+		return
+	_unlock_epoch += 1
+	_unlock_waiting = false
+	_unlock_running = false
+	if is_instance_valid(_unlock_effect):
+		_unlock_effect.cancel()
+	for level_id in [_unlock_source, _unlock_destination]:
+		var tile: LevelTile = _tiles.get(level_id)
+		if is_instance_valid(tile):
+			tile.reset_presentation()
+	_unlock_source = 0
+	_unlock_destination = 0
+	_position_marker()
+
+
 func _select_level(level_id: int) -> void:
 	if level_id < 1 or level_id > _unlocked_level:
 		return
+	_cancel_unlock_animation()
 	selected_level = level_id
 	_description_text = ""
 	_refresh_selection()
@@ -482,11 +617,13 @@ func _refresh_description() -> void:
 
 func _start_selected_level() -> void:
 	if selected_level >= 1 and selected_level <= _unlocked_level:
+		_cancel_unlock_animation()
 		level_started.emit(selected_level)
 
 
 func _on_tile_focused(level_id: int) -> void:
 	if not _programmatic_focus:
+		_cancel_unlock_animation()
 		_reveal_level = level_id
 		_schedule_reveal()
 
@@ -511,6 +648,7 @@ func _reveal_selection() -> void:
 	await get_tree().process_frame
 	_reveal_queued = false
 	if not is_visible_in_tree() or manual_epoch != _manual_scroll_epoch:
+		_cancel_unlock_animation()
 		_focus_on_reveal = false
 		_center_on_reveal = false
 		_animate_on_reveal = false
@@ -520,6 +658,7 @@ func _reveal_selection() -> void:
 	_reveal_level = 0
 	var tile: LevelTile = _tiles.get(level_id)
 	if not is_instance_valid(tile):
+		_cancel_unlock_animation()
 		_focus_on_reveal = false
 		_center_on_reveal = false
 		_animate_on_reveal = false
@@ -545,8 +684,11 @@ func _reveal_selection() -> void:
 			_scroll.scroll_vertical = int(minf(maximum, target + viewport_height * 0.45))
 		_scroll_tween = create_tween()
 		_scroll_tween.tween_property(_scroll, "scroll_vertical", int(target), 0.55).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		if _unlock_destination > 0:
+			_scroll_tween.tween_callback(_begin_unlock_animation)
 	else:
 		_scroll.scroll_vertical = int(target)
+		_begin_unlock_animation()
 	if _focus_on_reveal:
 		_programmatic_focus = true
 		tile.grab_focus()
