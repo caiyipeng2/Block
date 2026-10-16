@@ -43,8 +43,18 @@ func apply_settings(data: Dictionary) -> void:
 		_apply_playback_settings()
 
 func play_feedback(kind: String = "click") -> void:
+	_play_sound(kind, 1.0)
+
+func play_clear_reward(combo: int, line_count: int) -> void:
+	# A small rising interval rewards actual streaks without changing points
+	# or carrying the raised pitch into clicks, placement, or adventure audio.
+	var semitones := minf(float(maxi(combo - 1, 0)) * 0.45 + float(maxi(line_count - 1, 0)) * 0.70, 4.0)
+	_play_sound("clear", pow(2.0, semitones / 12.0))
+
+func _play_sound(kind: String, pitch: float) -> void:
 	if not sound_enabled or sound_player == null:
 		return
+	sound_player.pitch_scale = pitch
 	sound_player.stream = _sound_streams.get(kind, _sound_streams["click"])
 	sound_player.play()
 

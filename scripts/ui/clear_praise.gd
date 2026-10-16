@@ -6,6 +6,7 @@ const LINE_THRESHOLDS := [2, 3, 4]
 const COMBO_THRESHOLDS := [4, 7, 10]
 const TITLES := ["Combo", "Perfect!", "Excellent!", "Unbelievable!"]
 const DURATION := 0.96
+const ENDLESS_DURATION := 1.14
 const GOLD := Color("#ffe56d")
 const AQUA := Color("#b2ffff")
 const PURPLE := Color("#cc8fff")
@@ -24,6 +25,8 @@ var _board_offset := Vector2.ZERO
 var _base_scale := 1.0
 var _pop_scale := 1.0
 var _alpha := 1.0
+var _endless_feedback := false
+var _single_clear := false
 
 static func tier_for(line_count: int, combo: int) -> int:
 	var tier := 0
@@ -36,29 +39,35 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 func play(combo: int, line_count: int, clear_anchor: Vector2, board_rect: Rect2,
-		cell_size: float, surviving_targets: Array[Vector2], delay: float = 0.0, force_combo: bool = false) -> void:
+		cell_size: float, surviving_targets: Array[Vector2], delay: float = 0.0, force_combo: bool = false,
+		endless_feedback: bool = false) -> void:
 	var next_tier := tier_for(line_count, combo)
-	if line_count < 1 or (next_tier == 0 and combo < 2 and not force_combo):
+	if line_count < 1 or (next_tier == 0 and combo < 2 and not force_combo and not endless_feedback):
 		return
 	reset()
 	_tier = next_tier
+	_endless_feedback = endless_feedback
+	_single_clear = endless_feedback and line_count == 1 and combo < 2
 	_cell_size = maxf(cell_size, 1.0)
 	_content = Control.new()
 	_content.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_content)
 	var font_size := clampi(int(board_rect.size.x * (0.118 if _tier > 0 else 0.105)), 26, 76 if _tier > 0 else 58)
+	if _single_clear:
+		font_size = clampi(int(board_rect.size.x * 0.086), 24, 48)
 	var font := SystemFont.new()
 	font.font_names = PackedStringArray(["Arial", "Microsoft YaHei", "sans-serif"])
 	font.font_weight = 900
 	font.font_italic = true
 	var word_color := AQUA if _tier in [0, 2] else (GOLD if _tier == 1 else Color("#f1d5ff"))
-	var word := _new_label(TITLES[_tier], font_size, word_color, 9 if _tier > 0 else 7, font)
+	var title: String = "Nice!" if _single_clear else TITLES[_tier]
+	var word := _new_label(title, font_size, word_color, 9 if _tier > 0 else 7, font)
 	var word_size := word.get_minimum_size()
 	_content_size = word_size
 	var caption_y := word_size.y
 	if combo >= 2:
 		# This is the real consecutive-clear count, never the number of lines.
-		var number := _new_label(str(combo), int(font_size * 1.32), GOLD, 10, font)
+		var number := _new_label(str(combo), int(font_size * (1.44 if endless_feedback else 1.32)), GOLD, 10, font)
 		var number_size := number.get_minimum_size()
 		var gap := maxf(4.0, float(font_size) * 0.06)
 		number.position = Vector2(word_size.x + gap, 0.0)
@@ -70,8 +79,9 @@ func play(combo: int, line_count: int, clear_anchor: Vector2, board_rect: Rect2,
 			var caption_size := caption.get_minimum_size()
 			caption.position = Vector2(number.position.x + (number_size.x - caption_size.x) * 0.5, caption_y)
 			_content_size.y = maxf(_content_size.y, caption_y + caption_size.y)
-	if line_count >= 2:
-		var detail := _new_label("%d Lines" % line_count, clampi(int(font_size * 0.34), 14, 23), Color("#d6f8ff"), 3, font)
+	if line_count >= 2 or endless_feedback:
+		var line_text := "%d %s" % [line_count, "Line" if line_count == 1 else "Lines"]
+		var detail := _new_label(line_text, clampi(int(font_size * 0.34), 14, 23), Color("#d6f8ff"), 3, font)
 		var detail_size := detail.get_minimum_size()
 		detail.position = Vector2((word_size.x - detail_size.x) * 0.5, caption_y)
 		_content_size.y = maxf(_content_size.y, caption_y + detail_size.y)
@@ -84,7 +94,8 @@ func play(combo: int, line_count: int, clear_anchor: Vector2, board_rect: Rect2,
 	if delay > 0.0:
 		_tween.tween_interval(delay)
 	_tween.tween_callback(_show)
-	_tween.tween_method(_update_progress, 0.0, 1.0, DURATION)
+	var duration := (1.04 if _single_clear else ENDLESS_DURATION + float(_tier) * 0.02) if endless_feedback else DURATION
+	_tween.tween_method(_update_progress, 0.0, 1.0, duration)
 	_tween.tween_callback(_end)
 	_apply_pause()
 
@@ -94,6 +105,12 @@ func get_reserved_rect() -> Rect2:
 	# Include the largest pop, slight tilt, outline and shadow so score text
 	# can start above the words while the praise itself remains independent.
 	var half := _content_size * _base_scale * 0.64
+	if _endless_feedback:
+		# Reserve the visible early star burst too, including the 1.27 peak.
+		# Late distant stars are nearly transparent by the time scores fly.
+		var star_extent := Vector2(_content_size.x * 0.28 + _cell_size * (1.5 if _single_clear else 2.1), _cell_size * (0.9 if _single_clear else 1.3)) * _base_scale * 1.27
+		half.x = maxf(half.x, star_extent.x)
+		half.y = maxf(half.y, star_extent.y)
 	var tilt := deg_to_rad(3.0)
 	var extent := Vector2(half.x * cos(tilt) + half.y * sin(tilt), half.x * sin(tilt) + half.y * cos(tilt)) + Vector2(14.0, 18.0)
 	return Rect2(_anchor + _board_offset - extent, extent * 2.0)
@@ -157,6 +174,8 @@ func reset() -> void:
 	_content = null
 	_active = false
 	_progress = 0.0
+	_endless_feedback = false
+	_single_clear = false
 	_board_offset = Vector2.ZERO
 	queue_redraw()
 
@@ -182,6 +201,14 @@ func _update_progress(value: float) -> void:
 	var entrance := clampf(value / 0.19, 0.0, 1.0)
 	_pop_scale = 0.46 + 0.54 * sin(entrance * PI * 0.5) + (0.28 if _tier > 0 else 0.08) * sin(entrance * PI)
 	_alpha = 1.0 - clampf((value - 0.73) / 0.27, 0.0, 1.0)
+	if _endless_feedback:
+		var peak := 1.10 if _single_clear else minf(1.18 + float(_tier) * 0.03, 1.27)
+		if entrance < 0.62:
+			_pop_scale = lerpf(0.56, peak, sin(entrance / 0.62 * PI * 0.5))
+		else:
+			var settle := (entrance - 0.62) / 0.38
+			_pop_scale = lerpf(peak, 1.0, 1.0 - pow(1.0 - settle, 2.0))
+		_alpha = 1.0 - clampf((value - 0.78) / 0.22, 0.0, 1.0)
 	_position_content()
 	queue_redraw()
 
@@ -193,7 +220,12 @@ func _position_content() -> void:
 		_content.modulate.a = _alpha
 
 func _draw() -> void:
-	if not _active or _tier == 0:
+	if not _active:
+		return
+	if _endless_feedback:
+		_draw_endless_praise()
+		return
+	if _tier == 0:
 		return
 	var angle := deg_to_rad(-3.0) * (1.0 - _progress * 0.45)
 	draw_set_transform(_anchor + _board_offset, angle, Vector2.ONE * _base_scale * _pop_scale)
@@ -230,4 +262,30 @@ func _draw() -> void:
 			var r := radius if corner % 2 == 0 else radius * 0.28
 			points.append(point + Vector2.from_angle(float(corner) * PI * 0.25 + star_angle + _progress) * r)
 		draw_colored_polygon(points, Color(tint.r, tint.g, tint.b, star_fade * 0.90))
+	draw_set_transform(Vector2.ZERO)
+
+func _draw_endless_praise() -> void:
+	var angle := deg_to_rad(-3.0) * (1.0 - _progress * 0.45)
+	draw_set_transform(_anchor + _board_offset, angle, Vector2.ONE * _base_scale * _pop_scale)
+	# Keep the words open over the board: a soft halo and sparse gold/aqua
+	# stars give feedback without an opaque ribbon or another tile material.
+	var strength := 0.58 if _single_clear else 1.0 + float(_tier) * 0.18
+	var halo_radius := minf(_content_size.x * 0.46, _cell_size * 2.0)
+	for layer in range(3):
+		var halo := Color(AQUA.r, AQUA.g, AQUA.b, _alpha * strength * 0.025 / float(layer + 1))
+		draw_circle(Vector2.ZERO, halo_radius + float(layer) * _cell_size * 0.15, halo)
+	var star_fade := pow(1.0 - _progress, 1.35)
+	var count := 4 if _single_clear else 8 + _tier * 3
+	for index in range(count):
+		var star_angle := float(index) * 2.399963 + 0.35
+		var direction := Vector2(cos(star_angle), sin(star_angle) * 0.58)
+		var distance := _cell_size * (0.9 + _progress * (1.2 if _single_clear else 1.9))
+		var point := direction * distance + Vector2(signf(direction.x) * _content_size.x * 0.28, 0.0)
+		var radius := _cell_size * (0.040 + float(index % 3) * 0.012) * (1.0 - _progress * 0.55)
+		var tint := GOLD if index % 2 == 0 else AQUA
+		var points := PackedVector2Array()
+		for corner in range(8):
+			var r := radius if corner % 2 == 0 else radius * 0.26
+			points.append(point + Vector2.from_angle(float(corner) * PI * 0.25 + star_angle) * r)
+		draw_colored_polygon(points, Color(tint.r, tint.g, tint.b, star_fade * 0.82))
 	draw_set_transform(Vector2.ZERO)

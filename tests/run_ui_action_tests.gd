@@ -240,6 +240,7 @@ func _test_shared_clear_feedback(main) -> void:
 			var fixture := _feedback_move_fixture(main, line_count)
 			var result: Dictionary = fixture["result"]
 			var context: Dictionary = fixture["context"]
+			_check(bool(context["endless_feedback"]), "%s 合法反馈仅按普通模式标识启用奖励表现" % mode)
 			var leaked_fields: Array[String] = []
 			for field: String in context:
 				if field.begins_with("target_") or field.begins_with("collected_") or field.begins_with("objective_target") or field == "level_complete":
@@ -260,6 +261,9 @@ func _test_shared_clear_feedback(main) -> void:
 			var fixture := _feedback_move_fixture(main, 1)
 			_equal(fixture["result"]["combo"], combo, "%s 第 %d 次连续真实单线的规则 Combo" % [mode, combo])
 			_present_feedback_fixture(main, fixture)
+			if combo == 1:
+				var single_words := _praise_words(praise)
+				_check(single_words.has("Nice!") and single_words.has("1 Line") and not single_words.has("1"), "%s 首次单消有清楚反馈且不伪造连击数字" % mode)
 			if combo in [2, 4, 7, 10]:
 				var titles := {2: "Combo", 4: "Perfect!", 7: "Excellent!", 10: "Unbelievable!"}
 				var words := _praise_words(praise)
@@ -279,10 +283,12 @@ func _test_praise_lifecycle(main, praise: Control) -> void:
 	_check(praise.get("_content") == content and bool(praise.get("_active")) and content.visible, "普通落子保留尚未结束的高阶赞语")
 	_equal(praise.get("_progress"), progress, "下一落子不会重播或缩短旧赞语")
 	_check_score_above_praise(feedback, praise, "保留赞语时普通落子加分")
-	# A new single clear after that miss is not praise-eligible; it must not
-	# clear the previous high-tier words just because play() was called again.
+	# An actual clear after the miss gets its own single-clear reward. Its
+	# words must describe this result rather than retain a stale combo count.
 	_present_feedback_fixture(main, _feedback_move_fixture(main, 1))
-	_equal(praise.get("_content"), content, "断连后的首个单线不覆盖未结束的旧赞语")
+	_check(_praise_words(praise).has("Nice!") and not _praise_words(praise).has("COMBO"), "断连后的首个单线显示 Nice 且没有虚假连击")
+	content = praise.get("_content")
+	progress = float(praise.get("_progress"))
 	var score_before := int(main.game.scoring.score)
 	var combo_before := int(main.game.scoring.combo)
 	var invalid: Dictionary = main.game.place_piece(0, Vector2i(-1, -1), 0)

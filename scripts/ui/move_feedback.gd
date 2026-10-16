@@ -404,7 +404,12 @@ func _begin_clear() -> void:
 	_clear_started = true
 	if not _final_move and bool(_context.get("shake_enabled", true)):
 		var line_count := maxi(int(_context.get("clear_lines", _clear_rows.size() + _clear_columns.size())), 1)
-		shake_requested.emit(minf(1.6 + float(line_count) * 0.65, 4.8), minf(0.14 + float(line_count) * 0.025, 0.24))
+		if _is_endless_clear():
+			var combo := maxi(int(_context.get("combo", 0)), 1)
+			var strength := minf(1.7 + float(line_count - 1) * 0.72 + float(mini(combo - 1, 5)) * 0.38, 4.5)
+			shake_requested.emit(strength, minf(0.14 + float(line_count - 1) * 0.02 + float(mini(combo - 1, 4)) * 0.012, 0.23))
+		else:
+			shake_requested.emit(minf(1.6 + float(line_count) * 0.65, 4.8), minf(0.14 + float(line_count) * 0.025, 0.24))
 	queue_redraw()
 
 func _begin_sweep() -> void:
@@ -562,7 +567,16 @@ func _start_combo() -> void:
 	# Final Block belongs exclusively to the contact helper. Delay follow-up
 	# praise until its title has faded; board busy and collection timings stay
 	# unchanged, and the displayed combo is always the real rule result.
-	_praise_layer.play(combo, line_count, _score_anchor(), _board_rect, _cell_size, targets, 0.32 if _final_move else 0.0, _final_move)
+	_praise_layer.play(combo, line_count, _score_anchor(), _board_rect, _cell_size, targets, 0.32 if _final_move else 0.0, _final_move, _is_endless_clear())
+
+func _is_endless_clear() -> bool:
+	return bool(_context.get("endless_feedback", false)) and not _clear_cells.is_empty() and int(_context.get("clear_lines", 0)) > 0
+
+func _endless_clear_strength() -> float:
+	var line_count := int(_context.get("clear_lines", 0))
+	var combo := int(_context.get("combo", 0))
+	var tier := ClearPraise.tier_for(line_count, combo)
+	return minf((0.65 if combo < 2 and line_count == 1 else 1.0) + float(tier) * 0.28, 1.84)
 
 func _set_accent_progress(progress: float) -> void:
 	_accent_progress = progress
@@ -635,6 +649,7 @@ func _draw() -> void:
 			if whole_piece:
 				_draw_final_piece()
 			_draw_clear_lines()
+	_draw_endless_clear_accent()
 	_draw_particles()
 
 func _draw_final_piece() -> void:
@@ -751,6 +766,36 @@ func _draw_particles() -> void:
 			draw_set_transform(point, angle)
 			BlockArt.draw_block(self, Rect2(-Vector2.ONE * radius, Vector2.ONE * radius * 2.0), color)
 			draw_set_transform(Vector2.ZERO)
+
+func _draw_endless_clear_accent() -> void:
+	if not _dispersing or not _is_endless_clear() or _accent_progress >= 1.0:
+		return
+	# The accent shares the existing decorative clock. It never lengthens
+	# board busy, scales resting tiles, or requests shake on ordinary moves.
+	var progress := _accent_progress
+	var strength := _endless_clear_strength()
+	var center := _score_anchor() + _board_offset
+	var expansion := 1.0 - pow(1.0 - progress, 2.0)
+	var radius := _cell_size * lerpf(0.22, 1.10 + strength * 0.45, expansion)
+	var fade := pow(1.0 - progress, 1.65)
+	var gold := Color("#ffe9a6")
+	var aqua := Color("#b2ffff")
+	draw_arc(center, radius, 0.0, TAU, 64, Color(gold.r, gold.g, gold.b, fade * strength * 0.22), maxf(1.0, _cell_size * 0.028), true)
+	draw_arc(center, radius + _cell_size * 0.045, 0.0, TAU, 64, Color(aqua.r, aqua.g, aqua.b, fade * strength * 0.08), maxf(1.0, _cell_size * 0.05), true)
+	var flash := pow(1.0 - clampf(progress / 0.16, 0.0, 1.0), 2.0)
+	if flash > 0.0:
+		draw_circle(center, _cell_size * (0.40 + strength * 0.18), Color(1.0, 0.98, 0.86, flash * strength * 0.12))
+	var count := 4 if strength < 1.0 else 8 + int(strength * 3.0)
+	for index in range(count):
+		var angle := float(index) * TAU / float(count) + 0.20
+		var direction := Vector2.from_angle(angle)
+		var point := center + direction * radius * (0.78 + float(index % 3) * 0.15)
+		var star_radius := _cell_size * (0.035 + float(index % 2) * 0.015) * (1.0 - progress * 0.55)
+		var tint := gold if index % 2 == 0 else aqua
+		tint.a = fade * minf(0.70 + strength * 0.12, 0.92)
+		draw_line(point - direction * star_radius * 1.7, point + direction * star_radius * 1.7, tint, 1.7, true)
+		var cross := Vector2(-direction.y, direction.x) * star_radius
+		draw_line(point - cross, point + cross, tint, 1.4, true)
 
 func _draw_rebound() -> void:
 	var origin := _rebound_from_origin.lerp(_rebound_to_origin, _rebound_progress)

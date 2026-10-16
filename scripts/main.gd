@@ -274,7 +274,10 @@ func _handle_release(position: Vector2) -> void:
 		var cleared_lines := int(result["clear"]["rows"]) + int(result["clear"]["columns"])
 		var final_impact := _is_collect_mode() and game.is_level_complete() and not _reduced_motion()
 		if not final_impact:
-			_play_feedback("clear" if cleared_lines > 0 else "place")
+			if cleared_lines > 0 and game_mode in ["free", "classic"]:
+				feedback_audio.play_clear_reward(int(result["combo"]), cleared_lines)
+			else:
+				_play_feedback("clear" if cleared_lines > 0 else "place")
 		status_text = "放置 +%d   清除 +%d   合计 +%d   清除 %d 行/列   连击 x%d" % [
 			int(result.get("placement_points", 0)),
 			int(result.get("clear_points", 0)),
@@ -318,6 +321,7 @@ func _move_feedback_context(result: Dictionary, clear_appearance: Dictionary, ta
 		"objective_type": game.objective_type,
 		"final_block": false,
 		"score_flight_enabled": true,
+		"endless_feedback": game_mode in ["free", "classic"],
 	}
 	if _is_collect_mode():
 		context.merge({

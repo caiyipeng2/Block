@@ -1,6 +1,7 @@
 extends SceneTree
 
 const ModeCatalog = preload("res://scripts/modes/mode_catalog.gd")
+const OpeningTraySupplier = preload("res://scripts/rules/opening_tray_supplier.gd")
 
 ## Maintained coverage; normal delivery compiles this script without running it.
 var failures := 0
@@ -13,6 +14,9 @@ func _initialize() -> void:
 	_test_crossing_collection()
 	_test_streamed_collection()
 	_test_retry_supply()
+	_test_opening_scope_and_threshold()
+	_test_opening_clear_paths()
+	_test_opening_reproducibility_and_fallback()
 	if failures == 0:
 		print("MODE STATE TESTS PASSED")
 	quit(0 if failures == 0 else 1)
@@ -296,6 +300,160 @@ func _test_retry_supply() -> void:
 	var cleared: Array = [Vector2i(0, 0), Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0), Vector2i(7, 7)]
 	_check(supplier._needed_target_count(cleared, markers, {"blue_diamond": 1, "gold_gem": 0}) == 1, "辅助评价去重交叉坐标、按需求封顶并忽略已满或不需要种类")
 	_check(supplier._needed_target_count(cleared, markers, {"blue_diamond": 2, "gold_gem": 1}) == 3, "辅助评价按每类真实剩余量计算有效收集进度")
+
+func _opening_fixture(mode: String) -> Dictionary:
+	var line := PieceData.new(Vector2i.ZERO, [Vector2i.ZERO, Vector2i(1, 0), Vector2i(2, 0)], "line3")
+	return {
+		"mode": mode, "target_score": 1,
+		"initial_pieces": [line, line.duplicate_piece(), line.duplicate_piece()],
+		"initial_solution": [
+			{"piece_index": 0, "origin": Vector2i.ZERO},
+			{"piece_index": 1, "origin": Vector2i(3, 0)},
+			{"piece_index": 2, "origin": Vector2i(0, 1)},
+		],
+		"initial_diagnostics": {"fixture": true},
+	}
+
+func _test_opening_scope_and_threshold() -> void:
+	var classic_config := GameRulesConfig.new()
+	var generated_classic := GameState.new(80, 8, classic_config, ModeCatalog.classic_setup(80, classic_config))
+	_check(bool(generated_classic.generation_diagnostics.get("opening_assist", false)), "真实经典入口生成的认证初盘也启用普通开局辅助")
+	for mode in ["free", "classic"]:
+		var state := GameState.new(81, 8, GameRulesConfig.new(), {"mode": mode})
+		_check(bool(state.generation_diagnostics.get("opening_assist", false)) and state.remaining_pieces.size() == 3, "普通初盘在1500分前使用完整消除友好供应：" + mode)
+		_check(state.scoring.score == 0 and state.total_moves == 0 and state.target_score == 0, "预测路径不赠分、不制造落子且不设通关目标：" + mode)
+		state.scoring.score = 1499
+		_check(state._uses_opening_supplier(), "1499分仍在辅助范围：" + mode)
+		state.scoring.score = 1500
+		_check(not state._uses_opening_supplier(), "1500分立即离开辅助范围：" + mode)
+		for refill_score in [1499, 1500]:
+			var boundary := GameState.new(82, 8, GameRulesConfig.new(), _opening_fixture(mode))
+			boundary.remaining_pieces = [boundary.remaining_pieces[0]]
+			boundary.scoring.score = refill_score - 30
+			var refill := boundary.place_piece(0, Vector2i.ZERO)
+			_check(bool(refill["round_refilled"]) and boundary.scoring.score == refill_score and boundary.round_index == 1, "补盘按真实落子后分数判断边界：%s/%d" % [mode, refill_score])
+			_check(bool(boundary.generation_diagnostics.get("opening_assist", false)) == (refill_score < 1500), "1499/1500补盘选择正确且不残留辅助诊断：%s/%d" % [mode, refill_score])
+			_check(not bool(refill["tray_adapted"]) and not boundary.is_level_complete(), "普通补盘不使用动态适配也不设无限分终点：" + mode)
+		var fixture := _opening_fixture(mode)
+		var crossing := GameState.new(83, 8, GameRulesConfig.new(), fixture)
+		_check(bool(crossing.generation_diagnostics.get("fixture", false)) and crossing.remaining_pieces[0] != fixture["initial_pieces"][0], "显式合法认证初盘保留且复制：" + mode)
+		var retained := crossing.remaining_pieces.duplicate()
+		crossing.scoring.score = 1499
+		var crossed := crossing.place_piece(0, Vector2i.ZERO)
+		_check(crossing.scoring.score == 1529 and crossing.remaining_pieces[0] == retained[1] and crossing.remaining_pieces[1] == retained[2], "跨过阈值不更换已经发出的两块：" + mode)
+		_check(not bool(crossed["round_refilled"]) and not bool(crossed["tray_adapted"]) and bool(crossing.generation_diagnostics.get("fixture", false)), "跨阈值仅在耗尽托盘后切换：" + mode)
+		crossing.place_piece(0, Vector2i(3, 0))
+		var next_round := crossing.place_piece(0, Vector2i(0, 1))
+		_check(bool(next_round["round_refilled"]) and not crossing.generation_diagnostics.has("opening_assist") and not crossing.generation_diagnostics.has("fixture"), "跨阈值后下一组三块恢复原始生成与诊断：" + mode)
+	for level in [1, 2, 3]:
+		var adventure := GameState.new(84, 8, GameRulesConfig.new(), {"mode": "adventure", "level_id": level, "target_score": 10000})
+		_check(not adventure._uses_opening_supplier() and not adventure.generation_diagnostics.has("opening_assist"), "闯关分数/教学供应不进入普通开局辅助：%d" % level)
+	var collection := GameState.new(85, 8, GameRulesConfig.new(), _collection_setup())
+	_check(not collection._uses_opening_supplier() and not collection.generation_diagnostics.has("opening_assist"), "冒险收集分支不进入普通开局辅助")
+
+func _test_opening_clear_paths() -> void:
+	var config := GameRulesConfig.new()
+	var gap := BoardRules.new(8)
+	for x in range(5):
+		gap.set_cell(x, 0, 3)
+	var before_gap := gap.duplicate_board()
+	var supplied: Dictionary = OpeningTraySupplier.new(config, 86).build(gap, RoundGenerator.new(86, config))
+	var gap_lines := _check_opening_certificate(gap, supplied, "单行缺口")
+	_check(not gap_lines.is_empty() and gap_lines[0] == 1, "可立即补齐的普通三格缺口优先单线消除")
+	_check(_same_board(gap, before_gap), "供应模拟不修改真实棋盘、格色或空格")
+	var crossing := BoardRules.new(8)
+	for coordinate in range(8):
+		if coordinate != 5:
+			crossing.set_cell(coordinate, 0, 1)
+		if coordinate != 1:
+			crossing.set_cell(6, coordinate, 1)
+	var multiple: Dictionary = OpeningTraySupplier.new(config, 87).build(crossing, RoundGenerator.new(87, config))
+	var multiple_lines := _check_opening_certificate(crossing, multiple, "交叉多线")
+	_check(not multiple_lines.is_empty() and multiple_lines[0] >= 2 and int(multiple["diagnostics"].get("predicted_multiline_moves", 0)) >= 1, "能一手交叉清线时优先多线并提供完整后三块证书")
+	var consecutive := BoardRules.new(8)
+	for y in [0, 2, 4]:
+		for x in range(5):
+			consecutive.set_cell(x, y, 2)
+	var chained: Dictionary = OpeningTraySupplier.new(config, 88).build(consecutive, RoundGenerator.new(88, config))
+	var chained_lines := _check_opening_certificate(consecutive, chained, "连续清线")
+	_check(chained_lines == [1, 1, 1] and int(chained["diagnostics"].get("predicted_consecutive_clear_pairs", 0)) == 2, "三条现成缺口优先真实三手连续清线路径")
+	for initial_seed in [17, 49, 72]:
+		var empty := BoardRules.new(8)
+		var opening: Dictionary = OpeningTraySupplier.new(config, initial_seed).build(empty, RoundGenerator.new(initial_seed, config))
+		var opening_lines := _check_opening_certificate(empty, opening, "空盘铺垫/%d" % initial_seed)
+		var total := 0
+		for count in opening_lines:
+			total += count
+		_check(total >= 1 and int(opening["diagnostics"].get("predicted_first_clear_step", 0)) in [2, 3], "默认自由空盘能以普通块在两至三手补线：%d" % initial_seed)
+		_check(int(opening["diagnostics"]["evaluated_origins"]) <= int(opening["diagnostics"]["evaluation_budget"]), "开局搜索不超出声明预算：%d" % initial_seed)
+		for piece: PieceData in opening["pieces"]:
+			var in_pool := false
+			for definition: ShapeDefinition in config.shape_pool:
+				in_pool = in_pool or (piece.shape_id == definition.shape_id and piece.cells == definition.cells)
+			_check(in_pool and piece.is_valid_for_config(config) and piece.cell_count() >= 3 and piece.targets.is_empty(), "普通开局只用原形状、原方向，不加入教学救援或收集标记")
+
+func _test_opening_reproducibility_and_fallback() -> void:
+	var config := GameRulesConfig.new()
+	var original_cells: Array[Vector2i] = config.shape_pool[0].cells.duplicate()
+	var empty := BoardRules.new(8)
+	var first: Dictionary = OpeningTraySupplier.new(config, 89).build(empty, RoundGenerator.new(89, config))
+	var second: Dictionary = OpeningTraySupplier.new(config, 89).build(empty, RoundGenerator.new(89, config))
+	_check(first["solution"] == second["solution"] and first["diagnostics"]["predicted_clear_steps"] == second["diagnostics"]["predicted_clear_steps"], "相同种子重现相同完整证书与清线预测")
+	for index in range(config.tray_count):
+		_check(first["pieces"][index].shape_id == second["pieces"][index].shape_id and first["pieces"][index].cells == second["pieces"][index].cells, "相同种子重现相同托盘形状")
+	var other_cells: Array[Vector2i] = first["pieces"][1].cells.duplicate()
+	var independent_cells: Array[Vector2i] = second["pieces"][0].cells.duplicate()
+	first["pieces"][0].cells.append(Vector2i(99, 99))
+	first["solution"][0]["origin"] = Vector2i(-99, -99)
+	_check(first["pieces"][1].cells == other_cells and second["pieces"][0].cells == independent_cells and second["solution"][0]["origin"] != Vector2i(-99, -99), "返回方块与证书各自深复制，不相互串改")
+	_check(config.shape_pool[0].cells == original_cells and config.min_piece_cells == 3 and config.max_piece_cells == 5 and config.combo_miss_tolerance == 0, "供块与返回值修改不污染共享普通配置、池或断连规则")
+	var limited = OpeningTraySupplier.new(config, 90)
+	limited.evaluation_budget = 0
+	var fallback: Dictionary = limited.build(empty, RoundGenerator.new(90, config))
+	_check_opening_certificate(empty, fallback, "预算回退")
+	_check(fallback["pieces"].size() == config.tray_count and bool(fallback["diagnostics"].get("budget_exhausted", false)) and not bool(fallback["diagnostics"].get("opening_assist", true)), "预算耗尽调用原生成器，不把搜索截断误判为无解")
+	var restricted := GameRulesConfig.new()
+	restricted.shape_pool = [config.shape_pool[0]]
+	var restricted_result: Dictionary = OpeningTraySupplier.new(restricted, 91).build(empty, RoundGenerator.new(91, restricted))
+	_check_opening_certificate(empty, restricted_result, "受限普通池")
+	for piece: PieceData in restricted_result["pieces"]:
+		_check(piece.shape_id == "line3" and piece.cells == original_cells, "自定义普通池保持原配置，不为消除擅自扩池或旋转")
+
+func _check_opening_certificate(board: BoardRules, supplied: Dictionary, label: String) -> Array[int]:
+	var pieces: Array[PieceData] = []
+	pieces.assign(supplied["pieces"])
+	var path: Array = supplied["solution"]
+	var lines: Array[int] = []
+	_check(pieces.size() == 3 and path.size() == pieces.size() and bool(supplied["diagnostics"].get("solution_certified", false)), label + "：整组三块带已认证路径")
+	var replay := board.duplicate_board()
+	var used: Dictionary = {}
+	for step: Dictionary in path:
+		var index := int(step.get("piece_index", -1))
+		var valid_index := index >= 0 and index < pieces.size() and not used.has(index)
+		_check(valid_index, label + "：证书每块恰好使用一次")
+		if not valid_index:
+			return lines
+		var origin: Vector2i = step["origin"]
+		var legal := replay.can_place(pieces[index], origin)
+		_check(legal, label + "：证书每步真实合法")
+		if not legal:
+			return lines
+		used[index] = true
+		replay.place(pieces[index], origin)
+		var clear := replay.clear_full_lines()
+		lines.append(int(clear["rows"]) + int(clear["columns"]))
+	if bool(supplied["diagnostics"].get("opening_assist", false)):
+		_check(lines == supplied["diagnostics"]["predicted_clear_steps"], label + "：诊断预测与证书真实消除一致")
+	return lines
+
+func _same_board(first: BoardRules, second: BoardRules) -> bool:
+	if first.size != second.size:
+		return false
+	for y in range(first.size):
+		for x in range(first.size):
+			if first.get_cell(x, y) != second.get_cell(x, y):
+				return false
+	return true
 
 func _check_collection_sums(state: GameState, label: String) -> void:
 	var total := 0

@@ -27,6 +27,7 @@ func _run_tests() -> void:
 		_test_independent_toggles,
 		_test_feedback_streams,
 		_test_default_and_unknown_feedback,
+		_test_clear_reward_pitch,
 		_test_music_stream,
 		_test_master_bus_unchanged,
 		_test_exit_tree_stops_players,
@@ -132,6 +133,24 @@ func _test_default_and_unknown_feedback() -> void:
 	_expect(audio.sound_player.stream == click, "default feedback is click")
 	audio.play_feedback("unknown")
 	_expect(audio.sound_player.stream == click, "unknown feedback safely uses click")
+	_dispose(audio)
+
+func _test_clear_reward_pitch() -> void:
+	var audio := _new_audio()
+	audio.apply_settings({"sound_enabled": true, "music_enabled": false})
+	audio.play_clear_reward(1, 1)
+	var clear_stream: AudioStream = audio.sound_player.stream
+	var volume: float = audio.sound_player.volume_db
+	_expect(is_equal_approx(audio.sound_player.pitch_scale, 1.0), "first real single clear keeps the original pitch")
+	audio.play_clear_reward(4, 2)
+	_expect(audio.sound_player.stream == clear_stream and audio.sound_player.pitch_scale > 1.0, "streak and multiline use the cached clear with a rising pitch")
+	audio.play_clear_reward(100, 8)
+	_expect(audio.sound_player.pitch_scale < 1.27 and audio.sound_player.volume_db == volume, "reward pitch is bounded and never raises volume")
+	audio.play_feedback("place")
+	_expect(is_equal_approx(audio.sound_player.pitch_scale, 1.0), "ordinary sounds restore their own pitch")
+	audio.apply_settings({"sound_enabled": false, "music_enabled": false})
+	audio.play_clear_reward(10, 4)
+	_expect(not audio.sound_player.playing, "muted reward feedback stays silent")
 	_dispose(audio)
 
 func _test_music_stream() -> void:

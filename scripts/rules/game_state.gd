@@ -4,6 +4,8 @@ extends RefCounted
 const TutorialTrayBuilder = preload("res://scripts/rules/tutorial_tray_builder.gd")
 const ModeCatalog = preload("res://scripts/modes/mode_catalog.gd")
 const CollectionTraySupplier = preload("res://scripts/rules/collection_tray_supplier.gd")
+const OpeningTraySupplier = preload("res://scripts/rules/opening_tray_supplier.gd")
+const OPENING_ASSIST_SCORE_LIMIT := 1500
 const TARGET_KINDS := ["blue_diamond", "gold_gem", "yellow_star", "red_star"]
 
 enum Status { PLAYING, GAME_OVER, LEVEL_COMPLETE }
@@ -40,6 +42,7 @@ var retry_assist_strength := 0.0
 var _tutorial_builder: TutorialTrayBuilder
 var _collection_targets_valid := true
 var _collection_supplier: CollectionTraySupplier
+var _opening_supplier: OpeningTraySupplier
 
 func _init(initial_seed: int = 0, board_size: int = 8, config: GameRulesConfig = null, setup: Dictionary = {}) -> void:
 	mode = str(setup.get("mode", "free"))
@@ -76,7 +79,9 @@ func _init(initial_seed: int = 0, board_size: int = 8, config: GameRulesConfig =
 		_fill_tutorial_tray(rules_config.tray_count)
 	elif _accept_initial_tray(setup):
 		generation_diagnostics = setup.get("initial_diagnostics", {}).duplicate(true)
-		if mode == "adventure" and objective_type != "collect" and generator.candidate_samples > 1:
+		if _uses_opening_supplier() and bool(setup.get("opening_assist_initial", false)):
+			_fill_regular_tray()
+		elif mode == "adventure" and objective_type != "collect" and generator.candidate_samples > 1:
 			remaining_pieces = generator.generate_solvable_round(board, remaining_pieces)
 			generation_diagnostics["difficulty_selection"] = generator.last_diagnostics.duplicate(true)
 	elif objective_type == "collect":
@@ -87,8 +92,7 @@ func _init(initial_seed: int = 0, board_size: int = 8, config: GameRulesConfig =
 			if generation_diagnostics.is_empty():
 				generation_diagnostics = {"reason": "invalid_collection_objectives", "solution_certified": false}
 	else:
-		remaining_pieces = generator.generate_solvable_round(board)
-		generation_diagnostics = generator.last_diagnostics.duplicate(true)
+		_fill_regular_tray()
 	if remaining_pieces.is_empty():
 		status = Status.GAME_OVER
 
@@ -181,8 +185,7 @@ func place_piece(piece_index: int, origin: Vector2i, color_id: int = 0) -> Dicti
 		elif objective_type == "collect":
 			_fill_collection_tray()
 		else:
-			remaining_pieces = generator.generate_solvable_round(board)
-			generation_diagnostics = generator.last_diagnostics.duplicate(true)
+			_fill_regular_tray()
 		round_refilled = not remaining_pieces.is_empty()
 		if remaining_pieces.is_empty():
 			status = Status.GAME_OVER
@@ -309,6 +312,26 @@ func _fill_collection_tray() -> void:
 	var supplied := _collection_supplier.build(board, target_remaining_counts, generator, target_cells)
 	remaining_pieces.assign(supplied["pieces"])
 	generator.last_solution.assign(supplied["solution"])
+	generation_diagnostics = supplied["diagnostics"].duplicate(true)
+	generation_diagnostics["seed"] = generator.seed
+	generation_diagnostics["round"] = round_index
+	generator.last_diagnostics = generation_diagnostics.duplicate(true)
+
+func _uses_opening_supplier() -> bool:
+	return mode in ["free", "classic"] and scoring.score < OPENING_ASSIST_SCORE_LIMIT
+
+func _fill_regular_tray() -> void:
+	if not _uses_opening_supplier():
+		remaining_pieces = generator.generate_solvable_round(board)
+		generation_diagnostics = generator.last_diagnostics.duplicate(true)
+		generation_diagnostics["round"] = round_index
+		generator.last_diagnostics = generation_diagnostics.duplicate(true)
+		return
+	if _opening_supplier == null:
+		_opening_supplier = OpeningTraySupplier.new(rules_config, generator.seed)
+	var supplied := _opening_supplier.build(board, generator, OPENING_ASSIST_SCORE_LIMIT)
+	remaining_pieces.assign(supplied["pieces"])
+	generator.last_solution.assign(supplied["solution"].duplicate(true))
 	generation_diagnostics = supplied["diagnostics"].duplicate(true)
 	generation_diagnostics["seed"] = generator.seed
 	generation_diagnostics["round"] = round_index

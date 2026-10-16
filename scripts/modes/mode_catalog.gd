@@ -27,6 +27,7 @@ static func classic_setup(seed: int, config: GameRulesConfig) -> Dictionary:
 	var requested := roundi(float(rng.randi_range(16, 24)) * _board_scale(rules))
 	var result := _initial_setup(seed, rules, requested, 0.0)
 	result["mode"] = CLASSIC
+	result["opening_assist_initial"] = true
 	result["level_seed"] = seed
 	result["difficulty_ratio"] = 0.0
 	result["candidate_samples"] = 1
