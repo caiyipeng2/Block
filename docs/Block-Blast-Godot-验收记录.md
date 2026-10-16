@@ -6,6 +6,8 @@
 
 ## 获选菜单按钮实装（2026-10-16；源码 0.7.2，待用户验收）
 
+后续按用户反馈调小模式按钮：适配后的面部尺寸乘 0.85，保留最小 44px 高度，文字/图标/间距同比缩小。默认 1280×720 从约 361×88px 调为 307×75px；280×360 受最小点击高度约束约为 181×44px。修改后的 `main_menu.gd` Godot 4.7.2 `--check-only` 退出码 0、无脚本错误，五种窗口静态比例和页脚留白检查通过。未执行 GUI、游戏场景或测试用例，实际大小待用户按 F5 验收。
+
 用户选择第一张生成预览。已将原 PNG 原样纳入 `assets/ui/menu/approved_mode_buttons.png`；SHA256 为 `697532fc04275c9059df09340c0697a99340844c3d4b56fccb7d55450e320ca8`，与获选源图逐字节一致。通过圆角 UV 显示三种按钮面，保留所选文字、白色图标、材质与轻微高光；删除副标题、图标底框和箭头，按约 4.1:1 等比适配。模式和原生交互/开屏接口保留。
 
 `menu_mode_button.gd`、`main_menu.gd`、`main.gd`、`run_ui_action_tests.gd` 四份 Godot 4.7.2 headless `--check-only` 均退出码 0，无 SCRIPT/Parse/Compile/Failedload 错误；测试只同步和编译，未执行用例。无界面资源导入已完成，无损与 mipmaps 设置核对通过；导入时有系统证书、沙箱无法访问旧 build 子目录和无法保存用户 editor_settings 的环境日志，未出现该 PNG 导入失败，不将环境日志声称为全无 ERROR。

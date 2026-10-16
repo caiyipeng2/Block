@@ -16,6 +16,7 @@ const OPENING_DURATION := 2.20
 const RETURN_DURATION := 0.30
 const MODE_FACE_ASPECT := 877.0 / 213.0
 const MODE_GAP_RATIO := 0.34
+const MODE_SIZE_SCALE := 0.85
 const MODE_FOOTER_CLEARANCE := 18.0
 
 var _logo: Control
@@ -246,7 +247,8 @@ func _layout_controls() -> void:
 	# the whole stack instead of squeezing the icons or italic lettering.
 	var stack_space := maxf(exit_top - MODE_FOOTER_CLEARANCE - minimum_top, 0.0)
 	var width := minf(380.0, maxf(200.0, size.x - 56.0))
-	var button_height := maxf(44.0, minf(width / MODE_FACE_ASPECT, stack_space / (3.0 + 2.0 * MODE_GAP_RATIO)))
+	var fitted_height := minf(width / MODE_FACE_ASPECT, stack_space / (3.0 + 2.0 * MODE_GAP_RATIO))
+	var button_height := maxf(44.0, fitted_height * MODE_SIZE_SCALE)
 	width = button_height * MODE_FACE_ASPECT
 	var gap := button_height * MODE_GAP_RATIO
 	var stack_height := button_height * 3.0 + gap * 2.0
