@@ -8,7 +8,6 @@ var _row_colors: Dictionary = {}
 var _column_colors: Dictionary = {}
 var _palette := PackedColorArray()
 var _board_size: int = 0
-var _multiline: bool = false
 var _phase: float = 0.0
 var _edges: Array[Dictionary] = []
 var _joints: Dictionary = {}
@@ -25,7 +24,6 @@ func configure(cell_colors: Dictionary, row_colors: Dictionary, column_colors: D
 	_column_colors = column_colors.duplicate()
 	_palette = palette.duplicate()
 	_board_size = board_size
-	_multiline = row_colors.size() + column_colors.size() > 1
 	_phase = 0.0
 	_rebuild_geometry()
 
@@ -38,7 +36,6 @@ func reset() -> void:
 	_joints.clear()
 	_spark_points.clear()
 	_board_size = 0
-	_multiline = false
 	_phase = 0.0
 
 func advance(delta: float) -> void:
@@ -53,19 +50,19 @@ func highlight(reduced_motion: bool) -> float:
 		return 0.0
 	return 0.29 if reduced_motion else 0.29 + sin(_phase * 1.5) * 0.035
 
-func draw(canvas: CanvasItem, board_rect: Rect2, reduced_motion: bool) -> void:
+func draw(canvas: CanvasItem, board_rect: Rect2, reduced_motion: bool, intensity: float = 1.0, show_sparks: bool = true) -> void:
 	if not is_active() or board_rect.size.x <= 0.0 or board_rect.size.y <= 0.0:
 		return
 	var cell_size := board_rect.size / float(_board_size)
 	var unit := minf(cell_size.x, cell_size.y)
-	var breath := 1.0 if reduced_motion else 0.94 + sin(_phase * 1.5) * 0.06
+	var breath := (1.0 if reduced_motion else 0.94 + sin(_phase * 1.5) * 0.06) * clampf(intensity, 0.0, 1.0)
 	# Three translucent bands emulate soft bloom without a texture or framebuffer pass.
-	_draw_layer(canvas, board_rect, cell_size, minf(unit * 0.20, 12.0), 0.10 * breath, 0.48, false, reduced_motion)
-	_draw_layer(canvas, board_rect, cell_size, minf(unit * 0.105, 6.3), 0.23 * breath, 0.54, false, reduced_motion)
-	_draw_layer(canvas, board_rect, cell_size, minf(unit * 0.044, 2.65), 0.58 * breath, 0.64, false, reduced_motion)
-	var core_half_width := minf(unit * 0.08, clampf(unit * 0.0105, 0.275, 0.675))
-	_draw_layer(canvas, board_rect, cell_size, core_half_width, 0.88, 0.86, true, reduced_motion)
-	if not reduced_motion:
+	_draw_layer(canvas, board_rect, cell_size, minf(unit * 0.23, 14.0), 0.16 * breath, 0.62, false, reduced_motion)
+	_draw_layer(canvas, board_rect, cell_size, minf(unit * 0.13, 8.0), 0.40 * breath, 0.70, false, reduced_motion)
+	_draw_layer(canvas, board_rect, cell_size, minf(unit * 0.055, 3.5), 0.94 * breath, 0.82, false, reduced_motion)
+	var core_half_width := minf(unit * 0.08, clampf(unit * 0.0065, 0.22, 0.45))
+	_draw_layer(canvas, board_rect, cell_size, core_half_width, 0.82 * breath, 0.90, true, reduced_motion)
+	if not reduced_motion and show_sparks and intensity > 0.0:
 		_draw_sparks(canvas, board_rect, cell_size, unit)
 
 func _rebuild_geometry() -> void:
@@ -161,19 +158,24 @@ func _paint_quad(canvas: CanvasItem, points: PackedVector2Array, board_rect: Rec
 		return
 	var colors := PackedColorArray()
 	for point in points:
-		var color := Color.WHITE if white_core else _edge_color((point - board_rect.position) / cell_size, color_index, reduced_motion)
+		var color := _edge_color((point - board_rect.position) / cell_size, color_index, reduced_motion)
+		if white_core:
+			color = color.lerp(Color.WHITE, 0.62)
 		colors.append(Color(color.r, color.g, color.b, opacity * color.a))
 	canvas.draw_polygon(points, colors)
 
-func _edge_color(point: Vector2, color_index: int, reduced_motion: bool) -> Color:
-	if not _multiline:
-		if _palette.is_empty():
-			return Color("#73f5e7")
-		return _palette[posmod(color_index, _palette.size())].lerp(Color.WHITE, 0.10)
-	# A restrained phase offset preserves the reference's purple-to-orange direction.
-	var drift := 0.0 if reduced_motion else sin(_phase * 0.35) * 0.022
-	var hue := fposmod(0.84 - point.x / float(_board_size) * 0.78 + point.y / float(_board_size) * 0.025 + drift, 1.0)
-	return Color.from_hsv(hue, 0.68, 1.0)
+func _edge_color(point: Vector2, _color_index: int, reduced_motion: bool) -> Color:
+	return spectrum_color(point, _board_size, not _row_colors.is_empty(), not _column_colors.is_empty(), 0.0 if reduced_motion else _phase)
+
+## Use each line's long axis. Sampling only x turns a vertical clear into a
+## nearly solid hue; a crossing uses one continuous field to avoid color seams.
+static func spectrum_color(point: Vector2, board_size: int, has_rows: bool, has_columns: bool, phase: float = 0.0) -> Color:
+	var normalized := point / float(maxi(board_size, 1))
+	var along := normalized.y if has_columns and not has_rows else normalized.x
+	if has_rows and has_columns:
+		along = normalized.x + normalized.y
+	var hue := fposmod(0.84 - along * 0.80 + sin(phase * 0.35) * 0.022, 1.0)
+	return Color.from_hsv(hue, 0.93, 1.0)
 
 func _draw_sparks(canvas: CanvasItem, board_rect: Rect2, cell_size: Vector2, unit: float) -> void:
 	var radius := minf(unit * 0.017, 1.0)

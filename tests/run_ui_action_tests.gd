@@ -384,6 +384,7 @@ func _check_score_above_praise(feedback: Control, praise: Control, message: Stri
 
 func _check_feedback_cleared(feedback: Control, praise: Control, message: String, allow_static_score: bool = false) -> void:
 	_check(praise.get("_content") == null and not bool(praise.get("_active")) and not praise.get_reserved_rect().has_area(), message + "完整清理赞语与保留区")
+	_check(not feedback.get("_clear_outline").is_active(), message + "清理实际消除的彩虹轮廓")
 	_check(not feedback.is_busy() and not feedback.blocks_board and not feedback.has_pending_collections() and not feedback.get_node("FinalImpact").get("_active"), message + "不残留棋盘锁、收集或末次重落")
 	if not allow_static_score:
 		_equal(feedback.get("_score_label"), null, message + "清理旧加分标签")
@@ -410,6 +411,10 @@ func _test_clear_drag_preview(main) -> void:
 			var before := _preview_game_snapshot(main)
 			_drag_preview_to(main, Vector2i.ZERO)
 			_check(main.drag_valid and main.clear_preview.is_active(), "%s %s 合法满线同时启用变色和光边" % [mode, pattern])
+			var spectrum_start: Color = main.clear_preview._edge_color(Vector2.ZERO, 2, true)
+			var spectrum_end: Color = main.clear_preview._edge_color(Vector2(0, 7) if pattern == "column" else Vector2(7, 0), 2, true)
+			var spectrum_distance := Vector3(spectrum_start.r, spectrum_start.g, spectrum_start.b).distance_to(Vector3(spectrum_end.r, spectrum_end.g, spectrum_end.b))
+			_check(spectrum_distance > 0.8, "%s %s 光边沿行列长度呈现可区分的彩虹，不退化为主色" % [mode, pattern])
 			_equal(main.preview_clear_colors, appearance["cell_colors"], "%s %s 使用实际消除主色解析结果" % [mode, pattern])
 			_equal(main.preview_clear_colors.size(), 15 if pattern == "cross" else 8, "相交行列只预览十五个唯一格，单线为八格")
 			_equal(main.preview_clear_colors.values().count(2), main.preview_clear_colors.size(), "拖动块与既有格统一为本组多数主色")

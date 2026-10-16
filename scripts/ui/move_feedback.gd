@@ -13,8 +13,8 @@ const BlockArt = preload("res://scripts/ui/block_art.gd")
 const CollectionFlights = preload("res://scripts/ui/collection_flights.gd")
 const FinalImpact = preload("res://scripts/ui/final_impact.gd")
 const ClearPraise = preload("res://scripts/ui/clear_praise.gd")
+const ClearPreview = preload("res://scripts/ui/clear_preview.gd")
 const GOLD := Color("#ffdc57")
-const CYAN := Color("#a0f8ff")
 const OUTLINE := Color("#182a71")
 const FLASH_DURATION := 0.06
 const SWEEP_DURATION := 0.10
@@ -56,6 +56,7 @@ var _target_cells: Dictionary = {}
 var _collected_target_events: Array[Dictionary] = []
 var _clear_rows: Array[int] = []
 var _clear_columns: Array[int] = []
+var _clear_outline := ClearPreview.new()
 var _placed_scale := 1.0
 var _clear_progress := 0.0
 var _flash_progress := 0.0
@@ -63,6 +64,7 @@ var _sweep_progress := 0.0
 var _clear_started := false
 var _sweep_started := false
 var _dispersing := false
+var _disperse_duration := 0.16
 var _gained := 0
 
 var _rebound_piece: PieceData
@@ -207,7 +209,8 @@ func play_move(
 	# Ordinary moves block at most .50s. The last piece has a distinct .48s
 	# lift-and-contact lead-in, followed by the same bounded clear phase.
 	# durations.y includes the flash and sweep, not just fragment dispersion.
-	var disperse_duration := clampf(durations.y - FLASH_DURATION - SWEEP_DURATION, 0.10, 0.20)
+	_disperse_duration = clampf(durations.y - FLASH_DURATION - SWEEP_DURATION, 0.10, 0.20)
+	_configure_clear_outline()
 	_tween = create_tween()
 	if _final_move:
 		_placed_scale = 1.0
@@ -226,7 +229,7 @@ func play_move(
 		_tween.tween_callback(_begin_sweep)
 		_tween.tween_method(_set_sweep_progress, 0.0, 1.0, SWEEP_DURATION)
 		_tween.tween_callback(_begin_dispersion)
-		_tween.tween_method(_set_clear_progress, 0.0, 1.0, disperse_duration).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		_tween.tween_method(_set_clear_progress, 0.0, 1.0, _disperse_duration).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	_tween.tween_callback(_finish)
 	_apply_paused_state()
 
@@ -299,6 +302,7 @@ func reset_move(preserve_praise: bool = false) -> void:
 	_collected_target_events.clear()
 	_clear_rows.clear()
 	_clear_columns.clear()
+	_clear_outline.reset()
 	_context.clear()
 	_particles.clear()
 	_rebound_piece = null
@@ -309,6 +313,7 @@ func reset_move(preserve_praise: bool = false) -> void:
 	_clear_started = false
 	_sweep_started = false
 	_dispersing = false
+	_disperse_duration = 0.16
 	_rebound_progress = 0.0
 	_final_move = false
 	_final_piece_scale = Vector2.ONE
@@ -443,6 +448,36 @@ func _collect_clear_lines() -> void:
 		if int(column_counts[column]) == _board_size:
 			_clear_columns.append(int(column))
 
+func _configure_clear_outline() -> void:
+	var colors: Dictionary = {}
+	for key in _clear_cells:
+		var coordinate: Vector2i = key
+		colors[coordinate] = _resolved_cell_color_id(coordinate)
+	var rows := _clear_row_colors.duplicate()
+	var columns := _clear_column_colors.duplicate()
+	for row in _clear_rows:
+		if not rows.has(row):
+			rows[row] = _resolved_cell_color_id(Vector2i(0, row))
+	for column in _clear_columns:
+		if not columns.has(column):
+			columns[column] = _resolved_cell_color_id(Vector2i(column, 0))
+	_clear_outline.configure(colors, rows, columns, _board_size, _palette)
+
+func _clear_spectrum_color(point: Vector2) -> Color:
+	return ClearPreview.spectrum_color(point, _board_size, not _clear_rows.is_empty(), not _clear_columns.is_empty())
+
+func _clear_wave_offset(coordinate: Vector2i) -> float:
+	var axis := float(coordinate.x)
+	if _clear_columns.has(coordinate.x):
+		axis = minf(axis, float(coordinate.y)) if _clear_rows.has(coordinate.y) else float(coordinate.y)
+	return axis / maxf(float(_board_size - 1), 1.0)
+
+func _cell_reveal_progress(coordinate: Vector2i) -> float:
+	return clampf((_sweep_progress - _clear_wave_offset(coordinate) * 0.82) / 0.18, 0.0, 1.0)
+
+func _cell_dispersion_progress(coordinate: Vector2i) -> float:
+	return clampf((_clear_progress - _clear_wave_offset(coordinate) * 0.66) / 0.34, 0.0, 1.0)
+
 func _score_anchor() -> Vector2:
 	var coordinates := _clear_cells if not _clear_cells.is_empty() else _placed_cells
 	if coordinates.is_empty():
@@ -544,7 +579,10 @@ func _spawn_particles() -> void:
 	var budget := 144
 	for key in _clear_cells:
 		var cell: Vector2i = key
-		var color := _color_for_id(_resolved_cell_color_id(cell))
+		var color := _clear_spectrum_color(Vector2(cell) + Vector2.ONE * 0.5)
+		# The existing clear tween eases quadratically. Its inverse keeps each
+		# cell's fragments on the same travelling break wave, within accent time.
+		var delay := sqrt(_clear_wave_offset(cell) * 0.66 + 0.34 * 0.12) * _disperse_duration
 		for i in range(3):
 			if _particles.size() >= budget:
 				return
@@ -553,8 +591,9 @@ func _spawn_particles() -> void:
 				"origin": _cell_center(cell) + Vector2(random.randf_range(-0.2, 0.2), random.randf_range(-0.2, 0.2)) * _cell_size,
 				"velocity": velocity,
 				"size": random.randf_range(0.055, 0.12) * _cell_size,
-				"color": GOLD if i == 2 else color.lightened(0.24),
+				"color": color.lightened(0.16 if i == 2 else 0.04),
 				"star": i == 2,
+				"delay": delay,
 				"rotation": random.randf_range(0.0, TAU)
 			})
 
@@ -575,14 +614,24 @@ func _draw() -> void:
 					var alpha := 1.0
 					var block_scale := 1.0
 					var highlight := 0.0
+					var color := _color_for_id(_resolved_cell_color_id(coordinate))
 					if _clear_started and _clear_cells.has(coordinate):
-						highlight = 0.70 if _sweep_started else sin(_flash_progress * PI) * 0.95
-						if _dispersing:
-							alpha = 1.0 - _clear_progress
-							block_scale = lerpf(1.0, 0.32, _clear_progress)
+						# This is only a transient animation skin; the resolver's
+						# majority colors in the captured dictionaries stay intact.
+						color = _clear_spectrum_color(Vector2(coordinate) + Vector2.ONE * 0.5)
+						highlight = 0.16
+						if not _sweep_started:
+							alpha = 0.0
+						elif _dispersing:
+							var local_progress := _cell_dispersion_progress(coordinate)
+							alpha = 1.0 - local_progress
+							block_scale = lerpf(1.0, 0.22, local_progress)
+						else:
+							alpha = _cell_reveal_progress(coordinate)
+							block_scale = lerpf(0.86, 1.0, alpha)
 					elif _placed_cells.has(coordinate):
 						block_scale = _placed_scale
-					_draw_board_cell(coordinate, _color_for_id(_resolved_cell_color_id(coordinate)), block_scale, alpha, highlight)
+					_draw_board_cell(coordinate, color, block_scale, alpha, highlight)
 			if whole_piece:
 				_draw_final_piece()
 			_draw_clear_lines()
@@ -611,8 +660,34 @@ func _draw_board_cell(coordinate: Vector2i, color: Color, block_scale: float, al
 		BlockArt.draw_target_tile(self, block_rect, alpha, highlight, _target_kind(_target_cells[coordinate]))
 	else:
 		BlockArt.draw_block(self, block_rect, color, alpha, highlight)
+	if _clear_started and _clear_cells.has(coordinate) and alpha > 0.0:
+		_draw_clear_cell_light(coordinate, block_rect, alpha)
 	if _target_cells.has(coordinate):
 		BlockArt.draw_target_marker(self, block_rect, alpha, 1.0, _target_kind(_target_cells[coordinate]))
+
+func _draw_clear_cell_light(coordinate: Vector2i, block_rect: Rect2, alpha: float) -> void:
+	# The mask is visited once, including row/column intersections. Each quad
+	# samples one continuous board spectrum; crossings use the brighter sweep.
+	var origin := _board_rect.position + _board_offset
+	for y in range(2):
+		for x in range(2):
+			var start := block_rect.position + Vector2(x, y) * block_rect.size * 0.5
+			var end := start + block_rect.size * 0.5
+			var points := PackedVector2Array([start, Vector2(end.x, start.y), end, Vector2(start.x, end.y)])
+			var colors := PackedColorArray()
+			for point in points:
+				var grid_point := (point - origin) / _cell_size
+				var sheen := 0.0
+				if not _dispersing:
+					var front := _sweep_progress * float(_board_size)
+					if _clear_rows.has(coordinate.y):
+						sheen = clampf(1.0 - absf(grid_point.x - front) / 0.80, 0.0, 1.0)
+					if _clear_columns.has(coordinate.x):
+						sheen = maxf(sheen, clampf(1.0 - absf(grid_point.y - front) / 0.80, 0.0, 1.0))
+				var color := _clear_spectrum_color(grid_point).lightened(sheen * 0.18)
+				color.a = alpha * (0.14 + sheen * 0.26)
+				colors.append(color)
+			draw_polygon(points, colors)
 
 func _enqueue_collection_events(reduced_motion: bool, launch_delay: float) -> void:
 	if _collected_target_events.is_empty():
@@ -646,40 +721,24 @@ func _target_kind(value: Variant) -> String:
 	return str(value) if value is String and value in ["red_star", "gold_gem", "blue_diamond", "yellow_star"] else "red_star"
 
 func _draw_clear_lines() -> void:
-	if not _clear_started or _dispersing:
+	if not _clear_started:
 		return
-	for row in _clear_rows:
-		var color := _color_for_id(int(_clear_row_colors[row])) if _clear_row_colors.has(row) else CYAN
-		_draw_clear_line(Rect2(_board_rect.position + _board_offset + Vector2(0.0, row * _cell_size), Vector2(_board_rect.size.x, _cell_size)), true, color)
-	for column in _clear_columns:
-		var color := _color_for_id(int(_clear_column_colors[column])) if _clear_column_colors.has(column) else CYAN
-		_draw_clear_line(Rect2(_board_rect.position + _board_offset + Vector2(column * _cell_size, 0.0), Vector2(_cell_size, _board_rect.size.y)), false, color)
-
-func _draw_clear_line(line_rect: Rect2, horizontal: bool, color: Color) -> void:
-	var flash_alpha := (1.0 - _flash_progress) * 0.62 if not _sweep_started else 0.18
-	var flash_color := color.lightened(0.62)
-	flash_color.a = flash_alpha
-	draw_rect(line_rect, flash_color)
-	if not _sweep_started:
-		return
-	var center := line_rect.position + (Vector2(line_rect.size.x * _sweep_progress, line_rect.size.y * 0.5) if horizontal else Vector2(line_rect.size.x * 0.5, line_rect.size.y * _sweep_progress))
-	var beam_size := Vector2(_cell_size * 0.32, line_rect.size.y) if horizontal else Vector2(line_rect.size.x, _cell_size * 0.32)
-	draw_rect(Rect2(center - beam_size * 0.5, beam_size), Color(1.0, 1.0, 1.0, 0.92))
-	var start := Vector2(line_rect.position.x, line_rect.get_center().y) if horizontal else Vector2(line_rect.get_center().x, line_rect.position.y)
-	var end := Vector2(line_rect.end.x, line_rect.get_center().y) if horizontal else Vector2(line_rect.get_center().x, line_rect.end.y)
-	var glow_color := color.lightened(0.24)
-	glow_color.a = 0.36
-	draw_line(start, end, glow_color, 8.0, true)
-	draw_line(start, end, Color(1.0, 1.0, 1.0, 0.88), 2.0, true)
+	var intensity := pow(1.0 - _clear_progress, 0.75) if _dispersing else 1.0
+	_clear_outline.draw(self, Rect2(_board_rect.position + _board_offset, _board_rect.size), false, intensity, false)
 
 func _draw_particles() -> void:
-	var elapsed := _accent_progress * ACCENT_DURATION
-	var alpha := pow(1.0 - _accent_progress, 1.3)
+	var accent_elapsed := _accent_progress * ACCENT_DURATION
 	for particle in _particles:
+		var delay := float(particle.get("delay", 0.0))
+		var elapsed := accent_elapsed - delay
+		if elapsed < 0.0:
+			continue
+		var progress := clampf(elapsed / maxf(ACCENT_DURATION - delay, 0.001), 0.0, 1.0)
+		var alpha := pow(1.0 - progress, 1.3)
 		var origin: Vector2 = particle["origin"]
 		var velocity: Vector2 = particle["velocity"]
 		var point := origin + _board_offset + velocity * elapsed + Vector2(0.0, _cell_size * 2.2 * elapsed * elapsed)
-		var radius := float(particle["size"]) * (1.0 - _accent_progress * 0.65)
+		var radius := float(particle["size"]) * (1.0 - progress * 0.65)
 		var color: Color = particle["color"]
 		color.a *= alpha
 		if bool(particle["star"]):
@@ -689,10 +748,9 @@ func _draw_particles() -> void:
 			draw_circle(point, maxf(radius * 0.30, 0.3), Color(1.0, 1.0, 1.0, alpha))
 		else:
 			var angle := float(particle["rotation"]) + elapsed * 5.0
-			var points := PackedVector2Array()
-			for corner in [Vector2(-1, -1), Vector2(1, -1), Vector2(1, 1), Vector2(-1, 1)]:
-				points.append(point + corner.rotated(angle) * radius)
-			draw_colored_polygon(points, color)
+			draw_set_transform(point, angle)
+			BlockArt.draw_block(self, Rect2(-Vector2.ONE * radius, Vector2.ONE * radius * 2.0), color)
+			draw_set_transform(Vector2.ZERO)
 
 func _draw_rebound() -> void:
 	var origin := _rebound_from_origin.lerp(_rebound_to_origin, _rebound_progress)
