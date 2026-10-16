@@ -4,7 +4,17 @@
 引擎：Godot 4.7.2 stable  
 平台目标：Windows 桌面，鼠标输入
 
-## 开发工具与 MCP 配置（2026-10-16）
+## Godot AI 更新失败修复与 LLM 辅助（2026-10-16）
+
+用户实际更新错误为 `Update swap failed: cannot move live tree .../addons/godot_ai to .../backup/3.2.1: Failed`，激活收据为 `previous_tree_retained`。原生 Win32 检查全部 296 个插件项具备 DELETE 访问、备份目标不存在；关闭 Godot 后，官方离线恢复仍发生 WinError 5。原生句柄扫描与微软 Handle 均定位 CodeGraph PID 24832 持有该树 296 个目录句柄。停止这个已核验身份的监视服务后，同一官方安装命令立即成功，确认监视器占用为根因。Codex CodeGraph 已增加 `--no-watch`，保留任务前手动 `sync`，未改目录权限或关闭文件签名验证。
+
+现有失败现场及旧迁移桥完整备份留在本机。使用官方固定提交恢复工具验证 RSA 签名、发布身份、ZIP 和全部文件清单后，原子安装正式 Godot AI `4.3.0`；发布归档 SHA256 为 `dbc3d16e1aa7a5f3ae8038a150bf4191162112f4329c79611aa6f656e3ca4e58`，313 个发布文件逐项一致。按原始激活记录修正离线安装器将迁移桥误识为旧版本 4.3.0 的来源元数据；保留真实 `3.2.1 → 4.3.0` 与相应备份。官方客户端迁移成功，使用独立 8001/8002 端口、固定 4.3.0 后端与认证 attach，更新标记 `status=success`、`clients_migrated=true`。
+
+Godot 4.7.2 无界面导入通过，无脚本解析/编译错误。临时无界面编辑器中的实际 MCP 初始化、工具列表、ping 与只读会话查询通过：47 个 Godot 工具，Block 项目路径正确，plugin/server 均为 `4.3.0`，协议 2，`readiness=ready`、`play_state=stopped`，日志确认认证成功。临时检查编辑器已退出；没有运行游戏或 GUI 点击验收。并发启动检查时出现的临时端口竞争已通过按编辑器就绪后再连 MCP 的顺序排除。
+
+用户提供的文件实际为阿里云 Token Plan 大模型接口，用户确认用于 Tripo CLI 的 LLM 辅助；Key 仅保存在项目外受限 profile 的 `llm.api_key`。模型目录查询及 `qwen3.7-plus` 的最多 16 输出 token 请求成功，Tripo CLI 解析保存配置一致。`auto` 不接受 CLI 固定的 temperature 参数，因此采用实际目录中的明确模型。Tripo MCP 仍为 5 个工具；未保存错误的 3D 凭据，Tripo 3D API Key 尚缺，没有提交 3D 生成任务。详情见 [MCP 配置](Block-Blast-Godot-MCP配置.md)。
+
+## 历史开发工具与 MCP 配置（2026-10-16）
 
 AssetLib #5050 的 Godot AI 3.2.1 发布包经官方 SHA256 校验后安装；268 个源文件逐文件与 ZIP 一致，启用项写入项目，并在导出预设中排除开发插件。Godot 4.7.2 headless 编辑器导入退出 0，无脚本解析/编译错误；默认 headless 禁用该插件，日志包含本机证书、旧 build 子目录访问与沙箱阻止保存 editor_settings 的环境错误，不能称全部无 ERROR。
 

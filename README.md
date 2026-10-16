@@ -98,7 +98,7 @@ python tools/export_windows.py --godot "E:\Tools\Godot\Godot_v4.7.2-stable_win64
 
 ## 当前开发状态（2026-10-16）
 
-开发工具新增 AssetLib Godot AI 3.2.1 与 Tripo CLI 0.7.0 的 Codex MCP 配置，协议握手均通过；当前编辑器会话数为 0，需保存后重开 Godot 项目并重启 Codex MCP，Tripo Key 由用户稍后本机填写。Sprite Pipeline 沿用已装技能。安装位置、登录命令、恢复与核验边界见 [MCP 与美术工具配置](docs/Block-Blast-Godot-MCP配置.md)。
+Godot AI 已恢复并升级至正式 `4.3.0`，签名与全部 313 个发布文件核验通过；插件与后端认证成功，实际 MCP 查到 Block 项目 1 个 ready 会话、47 个工具。更新失败原因为 CodeGraph 文件监视器占用插件目录，现改为 `serve --mcp --no-watch`，仍按任务手动 `codegraph sync`。Tripo CLI 0.7.0 的 MCP 与阿里云 LLM 辅助配置已验证（`qwen3.7-plus`），Tripo 3D API Key 仍需独立提供；Sprite Pipeline 沿用已装技能。使用前重新打开 Godot 并刷新 Codex MCP 配置，详见 [MCP 与美术工具配置](docs/Block-Blast-Godot-MCP配置.md)。
 
 按后续反馈，三个模式按钮在适配尺寸上整体缩小约 15%，图标、文字与间距同比例调整；1280×720 下约为 307×75px，小窗口保留最低 44px 点击高度。沿用 `0.7.2` 获选美术。
 

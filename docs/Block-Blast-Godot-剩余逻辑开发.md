@@ -6,7 +6,7 @@
 
 ## 开发工具配置（2026-10-16）
 
-Godot AI 3.2.1 已装入项目并声明启用，Codex 注册 Godot AI/Tripo MCP，握手及工具列表检查通过（46/5 个工具）；Sprite Pipeline 沿用现有 OpenAI 技能。当前 Godot 会话为 0，剩余由用户保存后重开项目并重启 Codex MCP，再确认编辑器在线；Tripo Key 稍后通过 `tools/configure_tripo.ps1` 在本机填写。未做生成或游戏自动验收，工具目录及 Key 登录说明见 [MCP 配置](Block-Blast-Godot-MCP配置.md)。
+Godot AI 更新失败已修复，正式 `4.3.0` 与后端认证通过，实际 MCP 可读取 Block 项目 ready 会话（47 个工具）；Tripo MCP 为 5 个工具。CodeGraph 常驻监视器的 296 个插件目录句柄导致目录切换失败，关闭监视后同一官方安装成功；后续使用 `serve --mcp --no-watch`，每任务手动同步索引。用户提供的阿里云 Key 已用于 Tripo CLI 的 LLM 辅助并验证，实际模型 `qwen3.7-plus`；3D 生成仍需单独 Tripo API Key。临时无界面编辑器已退出，正常使用前用户重新打开项目并刷新 Codex MCP。未生成资产或进行游戏自动验收，详见 [MCP 配置](Block-Blast-Godot-MCP配置.md)。
 
 ## 当前阶段：0.7.2 获选菜单按钮实装
 
