@@ -21,13 +21,16 @@ static func draw_block(canvas: CanvasItem, rect: Rect2, color: Color, opacity: f
 		return
 	var alpha := clampf(opacity, 0.0, 1.0) * color.a
 	var side := minf(rect.size.x, rect.size.y)
-	if side <= 2.0:
+	if side <= 4.0:
+		# Shrinking fragments cannot retain a rim and four distinct bevel faces.
 		canvas.draw_rect(rect, _alpha(color, alpha))
 		return
-	var bevel := minf(maxf(side * 0.145, 1.0), side * 0.25)
 	var rim := clampf(side * 0.018, 0.55, 1.5)
 	var base := color.lerp(Color.WHITE, clampf(highlight, 0.0, 1.0) * 0.28)
 	var face := rect.grow(-rim)
+	# Constrain the bevel to the space left after the rim, so the center
+	# stays positive even when a particle crosses the small-size boundary.
+	var bevel := minf(maxf(side * 0.145, 1.0), minf(face.size.x, face.size.y) * 0.25)
 	var center := face.grow(-bevel)
 	var tl := face.position
 	var tr := Vector2(face.end.x, face.position.y)
