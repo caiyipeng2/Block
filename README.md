@@ -1,6 +1,6 @@
 # Block
 
-Godot 4.7 的桌面方块消除游戏：拖动方块、填满行或列并消除，无时间限制。当前源码为 `0.7.0`，提供自由、经典和闯关三种模式，采用蓝色背景、凹槽棋盘和立体斜面方块。
+Godot 4.7 的桌面方块消除游戏：拖动方块、填满行或列并消除，无时间限制。当前源码为 `0.7.1`，提供自由、经典和闯关三种模式，采用蓝色背景、凹槽棋盘和立体斜面方块。
 
 项目仓库：[caiyipeng2/Block](https://github.com/caiyipeng2/Block)。本地交付、提交和推送状态以本次交付记录为准。
 
@@ -47,6 +47,7 @@ Godot 4.7 的桌面方块消除游戏：拖动方块、填满行或列并消除�
 
 ## 第二阶段美术与反馈
 
+- `0.7.1` 按钮改为圆润亮面，移除暗厚底和外部投影；修正闯关定位图标越出徽章。
 - `0.7.0` 优化开屏和模式选择：原创彩色立体标题、皇冠、蓝渐变背景，金色闯关定位图标、绿色经典无限符号和紫色自由拼块图标；按钮增加厚底、接触阴影、亮面细边、副标题与箭头。首次启动为工作室拼块短显、标题弹入与上移、按钮错峰出现；返回菜单仅短入场。保留设置、退出、最高分与键盘操作，不添加广告或其他游戏入口，不改变玩法和配表。
 - `0.6.9` 新增逐关失败重试辅助，真实 Game Over 后仅影响下次新局，通关重置；辅助步长/上限可配表。保留已有 96 行 15 列参数，仅追加两列，原有界面与反馈不变。
 - `0.6.8` 修复点击闯关时误调用原生 `Script.reload()` 导致的闪退，读表入口改为 `reload_table()`；严格校验 UTF-8，非 UTF-8 表会提示以 Excel/WPS 的“CSV UTF-8”另存。保留用户已调参数、玩法与解锁记录。
@@ -90,13 +91,13 @@ Godot 4.7 的桌面方块消除游戏：拖动方块、填满行或列并消除�
 python tools/export_windows.py --godot "E:\Tools\Godot\Godot_v4.7.2-stable_win64.exe" --configuration release
 ```
 
-加 `--check` 仅预检、不导出；`--configuration debug` 生成调试包。版本号来自 `project.godot`，当前源码为 `0.7.0`，后续发布输出遵循 `dist/Block-<版本>-windows-x86_64-release.zip`。CSV 已设置为保留原文导入，并由导出包含规则带入 `.pck`；源码改表后需重新导出才能更新玩家包。须完整解压后按 `START-HERE.txt` 运行，保留 `.pck` 和所有随附文件；若导出生成 DLL 或 `x86_64` 子目录，也须完整保留。包内 `build-info.json` 含文件 SHA256，ZIP 旁 `.sha256` 用于核对压缩包。
+加 `--check` 仅预检、不导出；`--configuration debug` 生成调试包。版本号来自 `project.godot`，当前源码为 `0.7.1`，后续发布输出遵循 `dist/Block-<版本>-windows-x86_64-release.zip`。CSV 已设置为保留原文导入，并由导出包含规则带入 `.pck`；源码改表后需重新导出才能更新玩家包。须完整解压后按 `START-HERE.txt` 运行，保留 `.pck` 和所有随附文件；若导出生成 DLL 或 `x86_64` 子目录，也须完整保留。包内 `build-info.json` 含文件 SHA256，ZIP 旁 `.sha256` 用于核对压缩包。
 
-前一阶段的 `0.1.0` release/debug 包已导出，文件 SHA256、ZIP CRC 与压缩包校验值均匹配，独立 EXE 尚待用户验收。本地已有 `build/`、`dist/` 中的 `0.1.0` 包仍是粉色逻辑基线，**不含当前美术与三种模式**；本轮不重新打包 `0.7.0`，先按 F5 验收源码。当前本机使用已校验的 `work/release-templates/4.7.2.stable` 模板，将来重新打包时追加 `--templates-dir "work/release-templates/4.7.2.stable"`。模板安装、包结构和用户验收步骤见 [Windows 发布说明](docs/Block-Blast-Godot-Windows发布.md)，历史检查证据见 [验收记录](docs/Block-Blast-Godot-验收记录.md)。
+前一阶段的 `0.1.0` release/debug 包已导出，文件 SHA256、ZIP CRC 与压缩包校验值均匹配，独立 EXE 尚待用户验收。本地已有 `build/`、`dist/` 中的 `0.1.0` 包仍是粉色逻辑基线，**不含当前美术与三种模式**；本轮不重新打包 `0.7.1`，先按 F5 验收源码。当前本机使用已校验的 `work/release-templates/4.7.2.stable` 模板，将来重新打包时追加 `--templates-dir "work/release-templates/4.7.2.stable"`。模板安装、包结构和用户验收步骤见 [Windows 发布说明](docs/Block-Blast-Godot-Windows发布.md)，历史检查证据见 [验收记录](docs/Block-Blast-Godot-验收记录.md)。
 
-## 当前开发状态（2026-10-15）
+## 当前开发状态（2026-10-16）
 
-`0.7.0` 已接入原生绘制的开屏与模式选择界面。Main、三个菜单脚本及 UI action 测试共 5 份不同脚本 Godot 4.7.2 `--check-only` 均退出码 0，无 SCRIPT/Parse/Compile/Failedload 错误；最后 MainMenu/Main/UI action 三份重检通过，独立静态复核完成。已修底部退出/提示重叠、resize 焦点恢复与返回抢 Tab；静态布局公式核对五种窗口下标题、模式卡、退出和警告保持顺序及至少 6px 间距。测试只维护和编译，没有执行游戏场景、测试用例、GUI 或打包；实际字体渲染、显示与操作由用户按 F5 验收，详见[验收记录](docs/Block-Blast-Godot-验收记录.md)。
+`0.7.1` 将模式按钮改为圆润亮面：移除暗厚底与外部投影，以全周圆弧、同色柔边和渐隐高光表现光泽，按压仅轻沉 1–2px；同时收紧闯关定位点及底弧，包含描边的图形保留在徽章内。MenuModeButton/MainMenu/Main 三份 Godot 4.7.2 `--check-only` 均退出码 0、无脚本错误，独立静态复核无阻断。未运行 GUI、游戏场景、测试用例或导出包，实际材质和尺寸由用户停止旧游戏后按 F5 验收。
 
 按用户约定，只进行必要的轻量编译与静态检查；实际界面、输入、声音和导出包启动由用户验收，不自动控制桌面或运行完整自动验收。
 

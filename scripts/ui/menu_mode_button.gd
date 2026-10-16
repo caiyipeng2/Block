@@ -53,13 +53,12 @@ func _draw() -> void:
 	if size.x <= 0.0 or size.y <= 0.0:
 		return
 	var scale_factor := clampf(size.y / 72.0, 0.72, 1.35)
-	var radius := 12.0 * scale_factor
+	var radius := clampf(12.0 * scale_factor, 10.0, 14.0)
 	var edge := 2.0
-	var depth := clampf(size.y * 0.085, 4.0, 7.0)
 	var pressed_now := is_pressed() and not disabled
 	var hovered_now := is_hovered() and not disabled
-	var face_offset := depth * 0.63 if pressed_now else (-1.0 if hovered_now else 0.0)
-	var face := Rect2(Vector2(edge, edge + face_offset), Vector2(size.x - edge * 2.0, size.y - depth - edge * 2.0))
+	var face_offset := clampf(1.5 * scale_factor, 1.0, 2.0) if pressed_now else 0.0
+	var face := Rect2(Vector2(edge, edge + face_offset), Vector2(size.x - edge * 2.0, size.y - edge * 2.0 - face_offset))
 	var base := face_color
 	var opacity := 0.61 if disabled and not entrance_preview else 1.0
 	if hovered_now and not pressed_now:
@@ -68,25 +67,18 @@ func _draw() -> void:
 		base = base.darkened(0.035)
 	base.a *= opacity
 
-	# Soft contact shadow and a separate dark slab give the face real depth.
-	var shadow := Rect2(Vector2(edge + 1.0, depth + edge + 3.0), face.size)
-	_draw_box(shadow.grow(2.0), Color(0.02, 0.07, 0.18, 0.10 * opacity), radius + 2.0)
-	_draw_box(shadow, Color(0.02, 0.07, 0.18, 0.25 * opacity), radius)
-	var lower_face := Rect2(Vector2(edge, edge + depth), face.size)
-	_draw_box(lower_face, _alpha(face_color.darkened(0.42), opacity), radius, _alpha(face_color.darkened(0.54), opacity), 1)
-	_draw_box(face, base, radius, _alpha(base.lightened(0.39), opacity * 0.84), 1)
-
-	# Broad top sheen is kept away from the edges and text for a clean bevel.
-	var sheen := Rect2(face.position + Vector2(2.0, 2.0), Vector2(face.size.x - 4.0, face.size.y * 0.34))
-	_draw_box(sheen, Color(1.0, 1.0, 1.0, 0.12 * opacity), maxf(radius - 2.0, 1.0))
-	var rim := face.grow(-3.0)
-	_draw_box(rim, Color.TRANSPARENT, maxf(radius - 3.0, 1.0), Color(1.0, 1.0, 1.0, 0.11 * opacity), 1)
-	draw_line(face.position + Vector2(radius, 2.5), Vector2(face.end.x - radius, face.position.y + 2.5), Color(1.0, 1.0, 1.0, 0.36 * opacity), 1.2, true)
+	# The curved rim belongs to the face itself; there is no extruded base.
+	# Closely spaced, same-hue layers soften every edge, including the corners.
+	_draw_rounded_gradient(face, base, radius, opacity, 1.0)
+	_draw_rounded_gradient(face.grow(-0.8 * scale_factor), base, radius - 0.8 * scale_factor, opacity, 0.52)
+	_draw_rounded_gradient(face.grow(-1.8 * scale_factor), base, radius - 1.8 * scale_factor, opacity, 0.0)
+	_draw_box(face, Color.TRANSPARENT, radius, _alpha(base.lightened(0.15), 0.44), 1)
+	_draw_top_rim(face.grow(-1.3 * scale_factor), radius - 1.3 * scale_factor, opacity)
 
 	var badge_side := minf(face.size.y - 12.0 * scale_factor, 48.0 * scale_factor)
 	var badge := Rect2(Vector2(face.position.x + 13.0 * scale_factor, face.get_center().y - badge_side * 0.5), Vector2.ONE * badge_side)
-	var badge_color := base.darkened(0.12)
-	_draw_box(badge, badge_color, 11.0 * scale_factor, Color(1.0, 1.0, 1.0, 0.23 * opacity), 1)
+	var badge_color := base.lightened(0.065)
+	_draw_box(badge, badge_color, 11.0 * scale_factor, Color(1.0, 1.0, 1.0, 0.20 * opacity), 1)
 	_draw_mode_icon(badge.grow(-5.5 * scale_factor), opacity, badge_color)
 	_draw_copy(face, badge, scale_factor, opacity)
 
@@ -138,12 +130,14 @@ func _draw_mode_icon(rect: Rect2, opacity: float, badge_color: Color) -> void:
 			Art.draw_block(self, Rect2(origin + Vector2(0.0, unit * 1.02), Vector2.ONE * unit), Color("#59e6ec"), opacity)
 			Art.draw_block(self, Rect2(origin + Vector2(unit * 1.04, unit * 1.02), Vector2.ONE * unit), Color("#ffffff"), opacity)
 		_:
-			var pin_center := center + Vector2(0.0, -side * 0.13)
-			var radius := side * 0.255
-			draw_colored_polygon(PackedVector2Array([pin_center + Vector2(-radius * 0.86, radius * 0.43), pin_center + Vector2(radius * 0.86, radius * 0.43), center + Vector2(0.0, side * 0.37)]), white)
+			# Keep the pin and its ground arc inside the same padded icon bounds,
+			# including the stroke width at the smallest menu button size.
+			var pin_center := center + Vector2(0.0, -side * 0.16)
+			var radius := side * 0.235
+			draw_colored_polygon(PackedVector2Array([pin_center + Vector2(-radius * 0.86, radius * 0.43), pin_center + Vector2(radius * 0.86, radius * 0.43), center + Vector2(0.0, side * 0.24)]), white)
 			draw_circle(pin_center, radius, white)
-			draw_circle(pin_center, side * 0.095, badge_color)
-			draw_arc(center + Vector2(0.0, side * 0.39), side * 0.32, PI * 0.10, PI * 0.90, 18, Color(1.0, 1.0, 1.0, 0.75 * opacity), maxf(side * 0.045, 1.3), true)
+			draw_circle(pin_center, side * 0.085, badge_color)
+			draw_arc(center + Vector2(0.0, side * 0.25), side * 0.19, PI * 0.10, PI * 0.90, 18, Color(1.0, 1.0, 1.0, 0.75 * opacity), maxf(side * 0.042, 1.2), true)
 
 
 func _apply_native_theme() -> void:
@@ -154,6 +148,63 @@ func _apply_native_theme() -> void:
 	add_theme_font_override("font", _title_font)
 	add_theme_font_size_override("font_size", 18)
 	add_theme_constant_override("outline_size", 0)
+
+
+func _draw_rounded_gradient(rect: Rect2, base: Color, radius: float, opacity: float, rim_weight: float) -> void:
+	if rect.size.x <= 0.0 or rect.size.y <= 0.0:
+		return
+	var corner := clampf(radius, 0.0, minf(rect.size.x, rect.size.y) * 0.5)
+	var strips := maxi(ceili(rect.size.y / 1.4), 1)
+	for strip in range(strips):
+		var top := rect.size.y * float(strip) / float(strips)
+		var bottom := rect.size.y * float(strip + 1) / float(strips)
+		var top_inset := _round_edge_inset(top, rect.size.y, corner)
+		var bottom_inset := _round_edge_inset(bottom, rect.size.y, corner)
+		var top_color := _face_gradient_color(base, top / rect.size.y, rim_weight, opacity)
+		var bottom_color := _face_gradient_color(base, bottom / rect.size.y, rim_weight, opacity)
+		draw_polygon(PackedVector2Array([
+			rect.position + Vector2(top_inset, top),
+			rect.position + Vector2(rect.size.x - top_inset, top),
+			rect.position + Vector2(rect.size.x - bottom_inset, bottom),
+			rect.position + Vector2(bottom_inset, bottom),
+		]), PackedColorArray([top_color, top_color, bottom_color, bottom_color]))
+
+
+func _round_edge_inset(y: float, height: float, radius: float) -> float:
+	var corner_y := maxf(radius - minf(y, height - y), 0.0)
+	return radius - sqrt(maxf(radius * radius - corner_y * corner_y, 0.0))
+
+
+func _face_gradient_color(base: Color, progress: float, rim_weight: float, opacity: float) -> Color:
+	# A continuous sheen fades through the face rather than ending in a band.
+	var color: Color
+	if progress < 0.09:
+		color = base.lightened(lerpf(0.30 + rim_weight * 0.24, 0.18 + rim_weight * 0.06, progress / 0.09))
+	elif progress < 0.40:
+		color = base.lightened(lerpf(0.18 + rim_weight * 0.06, 0.035, (progress - 0.09) / 0.31))
+	elif progress < 0.70:
+		color = base.lightened(lerpf(0.035, 0.0, (progress - 0.40) / 0.30))
+	elif progress < 0.91:
+		color = base.darkened(lerpf(0.0, 0.025, (progress - 0.70) / 0.21))
+	else:
+		color = base.darkened(lerpf(0.025, 0.07 + rim_weight * 0.16, (progress - 0.91) / 0.09))
+	color.a = opacity
+	return color
+
+
+func _draw_top_rim(rect: Rect2, radius: float, opacity: float) -> void:
+	var points := PackedVector2Array()
+	var left_center := rect.position + Vector2.ONE * radius
+	var right_center := Vector2(rect.end.x - radius, rect.position.y + radius)
+	for step in range(13):
+		var angle := lerpf(PI, PI * 1.5, float(step) / 12.0)
+		points.append(left_center + Vector2.from_angle(angle) * radius)
+	for step in range(13):
+		var angle := lerpf(PI * 1.5, TAU, float(step) / 12.0)
+		points.append(right_center + Vector2.from_angle(angle) * radius)
+	draw_polyline(points, Color(1.0, 1.0, 1.0, 0.22 * opacity), 1.1, true)
+	# A small corner glint makes the glossy surface readable at menu scale.
+	draw_arc(left_center, radius - 0.8, PI * 1.12, PI * 1.37, 12, Color(1.0, 1.0, 1.0, 0.47 * opacity), 1.5, true)
 
 
 func _draw_box(rect: Rect2, fill: Color, radius: float, border: Color = Color.TRANSPARENT, border_width: int = 0) -> void:
