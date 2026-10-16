@@ -3,6 +3,7 @@ extends Control
 const BOARD_MARGIN := 28.0
 const Art := preload("res://scripts/ui/block_art.gd")
 const ClearColorResolver := preload("res://scripts/ui/clear_color_resolver.gd")
+const ClearPreviewScript := preload("res://scripts/ui/clear_preview.gd")
 const FeedbackAudioScript := preload("res://scripts/audio/feedback_audio.gd")
 const MoveFeedbackScript := preload("res://scripts/ui/move_feedback.gd")
 const GameplayControlsScript := preload("res://scripts/ui/gameplay_controls.gd")
@@ -53,6 +54,7 @@ var shake_strength := 0.0
 var final_impact_shake := false
 var last_notice_round := -1
 var preview_clear_colors: Dictionary = {}
+var clear_preview := ClearPreviewScript.new()
 var board_placement_orders: Dictionary = {}
 var placement_sequence := 0
 var game_mode := "free"
@@ -113,6 +115,8 @@ func _ready() -> void:
 	queue_redraw()
 
 func _process(delta: float) -> void:
+	if screen == "game" and not paused and not input_locked and dragging_index >= 0 and drag_valid and not _reduced_motion():
+		clear_preview.advance(delta)
 	if shake_duration > 0.0 and screen == "game" and not paused:
 		shake_elapsed += delta
 		var progress := clampf(shake_elapsed / shake_duration, 0.0, 1.0)
@@ -634,6 +638,7 @@ func _cancel_drag() -> void:
 	drag_origin = Vector2i(-99, -99)
 	drag_grab_offset = Vector2.ZERO
 	preview_clear_colors.clear()
+	clear_preview.reset()
 	queue_redraw()
 
 func _toggle_pause() -> void:
@@ -1238,7 +1243,8 @@ func _board_origin_from_mouse(position: Vector2, _piece: PieceData) -> Vector2i:
 	return Vector2i(roundi(raw.x), roundi(raw.y))
 
 func _update_drag_preview() -> void:
-	if dragging_index < 0 or game == null or paused or not confirmation_action.is_empty():
+	if dragging_index < 0 or game == null or screen != "game" or paused or input_locked or not confirmation_action.is_empty():
+		_cancel_drag()
 		return
 	if dragging_index >= game.remaining_pieces.size():
 		_cancel_drag()
@@ -1255,6 +1261,10 @@ func _update_drag_preview() -> void:
 			placed_cells.append(drag_origin + local_cell)
 		var appearance := ClearColorResolver.resolve(preview_board, _orders_with_placement(placed_cells, placement_sequence + 1))
 		preview_clear_colors = appearance["cell_colors"]
+		var preview_palette := rules_config.palette if not rules_config.palette.is_empty() else PackedColorArray([rules_config.primary_color])
+		clear_preview.configure(preview_clear_colors, appearance["row_colors"], appearance["column_colors"], _board_size(), preview_palette)
+	else:
+		clear_preview.reset()
 	queue_redraw()
 
 func _draw() -> void:
@@ -1318,7 +1328,7 @@ func _draw_board() -> void:
 				if game.target_cells.has(Vector2i(x, y)) and not preview_clear_colors.has(Vector2i(x, y)):
 					Art.draw_target_tile(self, cell_rect, 1.0, 0.0, _target_kind_at(Vector2i(x, y)))
 				else:
-					Art.draw_block(self, cell_rect, color, 1.0, 0.20 if preview_clear_colors.has(Vector2i(x, y)) else 0.0)
+					Art.draw_block(self, cell_rect, color, 1.0, clear_preview.highlight(_reduced_motion()) if preview_clear_colors.has(Vector2i(x, y)) else 0.0)
 				if game.target_cells.has(Vector2i(x, y)):
 					Art.draw_target_marker(self, cell_rect, 1.0, 1.0, _target_kind_at(Vector2i(x, y)))
 	if dragging_index >= 0 and game != null:
@@ -1329,12 +1339,14 @@ func _draw_board() -> void:
 			if target.x >= 0 and target.x < _board_size() and target.y >= 0 and target.y < _board_size():
 				var preview_rect := Art.grid_cell_rect(rect.position + Vector2(target) * cell, cell, _board_cell_inset())
 				if preview_clear_colors.has(target):
-					Art.draw_block(self, preview_rect, _block_color(int(preview_clear_colors[target])), 1.0, 0.20)
+					Art.draw_block(self, preview_rect, _block_color(int(preview_clear_colors[target])), 1.0, clear_preview.highlight(_reduced_motion()))
 				else:
 					Art.draw_block(self, preview_rect, preview_color, 0.72 if drag_valid else 0.40, 0.2)
 					draw_rect(preview_rect.grow(-1.0), Color("#b3fff1") if drag_valid else Color("#ffb3a9"), false, 1.5)
 				if piece.targets.has(local_cell):
 					Art.draw_target_marker(self, preview_rect, 0.78, 1.0, str(piece.targets[local_cell]))
+	if dragging_index >= 0 and drag_valid and not hide_final_board:
+		clear_preview.draw(self, rect, _reduced_motion())
 
 func _target_kind_at(cell: Vector2i) -> String:
 	return str(game.target_cells.get(cell, "red_star")) if game != null else "red_star"
@@ -1357,7 +1369,7 @@ func _draw_tray() -> void:
 func _draw_piece_cell(piece: PieceData, local_cell: Vector2i, rect: Rect2, opacity: float = 1.0, clear_color: Variant = null) -> void:
 	var marked := piece.targets.has(local_cell)
 	if clear_color is Color:
-		Art.draw_block(self, rect, clear_color, opacity, 0.20)
+		Art.draw_block(self, rect, clear_color, opacity, clear_preview.highlight(_reduced_motion()))
 	elif marked:
 		Art.draw_target_tile(self, rect, opacity, 0.0, str(piece.targets[local_cell]))
 	else:

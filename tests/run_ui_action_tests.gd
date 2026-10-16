@@ -89,6 +89,7 @@ func _run_tests() -> void:
 	_equal(main.game, null, "返回菜单清理当前局")
 	main.menu_controls.finish_opening()
 	_test_shared_clear_feedback(main)
+	_test_clear_drag_preview(main)
 	_test_retry_failure_lifecycle(main)
 	# A completed game locks the board while gems arrive, but its result
 	# screen must release the primary and secondary navigation buttons.
@@ -392,6 +393,116 @@ func _feedback_rules_snapshot(rules: GameRulesConfig) -> Dictionary:
 	for shape in rules.shape_pool:
 		shapes.append([shape.shape_id, shape.cells.duplicate()])
 	return {"board": rules.board_size, "tray": rules.tray_count, "min": rules.min_piece_cells, "max": rules.max_piece_cells, "misses": rules.combo_miss_tolerance, "points": rules.base_points_per_cell, "multiline": rules.multiline_bonus_step, "shapes": shapes, "palette": rules.palette.duplicate()}
+
+func _test_clear_drag_preview(main) -> void:
+	var reduced_motion_before := bool(main.save_data.get("reduced_motion", false))
+	var rules_before := _feedback_rules_snapshot(main.rules_config)
+	main._set_setting("reduced_motion", false)
+	for mode in ["free", "classic", "adventure"]:
+		main._start_game(mode, 3 if mode == "adventure" else 0)
+		main.gameplay_ui.accept_objective_intro()
+		_check_preview_cleared(main, "%s 开局不残留上个模式预览" % mode)
+		var patterns := ["row", "column"]
+		if mode == "adventure":
+			patterns.append("cross")
+		for pattern in patterns:
+			var appearance := _clear_preview_fixture(main, pattern)
+			var before := _preview_game_snapshot(main)
+			_drag_preview_to(main, Vector2i.ZERO)
+			_check(main.drag_valid and main.clear_preview.is_active(), "%s %s 合法满线同时启用变色和光边" % [mode, pattern])
+			_equal(main.preview_clear_colors, appearance["cell_colors"], "%s %s 使用实际消除主色解析结果" % [mode, pattern])
+			_equal(main.preview_clear_colors.size(), 15 if pattern == "cross" else 8, "相交行列只预览十五个唯一格，单线为八格")
+			_equal(main.preview_clear_colors.values().count(2), main.preview_clear_colors.size(), "拖动块与既有格统一为本组多数主色")
+			_equal(_preview_game_snapshot(main), before, "清线预览不改变棋盘、托盘、分数、Combo 或目标")
+			_drag_preview_to(main, Vector2i(3, 3))
+			_check(main.drag_valid, "普通空位仍允许合法预览")
+			_check_preview_cleared(main, "可放但不满线时无清线变色和光框")
+			_drag_preview_to(main, Vector2i(7, 7))
+			_check(not main.drag_valid, "鼠标在棋盘内但方块越界仍判非法")
+			_check_preview_cleared(main, "非法落点不残留先前满线光框")
+			_equal(_preview_game_snapshot(main), before, "移动到普通或非法落点也不提前提交规则状态")
+		_drag_preview_to(main, Vector2i.ZERO)
+		var before := _preview_game_snapshot(main)
+		main._set_setting("reduced_motion", true)
+		var static_highlight: float = main.clear_preview.highlight(true)
+		main._process(0.5)
+		_check(main.clear_preview.is_active() and static_highlight > 0.2, "减少动画仍保留可读的静态清线高亮")
+		_equal(main.clear_preview.highlight(true), static_highlight, "减少动画的静态高亮不随时间变化")
+		main._set_setting("reduced_motion", false)
+		main._cancel_drag()
+		_check_preview_cleared(main, "取消拖动清理满线预览")
+		_drag_preview_to(main, Vector2i.ZERO)
+		main._toggle_pause()
+		_check(main.paused, "预览期间暂停仍立即生效")
+		_check_preview_cleared(main, "暂停清理满线预览")
+		main._toggle_pause()
+		_drag_preview_to(main, Vector2i.ZERO)
+		main._layout_controls()
+		_check_preview_cleared(main, "界面重排清理旧拖动及光框")
+		_equal(_preview_game_snapshot(main), before, "静态高亮、取消、暂停和重排不改变游戏状态")
+		# Leave one real preview active to exercise the next mode/menu transition.
+		_drag_preview_to(main, Vector2i.ZERO)
+	main._return_to_menu()
+	_check_preview_cleared(main, "返回菜单不保留最后的满线预览")
+	_equal(main.game, null, "真实返回入口释放预览所属棋局")
+	main._show_menu()
+	_equal(_feedback_rules_snapshot(main.rules_config), rules_before, "三模式拖动预览不污染共用规则")
+	main._set_setting("reduced_motion", reduced_motion_before)
+	main.menu_controls.finish_opening()
+
+func _clear_preview_fixture(main, pattern: String) -> Dictionary:
+	main._cancel_drag()
+	main.game.board = BoardRules.new(8)
+	main.board_placement_orders.clear()
+	var cells: Array[Vector2i] = [Vector2i.ZERO, Vector2i(1, 0), Vector2i(2, 0)]
+	if pattern == "column":
+		cells.assign([Vector2i.ZERO, Vector2i(0, 1), Vector2i(0, 2)])
+	elif pattern == "cross":
+		cells.assign([Vector2i.ZERO, Vector2i(1, 0), Vector2i(0, 1)])
+	if pattern != "column":
+		main.game.board.fill_cell_row(0, 2)
+	if pattern != "row":
+		main.game.board.fill_cell_column(0, 2)
+	for cell in cells:
+		main.game.board.set_cell(cell.x, cell.y, -1)
+	var piece := PieceData.new(Vector2i.ZERO, cells, "clear_preview_" + pattern)
+	main.game.remaining_pieces.assign([piece, piece.duplicate_piece(), piece.duplicate_piece()])
+	main._sync_piece_colors()
+	var resolved: BoardRules = main.game.board.duplicate_board()
+	resolved.place(piece, Vector2i.ZERO, main._piece_color_id(piece))
+	return ClearColorResolver.resolve(resolved, {})
+
+func _drag_preview_to(main, origin: Vector2i) -> void:
+	# Use a real tray press with a nonzero grab offset, then Main's mouse-motion
+	# entry. Neither the resulting origin nor the clear mask is injected.
+	var grab := Vector2(0.25, 0.5)
+	if main.dragging_index < 0:
+		var piece: PieceData = main.game.remaining_pieces[0]
+		var press := InputEventMouseButton.new()
+		press.button_index = MOUSE_BUTTON_LEFT
+		press.pressed = true
+		press.position = main._tray_piece_origin(0, piece) + grab * main._tray_unit(0, piece)
+		main._input(press)
+		_check(main.dragging_index == 0 and main.drag_grab_offset.is_equal_approx(grab), "真实托盘按下取得首块及非零抓取偏移")
+	var motion := InputEventMouseMotion.new()
+	motion.position = main._board_rect().position + (Vector2(origin) + grab) * main._cell_size()
+	main._input(motion)
+	_equal(main.drag_origin, origin, "实际鼠标移动通过抓取偏移换算为预期棋盘落点")
+
+func _preview_game_snapshot(main) -> Dictionary:
+	var pieces: Array = []
+	for piece: PieceData in main.game.remaining_pieces:
+		pieces.append([piece.get_instance_id(), piece.cells.duplicate(), piece.targets.duplicate(true)])
+	return {
+		"board": main.game.board.get("_cells").duplicate(true), "pieces": pieces,
+		"scoring": [main.game.scoring.score, main.game.scoring.combo, main.game.scoring.combo_misses],
+		"moves": main.game.total_moves, "status": main.game.status,
+		"targets": [main.game.target_cells.duplicate(true), main.game.target_total, main.game.target_collected],
+		"counts": [main.game.target_counts.duplicate(), main.game.target_remaining_counts.duplicate(), main.game.target_collected_counts.duplicate()],
+	}
+
+func _check_preview_cleared(main, message: String) -> void:
+	_check(main.preview_clear_colors.is_empty() and not main.clear_preview.is_active() and main.clear_preview.highlight(true) == 0.0, message)
 
 func _test_retry_failure_lifecycle(main) -> void:
 	# This fixture only uses the test's isolated save_path. Two legal moves
