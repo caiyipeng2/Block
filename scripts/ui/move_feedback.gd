@@ -579,7 +579,8 @@ func _spawn_particles() -> void:
 	var budget := 144
 	for key in _clear_cells:
 		var cell: Vector2i = key
-		var color := _clear_spectrum_color(Vector2(cell) + Vector2.ONE * 0.5)
+		var base_color := _color_for_id(_resolved_cell_color_id(cell))
+		var color := base_color.lerp(_clear_spectrum_color(Vector2(cell) + Vector2.ONE * 0.5), 0.24)
 		# The existing clear tween eases quadratically. Its inverse keeps each
 		# cell's fragments on the same travelling break wave, within accent time.
 		var delay := sqrt(_clear_wave_offset(cell) * 0.66 + 0.34 * 0.12) * _disperse_duration
@@ -590,7 +591,7 @@ func _spawn_particles() -> void:
 			_particles.append({
 				"origin": _cell_center(cell) + Vector2(random.randf_range(-0.2, 0.2), random.randf_range(-0.2, 0.2)) * _cell_size,
 				"velocity": velocity,
-				"size": random.randf_range(0.055, 0.12) * _cell_size,
+				"size": random.randf_range(0.045, 0.085) * _cell_size,
 				"color": color.lightened(0.16 if i == 2 else 0.04),
 				"star": i == 2,
 				"delay": delay,
@@ -616,10 +617,9 @@ func _draw() -> void:
 					var highlight := 0.0
 					var color := _color_for_id(_resolved_cell_color_id(coordinate))
 					if _clear_started and _clear_cells.has(coordinate):
-						# This is only a transient animation skin; the resolver's
-						# majority colors in the captured dictionaries stay intact.
-						color = _clear_spectrum_color(Vector2(coordinate) + Vector2.ONE * 0.5)
-						highlight = 0.16
+						# Keep the resolved block material; spectral color belongs
+						# to the edge bloom and passing sheen, not an opaque reskin.
+						highlight = 0.10
 						if not _sweep_started:
 							alpha = 0.0
 						elif _dispersing:
@@ -685,7 +685,7 @@ func _draw_clear_cell_light(coordinate: Vector2i, block_rect: Rect2, alpha: floa
 					if _clear_columns.has(coordinate.x):
 						sheen = maxf(sheen, clampf(1.0 - absf(grid_point.y - front) / 0.80, 0.0, 1.0))
 				var color := _clear_spectrum_color(grid_point).lightened(sheen * 0.18)
-				color.a = alpha * (0.14 + sheen * 0.26)
+				color.a = alpha * (0.025 + sheen * 0.22)
 				colors.append(color)
 			draw_polygon(points, colors)
 

@@ -1333,18 +1333,20 @@ func _draw_board() -> void:
 					Art.draw_target_marker(self, cell_rect, 1.0, 1.0, _target_kind_at(Vector2i(x, y)))
 	if dragging_index >= 0 and game != null:
 		var piece: PieceData = game.remaining_pieces[dragging_index]
-		var preview_color := _piece_color(piece) if drag_valid else Color("#ff7575")
 		for local_cell in piece.cells:
 			var target := drag_origin + local_cell
 			if target.x >= 0 and target.x < _board_size() and target.y >= 0 and target.y < _board_size():
 				var preview_rect := Art.grid_cell_rect(rect.position + Vector2(target) * cell, cell, _board_cell_inset())
-				if preview_clear_colors.has(target):
-					Art.draw_block(self, preview_rect, _block_color(int(preview_clear_colors[target])), 1.0, clear_preview.highlight(_reduced_motion()))
+				if drag_valid:
+					# The landing ghost uses the same marked tile and material as
+					# the held piece; its ordinary palette color is not its backing.
+					var clear_color: Variant = _block_color(int(preview_clear_colors[target])) if preview_clear_colors.has(target) else null
+					_draw_piece_cell(piece, local_cell, preview_rect, 1.0 if clear_color is Color else 0.32, clear_color)
 				else:
-					Art.draw_block(self, preview_rect, preview_color, 0.72 if drag_valid else 0.40, 0.2)
-					draw_rect(preview_rect.grow(-1.0), Color("#b3fff1") if drag_valid else Color("#ffb3a9"), false, 1.5)
-				if piece.targets.has(local_cell):
-					Art.draw_target_marker(self, preview_rect, 0.78, 1.0, str(piece.targets[local_cell]))
+					Art.draw_block(self, preview_rect, Color("#ff7575"), 0.40, 0.2)
+					draw_rect(preview_rect.grow(-1.0), Color("#ffb3a9"), false, 1.5)
+					if piece.targets.has(local_cell):
+						Art.draw_target_marker(self, preview_rect, 0.78, 1.0, str(piece.targets[local_cell]))
 	if dragging_index >= 0 and drag_valid and not hide_final_board:
 		clear_preview.draw(self, rect, _reduced_motion())
 
