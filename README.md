@@ -98,6 +98,8 @@ python tools/export_windows.py --godot "E:\Tools\Godot\Godot_v4.7.2-stable_win64
 
 ## 当前开发状态（2026-10-16）
 
+开发工具新增 AssetLib Godot AI 3.2.1 与 Tripo CLI 0.7.0 的 Codex MCP 配置，协议握手均通过；当前编辑器会话数为 0，需保存后重开 Godot 项目并重启 Codex MCP，Tripo Key 由用户稍后本机填写。Sprite Pipeline 沿用已装技能。安装位置、登录命令、恢复与核验边界见 [MCP 与美术工具配置](docs/Block-Blast-Godot-MCP配置.md)。
+
 按后续反馈，三个模式按钮在适配尺寸上整体缩小约 15%，图标、文字与间距同比例调整；1280×720 下约为 307×75px，小窗口保留最低 44px 点击高度。沿用 `0.7.2` 获选美术。
 
 `0.7.2` 已接入获选第一张预览的按钮面，复用其文字、图标与材质；PNG 无损导入并生成 mipmaps，圆角 UV 裁切不显示原图蓝色外框。原生 Button 保留中文语义、悬停/按压和焦点，焦点不变灰，入场禁用预览保持亮度。MenuModeButton/MainMenu/Main/UI action 四份 Godot 4.7.2 `--check-only` 均退出码 0、无脚本错误；原图一致性、采样边界、五种窗口的比例与页脚留白已静态核对，独立复核无阻断。未运行 GUI、游戏场景、测试用例或导出包；用户停止旧游戏后按 F5 验收。标题文字已烘焙进美术图，后续改名或多语言需要对应资源。

@@ -4,6 +4,14 @@
 引擎：Godot 4.7.2 stable  
 平台目标：Windows 桌面，鼠标输入
 
+## 开发工具与 MCP 配置（2026-10-16）
+
+AssetLib #5050 的 Godot AI 3.2.1 发布包经官方 SHA256 校验后安装；268 个源文件逐文件与 ZIP 一致，启用项写入项目，并在导出预设中排除开发插件。Godot 4.7.2 headless 编辑器导入退出 0，无脚本解析/编译错误；默认 headless 禁用该插件，日志包含本机证书、旧 build 子目录访问与沙箱阻止保存 editor_settings 的环境错误，不能称全部无 ERROR。
+
+Godot AI 3.2.1 Python 服务、Tripo CLI 0.7.0 已固定安装到 E 盘工具目录，并加入 Codex 全局配置；原 MCP/其他设置完整保留且有本机备份。使用实际配置通过 MCP initialize、tools/list 与 ping，分别列出 46/5 个工具；Godot 另做一次只读 `session_manage {"op":"list"}`，返回空会话、数量 0、isError false。MCP 协议正常，旧编辑器需由用户保存后重开项目；Codex 需重启对应 MCP/加载新一轮工具。用户已选择 Tripo Key 稍后本机填，未做认证或生成。
+
+Sprite Pipeline 沿用已装 OpenAI 技能，没有虚构独立 MCP；Python/Pillow 和三个后处理脚本的 help 检查通过。新增 `configure_tripo.ps1` 采用官方密码式粘贴登录，PowerShell 解析通过，未执行登录。未运行游戏场景、GUI 自动操作、游戏测试用例或资产生成。实际路径、来源、Key 操作和恢复见 [MCP 配置](Block-Blast-Godot-MCP配置.md)。
+
 ## 获选菜单按钮实装（2026-10-16；源码 0.7.2，待用户验收）
 
 后续按用户反馈调小模式按钮：适配后的面部尺寸乘 0.85，保留最小 44px 高度，文字/图标/间距同比缩小。默认 1280×720 从约 361×88px 调为 307×75px；280×360 受最小点击高度约束约为 181×44px。修改后的 `main_menu.gd` Godot 4.7.2 `--check-only` 退出码 0、无脚本错误，五种窗口静态比例和页脚留白检查通过。未执行 GUI、游戏场景或测试用例，实际大小待用户按 F5 验收。
