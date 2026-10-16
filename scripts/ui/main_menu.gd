@@ -14,6 +14,9 @@ const MenuLogo := preload("res://scripts/ui/menu_logo.gd")
 const IconButton := preload("res://scripts/ui/art_icon_button.gd")
 const OPENING_DURATION := 2.20
 const RETURN_DURATION := 0.30
+const MODE_FACE_ASPECT := 877.0 / 213.0
+const MODE_GAP_RATIO := 0.34
+const MODE_FOOTER_CLEARANCE := 18.0
 
 var _logo: Control
 var _best: Label
@@ -168,9 +171,9 @@ func _build_controls() -> void:
 	_best.name = "BestScore"
 	add_child(_best)
 	var definitions := [
-		["AdventureButton", "adventure", "闯关模式", "逐关挑战，点亮方块地图", Color("#ffb525")],
-		["ClassicButton", "classic", "经典模式", "预置棋盘，挑战最高分", Color("#13c889")],
-		["StartButton", "free", "自由模式", "空盘起步，自由拼放", Color("#b950ee")],
+		["AdventureButton", "adventure", "闯关模式", "", Color("#f3a509")],
+		["ClassicButton", "classic", "经典模式", "", Color("#0bc5a4")],
+		["StartButton", "free", "自由模式", "", Color("#d92eea")],
 	]
 	for definition: Array in definitions:
 		var button := ModeButton.new()
@@ -236,14 +239,18 @@ func _layout_controls() -> void:
 	_logo.size = Vector2(logo_width, minf(logo_width * 0.47, size.y * (0.18 if size.y < 420.0 else 0.24)))
 	_logo.pivot_offset = _logo.size * 0.5
 	_logo_destination = Vector2((size.x - _logo.size.x) * 0.5, 12.0 if size.y < 420.0 else maxf(34.0, size.y * 0.105))
-	var width := minf(380.0, maxf(200.0, size.x - 56.0))
-	var button_height := maxf(60.0, 74.0 * scale_factor)
-	var gap := 14.0 * scale_factor
-	var stack_height := button_height * 3.0 + gap * 2.0
 	var exit_height := maxf(34.0, 40.0 * scale_factor)
 	var exit_top := minf(size.y - 70.0 * scale_factor, size.y - 25.0 - exit_height - 6.0)
-	var lowest_top := exit_top - 14.0 * scale_factor - stack_height
 	var minimum_top := _logo_destination.y + _logo.size.y + (60.0 if size.y >= 560.0 else 22.0) * scale_factor
+	# Fit the approved artwork as one proportional face; compact windows shrink
+	# the whole stack instead of squeezing the icons or italic lettering.
+	var stack_space := maxf(exit_top - MODE_FOOTER_CLEARANCE - minimum_top, 0.0)
+	var width := minf(380.0, maxf(200.0, size.x - 56.0))
+	var button_height := maxf(44.0, minf(width / MODE_FACE_ASPECT, stack_space / (3.0 + 2.0 * MODE_GAP_RATIO)))
+	width = button_height * MODE_FACE_ASPECT
+	var gap := button_height * MODE_GAP_RATIO
+	var stack_height := button_height * 3.0 + gap * 2.0
+	var lowest_top := exit_top - MODE_FOOTER_CLEARANCE - stack_height
 	var top := clampf(size.y * 0.49, minf(minimum_top, lowest_top), lowest_top)
 	_destinations.clear()
 	for index in range(_buttons.size()):
@@ -329,7 +336,7 @@ func _entry_distance(button: Button, preferred: float) -> float:
 	# Keep the last card's animated bounds above the footer, including its
 	# contact shadow, in compact windows as well as at the final position.
 	var destination: Vector2 = _destinations[button.name]
-	var available: float = get_node("ExitButton").position.y - destination.y - button.size.y - 6.0
+	var available: float = get_node("ExitButton").position.y - destination.y - button.size.y - MODE_FOOTER_CLEARANCE
 	return clampf(available, 0.0, preferred)
 
 func _draw() -> void:

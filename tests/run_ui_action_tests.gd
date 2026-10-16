@@ -160,8 +160,8 @@ func _test_menu_presentation(main) -> void:
 		buttons.append(button)
 		_equal(button.text, definition[2], "%s 使用中文模式名称" % definition[0])
 		_equal(button.get("mode_kind"), definition[1], "%s 图标由对应模式配置驱动" % definition[0])
-		_check(button.has_method("_draw_mode_icon"), "%s 提供原生绘制模式图标" % definition[0])
-		_check(not str(button.get("subtitle_text")).is_empty(), "%s 保留模式说明" % definition[0])
+		_check(button.has_method("get_face_source_region"), "%s 使用选定效果图的按钮美术" % definition[0])
+		_check(str(button.get("subtitle_text")).is_empty(), "%s 只保留主标题" % definition[0])
 		_equal(button.focus_mode, Control.FOCUS_ALL, "%s 保留键盘聚焦" % definition[0])
 	# Only the first actual presentation may be an opening. Do not override its
 	# private latch or wait for wall-clock animations just to exercise a skip.
