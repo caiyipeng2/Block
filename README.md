@@ -100,7 +100,7 @@ python tools/export_windows.py --godot "E:\Tools\Godot\Godot_v4.7.2-stable_win64
 
 Godot AI 已恢复并升级至正式 `4.3.0`，签名与全部 313 个发布文件核验通过；插件与后端认证成功，实际 MCP 查到 Block 项目 1 个 ready 会话、47 个工具。更新失败原因为 CodeGraph 文件监视器占用插件目录，现改为 `serve --mcp --no-watch`，仍按任务手动 `codegraph sync`。Tripo CLI 0.7.0 的 MCP 与阿里云 LLM 辅助配置已验证（`qwen3.7-plus`），Tripo 3D API Key 仍需独立提供；Sprite Pipeline 沿用已装技能。使用前重新打开 Godot 并刷新 Codex MCP 配置，详见 [MCP 与美术工具配置](docs/Block-Blast-Godot-MCP配置.md)。
 
-按后续反馈，三个模式按钮在适配尺寸上整体缩小约 15%，图标、文字与间距同比例调整；1280×720 下约为 307×75px，小窗口保留最低 44px 点击高度。沿用 `0.7.2` 获选美术。
+按最新反馈，三个模式按钮在上一版基础上再缩小约 20%，图标、文字与间距同比例调整；1280×720 下约为 245×60px，小窗口保留最低 44px 点击高度。沿用 `0.7.2` 获选美术。
 
 `0.7.2` 已接入获选第一张预览的按钮面，复用其文字、图标与材质；PNG 无损导入并生成 mipmaps，圆角 UV 裁切不显示原图蓝色外框。原生 Button 保留中文语义、悬停/按压和焦点，焦点不变灰，入场禁用预览保持亮度。MenuModeButton/MainMenu/Main/UI action 四份 Godot 4.7.2 `--check-only` 均退出码 0、无脚本错误；原图一致性、采样边界、五种窗口的比例与页脚留白已静态核对，独立复核无阻断。未运行 GUI、游戏场景、测试用例或导出包；用户停止旧游戏后按 F5 验收。标题文字已烘焙进美术图，后续改名或多语言需要对应资源。
 

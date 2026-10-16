@@ -16,7 +16,7 @@ const OPENING_DURATION := 2.20
 const RETURN_DURATION := 0.30
 const MODE_FACE_ASPECT := 877.0 / 213.0
 const MODE_GAP_RATIO := 0.34
-const MODE_SIZE_SCALE := 0.85
+const MODE_SIZE_SCALE := 0.68
 const MODE_FOOTER_CLEARANCE := 18.0
 
 var _logo: Control
