@@ -4,6 +4,18 @@
 引擎：Godot 4.7.2 stable  
 平台目标：Windows 桌面，鼠标输入
 
+## 三模式共用清线反馈（2026-10-16；源码 0.7.3，待用户验收）
+
+经典、自由与闯关继续使用同一套清线扫光、粒子、轻震和分级赞语。新落子/回弹只重置棋盘快照与落子效果，保留未结束赞语；无资格单线不删除旧赞语，新合格赞语替换。普通模式加分在赞语定位后生成，起点避让其最大弹大、描边和轻微倾斜区域；普通放置遇到仍在播放的赞语也避让。没有延长棋盘输入锁定或改动真实积分。
+
+普通落子上下文不再附带收集字段；目标事件/收集 HUD、Final Block 与关闭加分飞行仅在闯关收集模式加入。规则、供块、CSV、音频和存档代码均未改，自由/经典仍保留严格断连、3–5 格普通池和无限分数；目标/进度/救援/辅助/通关不迁入普通模式。
+
+Godot 4.7.2 headless `--check-only` 检查 `scripts/main.gd`、`scripts/ui/move_feedback.gd`、`scripts/ui/clear_praise.gd`、`tests/run_ui_action_tests.gd` 四份脚本，退出码均为 0，无 SCRIPT/Parse/Compile/Failedload 错误。日志仅在本地 `work/verification/*-shared-feedback-syntax.log`，不提交。
+
+现有 UI action 检查维护了真实 `place_piece` 多线与连续清线夹具、普通模式上下文/规则隔离、赞语存续、加分起点避让、非法回弹以及减少动画/确认重开/返回清理；**只编译，没有执行用例**。独立静态复核未发现重要问题，核对了暂停、显式重置和不新增玩法等待。未运行游戏、GUI、桌面自动操作或导出包；语法与静态结论不能代替实机验收。
+
+用户停止旧游戏后按 **F5**：在经典/自由中核对 Combo 与多线 Perfect/Excellent/Unbelievable、快速下一次落子/回弹与加分位置；未清线后真实 Combo 归零，旧赞语仅播至自然结束。核对暂停/重开/返回/减少动画，再回归闯关目标收集与最终通关。
+
 ## Godot AI 更新失败修复与 LLM 辅助（2026-10-16）
 
 用户实际更新错误为 `Update swap failed: cannot move live tree .../addons/godot_ai to .../backup/3.2.1: Failed`，激活收据为 `previous_tree_retained`。原生 Win32 检查全部 296 个插件项具备 DELETE 访问、备份目标不存在；关闭 Godot 后，官方离线恢复仍发生 WinError 5。原生句柄扫描与微软 Handle 均定位 CodeGraph PID 24832 持有该树 296 个目录句柄。停止这个已核验身份的监视服务后，同一官方安装命令立即成功，确认监视器占用为根因。Codex CodeGraph 已增加 `--no-watch`，保留任务前手动 `sync`，未改目录权限或关闭文件签名验证。

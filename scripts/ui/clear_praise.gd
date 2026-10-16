@@ -37,10 +37,11 @@ func _ready() -> void:
 
 func play(combo: int, line_count: int, clear_anchor: Vector2, board_rect: Rect2,
 		cell_size: float, surviving_targets: Array[Vector2], delay: float = 0.0, force_combo: bool = false) -> void:
-	reset()
-	_tier = tier_for(line_count, combo)
-	if _tier == 0 and combo < 2 and not force_combo:
+	var next_tier := tier_for(line_count, combo)
+	if line_count < 1 or (next_tier == 0 and combo < 2 and not force_combo):
 		return
+	reset()
+	_tier = next_tier
 	_cell_size = maxf(cell_size, 1.0)
 	_content = Control.new()
 	_content.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -86,6 +87,16 @@ func play(combo: int, line_count: int, clear_anchor: Vector2, board_rect: Rect2,
 	_tween.tween_method(_update_progress, 0.0, 1.0, DURATION)
 	_tween.tween_callback(_end)
 	_apply_pause()
+
+func get_reserved_rect() -> Rect2:
+	if not is_instance_valid(_content):
+		return Rect2()
+	# Include the largest pop, slight tilt, outline and shadow so score text
+	# can start above the words while the praise itself remains independent.
+	var half := _content_size * _base_scale * 0.64
+	var tilt := deg_to_rad(3.0)
+	var extent := Vector2(half.x * cos(tilt) + half.y * sin(tilt), half.x * sin(tilt) + half.y * cos(tilt)) + Vector2(14.0, 18.0)
+	return Rect2(_anchor + _board_offset - extent, extent * 2.0)
 
 func _new_label(text: String, font_size: int, color: Color, outline_size: int, font: Font) -> Label:
 	var label := Label.new()

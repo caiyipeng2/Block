@@ -1,6 +1,7 @@
 extends SceneTree
 
 const ModeCatalog = preload("res://scripts/modes/mode_catalog.gd")
+const ClearColorResolver = preload("res://scripts/ui/clear_color_resolver.gd")
 
 var failures := 0
 var checks := 0
@@ -87,6 +88,7 @@ func _run_tests() -> void:
 	_equal(main.screen, "menu", "常驻返回菜单按钮可用")
 	_equal(main.game, null, "返回菜单清理当前局")
 	main.menu_controls.finish_opening()
+	_test_shared_clear_feedback(main)
 	_test_retry_failure_lifecycle(main)
 	# A completed game locks the board while gems arrive, but its result
 	# screen must release the primary and secondary navigation buttons.
@@ -217,6 +219,179 @@ func _test_menu_presentation(main) -> void:
 	menu.finish_opening()
 	_equal(main.screen, "menu", "菜单表现检查结束仍停留主菜单")
 	_equal(main.game, null, "菜单表现检查不创建游戏局面")
+
+func _test_shared_clear_feedback(main) -> void:
+	var reduced_motion_before := bool(main.save_data.get("reduced_motion", false))
+	main._set_setting("reduced_motion", false)
+	var rules_before := _feedback_rules_snapshot(main.rules_config)
+	var praise: Control = main.move_feedback.get_node("ClearPraise")
+	# Enter collect first so this also detects its larger pool or combo tolerance
+	# leaking into the shared resource when either ordinary mode starts later.
+	main.save_data["adventure_highest_completed"] = 2
+	main._start_game("adventure", 3)
+	_equal(_feedback_rules_snapshot(main.rules_config), rules_before, "收集模式不改写共用规则资源")
+	for mode in ["free", "classic"]:
+		main._start_game(mode)
+		_equal(main.move_feedback.get_node("ClearPraise"), praise, "%s 复用同一个赞语层" % mode)
+		_equal(_feedback_rules_snapshot(main.game.rules_config), rules_before, "%s 保留原形状池、计分与严格 Combo 规则" % mode)
+		for line_count in [2, 3, 4]:
+			main.game.scoring = Scoring.new(main.game.rules_config)
+			var fixture := _feedback_move_fixture(main, line_count)
+			var result: Dictionary = fixture["result"]
+			var context: Dictionary = fixture["context"]
+			var leaked_fields: Array[String] = []
+			for field: String in context:
+				if field.begins_with("target_") or field.begins_with("collected_") or field.begins_with("objective_target") or field == "level_complete":
+					leaked_fields.append(field)
+			_equal(leaked_fields, [], "%s 普通反馈不携带收集或目标通关字段" % mode)
+			_check(not bool(context["final_block"]) and bool(context["score_flight_enabled"]) and context["objective_type"] == "score", "%s 普通反馈保持计分飞行且不触发 Final Block" % mode)
+			_present_feedback_fixture(main, fixture)
+			var words := _praise_words(praise)
+			var titles := {2: "Perfect!", 3: "Excellent!", 4: "Unbelievable!"}
+			_check(words.has(titles[line_count]) and words.has("%d Lines" % line_count), "%s 真实 %d 线进入共用多线赞语" % [mode, line_count])
+			_equal(result["combo"], 1, "同手多线只算一次真实 Combo")
+			_check(not words.has("1") and not words.has("COMBO"), "多线赞语不伪造额外连击数字")
+			_check(not main.move_feedback.has_pending_collections() and not main.move_feedback.get_node("FinalImpact").get("_active") and not main.game.is_level_complete(), "%s 清线不产生收集飞行、末次重落或目标通关" % mode)
+			_check_score_above_praise(main.move_feedback, praise, "%s 多线加分" % mode)
+		main.game.scoring = Scoring.new(main.game.rules_config)
+		main.move_feedback.reset()
+		for combo in range(1, 11):
+			var fixture := _feedback_move_fixture(main, 1)
+			_equal(fixture["result"]["combo"], combo, "%s 第 %d 次连续真实单线的规则 Combo" % [mode, combo])
+			_present_feedback_fixture(main, fixture)
+			if combo in [2, 4, 7, 10]:
+				var titles := {2: "Combo", 4: "Perfect!", 7: "Excellent!", 10: "Unbelievable!"}
+				var words := _praise_words(praise)
+				_check(words.has(titles[combo]) and words.has(str(combo)) and not words.has("2 Lines"), "%s 连续单线按真实 Combo %d 升阶" % [mode, combo])
+		_test_praise_lifecycle(main, praise)
+	_equal(_feedback_rules_snapshot(main.rules_config), rules_before, "视觉演出和模式切换后共用规则仍未污染")
+	main._set_setting("reduced_motion", reduced_motion_before)
+	main.menu_controls.finish_opening()
+
+func _test_praise_lifecycle(main, praise: Control) -> void:
+	var feedback: Control = main.move_feedback
+	var content: Control = praise.get("_content")
+	var progress := float(praise.get("_progress"))
+	var ordinary := _feedback_move_fixture(main, 0)
+	_equal(ordinary["result"]["combo"], 0, "下一次未清线落子仍按普通模式规则断连")
+	_present_feedback_fixture(main, ordinary)
+	_check(praise.get("_content") == content and bool(praise.get("_active")) and content.visible, "普通落子保留尚未结束的高阶赞语")
+	_equal(praise.get("_progress"), progress, "下一落子不会重播或缩短旧赞语")
+	_check_score_above_praise(feedback, praise, "保留赞语时普通落子加分")
+	# A new single clear after that miss is not praise-eligible; it must not
+	# clear the previous high-tier words just because play() was called again.
+	_present_feedback_fixture(main, _feedback_move_fixture(main, 1))
+	_equal(praise.get("_content"), content, "断连后的首个单线不覆盖未结束的旧赞语")
+	var score_before := int(main.game.scoring.score)
+	var combo_before := int(main.game.scoring.combo)
+	var invalid: Dictionary = main.game.place_piece(0, Vector2i(-1, -1), 0)
+	_check(not invalid["ok"], "回弹夹具先经历真实非法落子")
+	feedback.play_rebound(main.game.remaining_pieces[0], Vector2(200, 200), Vector2(200, 600), 40.0, 24.0, Color.WHITE, 0.2, false)
+	_check(praise.get("_content") == content and bool(praise.get("_active")) and content.visible, "非法落子回弹不截断未结束赞语")
+	_equal(praise.get("_progress"), progress, "非法回弹不会重播旧赞语")
+	_equal([main.game.scoring.score, main.game.scoring.combo], [score_before, combo_before], "非法回弹不改分数与 Combo")
+	_finish_feedback_snapshot(feedback)
+	feedback.reset_move()
+	_check_feedback_cleared(feedback, praise, "显式 reset_move")
+	var fixture := _feedback_move_fixture(main, 2)
+	_present_feedback_fixture(main, fixture)
+	_present_feedback_fixture(main, _feedback_move_fixture(main, 0), true)
+	_check_feedback_cleared(feedback, praise, "减少动画落子", true)
+	_present_feedback_fixture(main, _feedback_move_fixture(main, 2))
+	main._set_setting("reduced_motion", true)
+	_check_feedback_cleared(feedback, praise, "开启减少动画设置")
+	main._set_setting("reduced_motion", false)
+	_present_feedback_fixture(main, _feedback_move_fixture(main, 2))
+	main.get_node("GameplayControls/PlayingHUD/Actions/RestartButton").pressed.emit()
+	_equal(main.confirmation_action, "restart", "赞语存续期间仍可正常确认重开")
+	main._confirm_action()
+	_check_feedback_cleared(feedback, praise, "确认重开")
+	_present_feedback_fixture(main, _feedback_move_fixture(main, 2))
+	main.get_node("GameplayControls/PlayingHUD/Actions/MenuButton").pressed.emit()
+	_equal(main.confirmation_action, "menu", "赞语存续期间仍可正常确认返回")
+	main._confirm_action()
+	_check_feedback_cleared(feedback, praise, "确认返回菜单")
+	_equal(main.game, null, "返回时释放当前棋局")
+
+func _feedback_move_fixture(main, line_count: int) -> Dictionary:
+	# Board/tray fixtures make legal placements deterministic. Scoring and
+	# combo always come from place_piece; no praise threshold is injected.
+	main.game.board = BoardRules.new(main.game.rules_config.board_size)
+	for y in range(line_count):
+		for x in range(1, main.game.board.size):
+			main.game.board.set_cell(x, y, 0)
+	var cells: Array[Vector2i] = []
+	for y in range(maxi(line_count, 3)):
+		cells.append(Vector2i(0, y))
+	var piece := PieceData.new(Vector2i.ZERO, cells, "feedback_test_vertical")
+	main.game.remaining_pieces.assign([piece, piece.duplicate_piece(), piece.duplicate_piece()])
+	var before: BoardRules = main.game.board.duplicate_board()
+	var resolved: BoardRules = before.duplicate_board()
+	resolved.place(piece, Vector2i.ZERO, 1)
+	var result: Dictionary = main.game.place_piece(0, Vector2i.ZERO, 1)
+	_check(bool(result["ok"]) and int(result["clear"]["rows"]) + int(result["clear"]["columns"]) == line_count, "视觉夹具完成真实合法落子与预期清线")
+	var appearance: Dictionary = ClearColorResolver.resolve(resolved, {})
+	# Supplying a marker here verifies ordinary contexts omit it entirely.
+	var context: Dictionary = main._move_feedback_context(result, appearance, {Vector2i(7, 7): "red_star"})
+	return {"before": before, "result": result, "context": context}
+
+func _present_feedback_fixture(main, fixture: Dictionary, reduced_motion: bool = false) -> void:
+	var feedback: Control = main.move_feedback
+	var result: Dictionary = fixture["result"]
+	var score_before := int(main.game.scoring.score)
+	var combo_before := int(main.game.scoring.combo)
+	feedback.set_paused(true)
+	feedback.play_move(fixture["before"], result["placed_cells"], result["clear"]["cells"], result["placed_color"], main._board_rect(), main.rules_config.palette, Vector2(0.12, 0.32), result["gained"], reduced_motion, fixture["context"])
+	if not reduced_motion and not result["clear"]["cells"].is_empty():
+		var praise: Control = feedback.get_node("ClearPraise")
+		var previous_content: Control = praise.get("_content")
+		feedback._begin_clear()
+		_equal(feedback.get("_score_label"), null, "清线加分等赞语定位后再生成")
+		feedback._begin_sweep()
+		feedback._begin_dispersion()
+		if praise.get("_content") != null and praise.get("_content") != previous_content:
+			praise._show()
+			praise._update_progress(0.25)
+	_finish_feedback_snapshot(feedback)
+	_equal([main.game.scoring.score, main.game.scoring.combo], [score_before, combo_before], "视觉阶段不再次结算分数或 Combo")
+
+func _finish_feedback_snapshot(feedback: Control) -> void:
+	# Drive event boundaries without waiting for or leaving a board Tween that
+	# could replay those callbacks after the fixture has been replaced.
+	var tween: Tween = feedback.get("_tween")
+	if tween != null:
+		tween.kill()
+	feedback._finish()
+
+func _praise_words(praise: Control) -> PackedStringArray:
+	var words := PackedStringArray()
+	var content: Control = praise.get("_content")
+	if content != null:
+		for child in content.get_children():
+			if child is Label:
+				words.append(child.text)
+	return words
+
+func _check_score_above_praise(feedback: Control, praise: Control, message: String) -> void:
+	var score: Label = feedback.get("_score_label")
+	var reserved: Rect2 = praise.get_reserved_rect()
+	_check(score != null and reserved.has_area(), message + "具有真实加分标签和赞语保留区")
+	if score == null or not reserved.has_area():
+		return
+	var score_rect := Rect2(score.position, score.get_minimum_size()).grow(6.0)
+	_check(score_rect.end.y <= reserved.position.y and not score_rect.intersects(reserved), message + "起点在赞语保留区上方且不重叠")
+
+func _check_feedback_cleared(feedback: Control, praise: Control, message: String, allow_static_score: bool = false) -> void:
+	_check(praise.get("_content") == null and not bool(praise.get("_active")) and not praise.get_reserved_rect().has_area(), message + "完整清理赞语与保留区")
+	_check(not feedback.is_busy() and not feedback.blocks_board and not feedback.has_pending_collections() and not feedback.get_node("FinalImpact").get("_active"), message + "不残留棋盘锁、收集或末次重落")
+	if not allow_static_score:
+		_equal(feedback.get("_score_label"), null, message + "清理旧加分标签")
+
+func _feedback_rules_snapshot(rules: GameRulesConfig) -> Dictionary:
+	var shapes: Array = []
+	for shape in rules.shape_pool:
+		shapes.append([shape.shape_id, shape.cells.duplicate()])
+	return {"board": rules.board_size, "tray": rules.tray_count, "min": rules.min_piece_cells, "max": rules.max_piece_cells, "misses": rules.combo_miss_tolerance, "points": rules.base_points_per_cell, "multiline": rules.multiline_bonus_step, "shapes": shapes, "palette": rules.palette.duplicate()}
 
 func _test_retry_failure_lifecycle(main) -> void:
 	# This fixture only uses the test's isolated save_path. Two legal moves

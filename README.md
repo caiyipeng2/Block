@@ -1,6 +1,6 @@
 # Block
 
-Godot 4.7 的桌面方块消除游戏：拖动方块、填满行或列并消除，无时间限制。当前源码为 `0.7.2`，提供自由、经典和闯关三种模式，采用蓝色背景、凹槽棋盘和立体斜面方块。
+Godot 4.7 的桌面方块消除游戏：拖动方块、填满行或列并消除，无时间限制。当前源码为 `0.7.3`，提供自由、经典和闯关三种模式，采用蓝色背景、凹槽棋盘和立体斜面方块。
 
 项目仓库：[caiyipeng2/Block](https://github.com/caiyipeng2/Block)。本地交付、提交和推送状态以本次交付记录为准。
 
@@ -47,6 +47,7 @@ Godot 4.7 的桌面方块消除游戏：拖动方块、填满行或列并消除�
 
 ## 第二阶段美术与反馈
 
+- `0.7.3` 统一三种模式的 Combo / Perfect / Excellent / Unbelievable 清线表扬、扫光、粒子与轻震。后续落子和非法回弹保留未结束的赞语，无资格的单线不截断旧赞语；自由/经典的加分浮字在赞语定位后生成，起点避让文字。只同步表现，目标收集、进度横幅、最终重落与胜利、救援、失败辅助和收集关容错继续限定在闯关。
 - `0.7.2` 实装用户选中的第一张菜单效果图：金橙/青绿/紫色按钮、白色定位/无限/拼图图标与粗斜体中文标题。去掉副标题、图标底框和右侧箭头，保留获选图的轻微高光及下投影；按钮面按约 4.1:1 比例与窗口空间等比适配。原生按钮继续处理输入和焦点，开屏与返回衔接保留。[美术资源说明](assets/ui/menu/README.md)记录原图、采样区域与后续换图方式。
 - `0.7.1` 按钮改为圆润亮面，移除暗厚底和外部投影；修正闯关定位图标越出徽章。
 - `0.7.0` 优化开屏和模式选择：原创彩色立体标题、皇冠、蓝渐变背景，金色闯关定位图标、绿色经典无限符号和紫色自由拼块图标；按钮增加厚底、接触阴影、亮面细边、副标题与箭头。首次启动为工作室拼块短显、标题弹入与上移、按钮错峰出现；返回菜单仅短入场。保留设置、退出、最高分与键盘操作，不添加广告或其他游戏入口，不改变玩法和配表。
@@ -92,11 +93,13 @@ Godot 4.7 的桌面方块消除游戏：拖动方块、填满行或列并消除�
 python tools/export_windows.py --godot "E:\Tools\Godot\Godot_v4.7.2-stable_win64.exe" --configuration release
 ```
 
-加 `--check` 仅预检、不导出；`--configuration debug` 生成调试包。版本号来自 `project.godot`，当前源码为 `0.7.2`，后续发布输出遵循 `dist/Block-<版本>-windows-x86_64-release.zip`。CSV 已设置为保留原文导入，并由导出包含规则带入 `.pck`；源码改表后需重新导出才能更新玩家包。须完整解压后按 `START-HERE.txt` 运行，保留 `.pck` 和所有随附文件；若导出生成 DLL 或 `x86_64` 子目录，也须完整保留。包内 `build-info.json` 含文件 SHA256，ZIP 旁 `.sha256` 用于核对压缩包。
+加 `--check` 仅预检、不导出；`--configuration debug` 生成调试包。版本号来自 `project.godot`，当前源码为 `0.7.3`，后续发布输出遵循 `dist/Block-<版本>-windows-x86_64-release.zip`。CSV 已设置为保留原文导入，并由导出包含规则带入 `.pck`；源码改表后需重新导出才能更新玩家包。须完整解压后按 `START-HERE.txt` 运行，保留 `.pck` 和所有随附文件；若导出生成 DLL 或 `x86_64` 子目录，也须完整保留。包内 `build-info.json` 含文件 SHA256，ZIP 旁 `.sha256` 用于核对压缩包。
 
-前一阶段的 `0.1.0` release/debug 包已导出，文件 SHA256、ZIP CRC 与压缩包校验值均匹配，独立 EXE 尚待用户验收。本地已有 `build/`、`dist/` 中的 `0.1.0` 包仍是粉色逻辑基线，**不含当前美术与三种模式**；本轮不重新打包 `0.7.2`，先按 F5 验收源码。当前本机使用已校验的 `work/release-templates/4.7.2.stable` 模板，将来重新打包时追加 `--templates-dir "work/release-templates/4.7.2.stable"`。模板安装、包结构和用户验收步骤见 [Windows 发布说明](docs/Block-Blast-Godot-Windows发布.md)，历史检查证据见 [验收记录](docs/Block-Blast-Godot-验收记录.md)。
+前一阶段的 `0.1.0` release/debug 包已导出，文件 SHA256、ZIP CRC 与压缩包校验值均匹配，独立 EXE 尚待用户验收。本地已有 `build/`、`dist/` 中的 `0.1.0` 包仍是粉色逻辑基线，**不含当前美术与三种模式**；本轮不重新打包 `0.7.3`，先按 F5 验收源码。当前本机使用已校验的 `work/release-templates/4.7.2.stable` 模板，将来重新打包时追加 `--templates-dir "work/release-templates/4.7.2.stable"`。模板安装、包结构和用户验收步骤见 [Windows 发布说明](docs/Block-Blast-Godot-Windows发布.md)，历史检查证据见 [验收记录](docs/Block-Blast-Godot-验收记录.md)。
 
 ## 当前开发状态（2026-10-16）
+
+`0.7.3` 完成三模式共用清线表现修订：快速下一次落子不再提前删除赞语，加分起点避让；普通模式只读取真实线数、Combo 与分数，收集上下文仅在闯关收集关提供。三份生产脚本和维护后的 UI action 脚本共四份 `--check-only` 均退出 0，无脚本错误，独立静态复核无重要问题；未执行游戏或测试用例。待用户按 F5 验收自由/经典连续清线、多线赞语及减少动画，并回归闯关。
 
 Godot AI 已恢复并升级至正式 `4.3.0`，签名与全部 313 个发布文件核验通过；插件与后端认证成功，实际 MCP 查到 Block 项目 1 个 ready 会话、47 个工具。更新失败原因为 CodeGraph 文件监视器占用插件目录，现改为 `serve --mcp --no-watch`，仍按任务手动 `codegraph sync`。Tripo CLI 0.7.0 的 MCP 与阿里云 LLM 辅助配置已验证（`qwen3.7-plus`），Tripo 3D API Key 仍需独立提供；Sprite Pipeline 沿用已装技能。使用前重新打开 Godot 并刷新 Codex MCP 配置，详见 [MCP 与美术工具配置](docs/Block-Blast-Godot-MCP配置.md)。
 

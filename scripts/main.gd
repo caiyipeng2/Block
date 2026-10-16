@@ -290,18 +290,34 @@ func _handle_release(position: Vector2) -> void:
 		_sync_piece_colors()
 		_refresh_controls()
 		move_feedback.set_paused(false)
-		move_feedback.play_move(before_board, result["placed_cells"], result["clear"]["cells"], int(result["placed_color"]), _board_rect(), rules_config.palette, Vector2(rules_config.placement_duration, rules_config.clear_duration), last_gain, _reduced_motion(), {
-			"combo": game.scoring.combo,
-			"cell_inset": _board_cell_inset(),
-			"clear_lines": cleared_lines,
-			"placement_points": int(result.get("placement_points", 0)),
-			"clear_points": int(result.get("clear_points", 0)),
-			"score_target": gameplay_ui.score_target(),
-			"shake_enabled": bool(save_data.get("screen_shake", true)),
-			"clear_colors": clear_appearance["cell_colors"],
-			"clear_row_colors": clear_appearance["row_colors"],
-			"clear_column_colors": clear_appearance["column_colors"],
-			"target_cells": before_targets,
+		move_feedback.play_move(before_board, result["placed_cells"], result["clear"]["cells"], int(result["placed_color"]), _board_rect(), rules_config.palette, Vector2(rules_config.placement_duration, rules_config.clear_duration), last_gain, _reduced_motion(), _move_feedback_context(result, clear_appearance, before_targets))
+	else:
+		_reset_visual_feedback()
+		status_text = "放置位置无效"
+		_play_feedback("invalid")
+	queue_redraw()
+
+func _move_feedback_context(result: Dictionary, clear_appearance: Dictionary, target_cells: Dictionary) -> Dictionary:
+	# Clear effects and praise consume the same real result in every mode.
+	# Only collection levels may attach targets or the final-block sequence.
+	var context := {
+		"combo": int(result.get("combo", game.scoring.combo)),
+		"cell_inset": _board_cell_inset(),
+		"clear_lines": int(result["clear"]["rows"]) + int(result["clear"]["columns"]),
+		"placement_points": int(result.get("placement_points", 0)),
+		"clear_points": int(result.get("clear_points", 0)),
+		"score_target": gameplay_ui.score_target(),
+		"shake_enabled": bool(save_data.get("screen_shake", true)),
+		"clear_colors": clear_appearance["cell_colors"],
+		"clear_row_colors": clear_appearance["row_colors"],
+		"clear_column_colors": clear_appearance["column_colors"],
+		"objective_type": game.objective_type,
+		"final_block": false,
+		"score_flight_enabled": true,
+	}
+	if _is_collect_mode():
+		context.merge({
+			"target_cells": target_cells,
 			"collected_targets": result.get("collected_targets", []),
 			"collected_target_events": result.get("collected_target_events", []),
 			"objective_target": gameplay_ui.score_target(),
@@ -311,15 +327,10 @@ func _handle_release(position: Vector2) -> void:
 				"gold_gem": gameplay_ui.objective_target("gold_gem"),
 				"yellow_star": gameplay_ui.objective_target("yellow_star"),
 			},
-			"objective_type": game.objective_type,
-			"final_block": game.is_level_complete() and game.objective_type == "collect",
-			"score_flight_enabled": game.objective_type != "collect",
-		})
-	else:
-		_reset_visual_feedback()
-		status_text = "放置位置无效"
-		_play_feedback("invalid")
-	queue_redraw()
+			"final_block": game.is_level_complete(),
+			"score_flight_enabled": false,
+		}, true)
+	return context
 
 func _start_game(mode: String = "", level_id: int = 0) -> void:
 	var next_mode := mode if not mode.is_empty() else game_mode

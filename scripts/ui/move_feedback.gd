@@ -161,7 +161,7 @@ func play_move(
 		reduced_motion: bool,
 		context: Dictionary = {}
 	) -> void:
-	reset_move()
+	reset_move(not reduced_motion)
 	if before_board == null or before_board.size <= 0:
 		_busy = true
 		_finish()
@@ -242,7 +242,7 @@ func play_rebound(
 		from_inset: float = 1.0,
 		to_inset: float = 1.0
 	) -> void:
-	reset_move()
+	reset_move(not reduced_motion)
 	if piece == null or piece.cells.is_empty():
 		_busy = true
 		_finish()
@@ -271,12 +271,12 @@ func reset() -> void:
 	if is_instance_valid(_collection_layer):
 		_collection_layer.reset()
 
-## Starting the next placement only clears its board snapshot and accents.
-## Previously collected gems keep flying and retain their arrival callbacks.
-func reset_move() -> void:
+## A new placement/rebound preserves the last clear's nonblocking praise.
+## Explicit scene/result resets still clear it; collected gems keep flying.
+func reset_move(preserve_praise: bool = false) -> void:
 	if is_instance_valid(_final_impact):
 		_final_impact.reset()
-	if is_instance_valid(_praise_layer):
+	if not preserve_praise and is_instance_valid(_praise_layer):
 		_praise_layer.reset()
 	for tween in [_tween, _score_tween, _accent_tween]:
 		if tween != null:
@@ -397,8 +397,6 @@ func _set_rebound_progress(value: float) -> void:
 
 func _begin_clear() -> void:
 	_clear_started = true
-	if _gained > 0 and not _is_collection_presentation():
-		_start_score_float(false)
 	if not _final_move and bool(_context.get("shake_enabled", true)):
 		var line_count := maxi(int(_context.get("clear_lines", _clear_rows.size() + _clear_columns.size())), 1)
 		shake_requested.emit(minf(1.6 + float(line_count) * 0.65, 4.8), minf(0.14 + float(line_count) * 0.025, 0.24))
@@ -412,6 +410,8 @@ func _begin_dispersion() -> void:
 	_dispersing = true
 	_spawn_particles()
 	_start_combo()
+	if _gained > 0 and not _is_collection_presentation():
+		_start_score_float(false)
 	_accent_tween = create_tween()
 	_accent_tween.tween_method(_set_accent_progress, 0.0, 1.0, ACCENT_DURATION)
 	_accent_tween.tween_callback(_end_accents)
@@ -459,6 +459,13 @@ func _is_collection_presentation() -> bool:
 func _start_score_float(static_text: bool) -> void:
 	_score_label = _make_effect_label("+%d" % _gained, clampi(int(_cell_size * 0.55), 22, 38), GOLD, 4)
 	_score_origin = _score_anchor() + Vector2(0.0, -_cell_size * 0.30)
+	if is_instance_valid(_praise_layer):
+		var reserved: Rect2 = _praise_layer.get_reserved_rect()
+		var score_size := _score_label.get_minimum_size()
+		var launch_rect := Rect2(_score_origin - score_size * 0.5, score_size).grow(6.0)
+		if reserved.has_area() and (not _clear_cells.is_empty() or launch_rect.intersects(reserved)):
+			_score_origin.y = minf(_score_origin.y, reserved.position.y - score_size.y * 0.5 - 10.0)
+			_score_origin.y = maxf(_score_origin.y, score_size.y * 0.5 + 8.0)
 	_score_target = _context.get("score_target", Vector2(_board_rect.get_center().x, maxf(_board_rect.position.y - 54.0, 28.0)))
 	if not bool(_context.get("score_flight_enabled", true)):
 		_score_target = _score_origin + Vector2(0.0, -32.0)
