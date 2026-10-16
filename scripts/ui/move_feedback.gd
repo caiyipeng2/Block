@@ -678,7 +678,7 @@ func _draw_board_cell(coordinate: Vector2i, color: Color, block_scale: float, al
 	if _clear_started and _clear_cells.has(coordinate) and alpha > 0.0:
 		_draw_clear_cell_light(coordinate, block_rect, alpha)
 	if _target_cells.has(coordinate):
-		BlockArt.draw_target_marker(self, block_rect, alpha, 1.0, _target_kind(_target_cells[coordinate]))
+		BlockArt.draw_target_marker(self, block_rect, alpha, 1.0, _target_kind(_target_cells[coordinate]), true)
 
 func _draw_clear_cell_light(coordinate: Vector2i, block_rect: Rect2, alpha: float) -> void:
 	# The mask is visited once, including row/column intersections. Each quad
@@ -806,7 +806,7 @@ func _draw_rebound() -> void:
 		if _rebound_piece.targets.has(local_cell):
 			var kind := _target_kind(_rebound_piece.targets[local_cell])
 			BlockArt.draw_target_tile(self, cell_rect, 1.0, 0.0, kind)
-			BlockArt.draw_target_marker(self, cell_rect, 1.0, 1.0, kind)
+			BlockArt.draw_target_marker(self, cell_rect, 1.0, 1.0, kind, true)
 		else:
 			BlockArt.draw_block(self, cell_rect, _rebound_color)
 

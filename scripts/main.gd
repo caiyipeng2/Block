@@ -1334,7 +1334,7 @@ func _draw_board() -> void:
 				else:
 					Art.draw_block(self, cell_rect, color, 1.0, clear_preview.highlight(_reduced_motion()) if preview_clear_colors.has(Vector2i(x, y)) else 0.0)
 				if game.target_cells.has(Vector2i(x, y)):
-					Art.draw_target_marker(self, cell_rect, 1.0, 1.0, _target_kind_at(Vector2i(x, y)))
+					Art.draw_target_marker(self, cell_rect, 1.0, 1.0, _target_kind_at(Vector2i(x, y)), true)
 	if dragging_index >= 0 and game != null:
 		var piece: PieceData = game.remaining_pieces[dragging_index]
 		for local_cell in piece.cells:
@@ -1347,10 +1347,13 @@ func _draw_board() -> void:
 					var clear_color: Variant = _block_color(int(preview_clear_colors[target])) if preview_clear_colors.has(target) else null
 					_draw_piece_cell(piece, local_cell, preview_rect, 1.0 if clear_color is Color else 0.32, clear_color)
 				else:
-					Art.draw_block(self, preview_rect, Color("#ff7575"), 0.40, 0.2)
+					# Keep occupied targets readable instead of stacking a second
+					# insert/socket over them while the attempted placement is invalid.
+					if game.board.get_cell(target.x, target.y) < 0:
+						Art.draw_block(self, preview_rect, Color("#ff7575"), 0.40, 0.2)
+						if piece.targets.has(local_cell):
+							Art.draw_target_marker(self, preview_rect, 0.78, 1.0, str(piece.targets[local_cell]), true)
 					draw_rect(preview_rect.grow(-1.0), Color("#ffb3a9"), false, 1.5)
-					if piece.targets.has(local_cell):
-						Art.draw_target_marker(self, preview_rect, 0.78, 1.0, str(piece.targets[local_cell]))
 	if dragging_index >= 0 and drag_valid and not hide_final_board:
 		clear_preview.draw(self, rect, _reduced_motion())
 
@@ -1381,7 +1384,7 @@ func _draw_piece_cell(piece: PieceData, local_cell: Vector2i, rect: Rect2, opaci
 	else:
 		Art.draw_block(self, rect, _piece_color(piece), opacity)
 	if marked:
-		Art.draw_target_marker(self, rect, opacity, 1.0, str(piece.targets[local_cell]))
+		Art.draw_target_marker(self, rect, opacity, 1.0, str(piece.targets[local_cell]), true)
 
 func _draw_drag_layer() -> void:
 	if game == null or dragging_index >= game.remaining_pieces.size():

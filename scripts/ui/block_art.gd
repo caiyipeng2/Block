@@ -162,8 +162,8 @@ static func button_style(fill: Color, pressed: bool = false) -> StyleBoxFlat:
 	return style
 
 static func target_tile_color(_kind: String = "red_star") -> Color:
-	# Both gem kinds sit in the same warm sand-gold tile.
-	return Color("#e3c38a")
+	# Every inset uses the same matte, warm tan support.
+	return Color("#dfbb7b")
 
 static func target_name(kind: String = "red_star") -> String:
 	match kind:
@@ -177,12 +177,12 @@ static func draw_target_tile(canvas: CanvasItem, rect: Rect2, opacity: float = 1
 		return
 	var alpha := clampf(opacity, 0.0, 1.0)
 	var side := minf(rect.size.x, rect.size.y)
-	if side <= 2.0:
+	if side <= 4.0:
 		canvas.draw_rect(rect, _alpha(target_tile_color(kind), alpha))
 		return
-	var rim := clampf(side * 0.012, 0.35, 0.8)
-	var bevel := side * 0.18
+	var rim := minf(clampf(side * 0.012, 0.25, 0.8), side * 0.04)
 	var face := rect.grow(-rim)
+	var bevel := minf(side * 0.135, minf(face.size.x, face.size.y) * 0.24)
 	var center := face.grow(-bevel)
 	var tl := face.position
 	var tr := Vector2(face.end.x, face.position.y)
@@ -192,64 +192,122 @@ static func draw_target_tile(canvas: CanvasItem, rect: Rect2, opacity: float = 1
 	var ctr := Vector2(center.end.x, center.position.y)
 	var cbr := center.end
 	var cbl := Vector2(center.position.x, center.end.y)
-	var light := clampf(highlight, 0.0, 1.0) * 0.18
-	var cream := Color("#ffe4aa")
-	canvas.draw_rect(Rect2(rect.position + Vector2(0.0, clampf(side * 0.025, 0.4, 1.2)), rect.size), Color(0.42, 0.29, 0.12, alpha * 0.17))
-	canvas.draw_rect(rect, _alpha(Color("#b58b4d").lerp(cream, light), alpha))
-	canvas.draw_colored_polygon(PackedVector2Array([tl, tr, ctr, ctl]), _alpha(Color("#f6dba0").lerp(cream, light), alpha))
-	canvas.draw_colored_polygon(PackedVector2Array([tl, ctl, cbl, bl]), _alpha(Color("#eaca8b").lerp(cream, light), alpha))
-	canvas.draw_colored_polygon(PackedVector2Array([tr, br, cbr, ctr]), _alpha(Color("#c29b5c").lerp(cream, light), alpha))
-	canvas.draw_colored_polygon(PackedVector2Array([bl, cbl, cbr, br]), _alpha(Color("#b88d4d").lerp(cream, light), alpha))
-	canvas.draw_polygon(PackedVector2Array([ctl, ctr, cbr, cbl]), PackedColorArray([
-		_alpha(Color("#ebcf97").lerp(cream, light), alpha),
-		_alpha(Color("#e7c68b").lerp(cream, light), alpha),
-		_alpha(Color("#ddba7c").lerp(cream, light), alpha),
-		_alpha(Color("#e2c187").lerp(cream, light), alpha)
+	var light := clampf(highlight, 0.0, 1.0) * 0.10
+	var cream := Color("#ffe7b5")
+	canvas.draw_rect(Rect2(rect.position + Vector2(0.0, side * 0.025), rect.size), Color(0.36, 0.23, 0.10, alpha * 0.12))
+	canvas.draw_rect(rect, _alpha(Color("#a77b46").lerp(cream, light), alpha))
+	canvas.draw_polygon(PackedVector2Array([tl, tr, ctr, ctl]), PackedColorArray([
+		_alpha(Color("#ffe7b5").lerp(cream, light), alpha), _alpha(Color("#f5dba6").lerp(cream, light), alpha),
+		_alpha(Color("#efd09a").lerp(cream, light), alpha), _alpha(Color("#f5d9a2").lerp(cream, light), alpha)
 	]))
-	canvas.draw_line(tl, tr, Color(1.0, 0.89, 0.67, alpha * 0.45), rim, true)
+	canvas.draw_polygon(PackedVector2Array([tl, ctl, cbl, bl]), PackedColorArray([
+		_alpha(Color("#f1cd88").lerp(cream, light), alpha), _alpha(Color("#e9c17c").lerp(cream, light), alpha),
+		_alpha(Color("#e9c17b").lerp(cream, light), alpha), _alpha(Color("#edca86").lerp(cream, light), alpha)
+	]))
+	canvas.draw_colored_polygon(PackedVector2Array([tr, br, cbr, ctr]), _alpha(Color("#b68a51").lerp(cream, light), alpha))
+	canvas.draw_polygon(PackedVector2Array([bl, cbl, cbr, br]), PackedColorArray([
+		_alpha(Color("#ae834c").lerp(cream, light), alpha), _alpha(Color("#bc9259").lerp(cream, light), alpha),
+		_alpha(Color("#ac804a").lerp(cream, light), alpha), _alpha(Color("#a77a47").lerp(cream, light), alpha)
+	]))
+	canvas.draw_polygon(PackedVector2Array([ctl, ctr, cbr, cbl]), PackedColorArray([
+		_alpha(Color("#eac585").lerp(cream, light), alpha),
+		_alpha(Color("#dfb775").lerp(cream, light), alpha),
+		_alpha(Color("#d2a768").lerp(cream, light), alpha),
+		_alpha(Color("#dfb97b").lerp(cream, light), alpha)
+	]))
 
-static func draw_target_marker(canvas: CanvasItem, rect: Rect2, opacity: float = 1.0, glow: float = 1.0, kind: String = "red_star") -> void:
-	if rect.size.x <= 2.0 or rect.size.y <= 2.0 or opacity <= 0.0:
+static func draw_target_marker(canvas: CanvasItem, rect: Rect2, opacity: float = 1.0, glow: float = 1.0, kind: String = "red_star", embedded: bool = false) -> void:
+	if rect.size.x <= 4.0 or rect.size.y <= 4.0 or opacity <= 0.0:
 		return
 	var side := minf(rect.size.x, rect.size.y)
-	var center := rect.get_center() - Vector2(0.0, side * 0.018)
+	var center := rect.get_center() - Vector2(0.0, side * 0.012)
 	var alpha := clampf(opacity, 0.0, 1.0)
-	var is_gold := kind == "gold_gem"
 	var shape := _target_outline(kind)
-	var points := _target_points(shape, center, side)
-	var inset := _target_points(shape, center - Vector2(side * 0.010, side * 0.014), side * (0.70 if is_gold else 0.82))
-	var dark := Color("#9c6821") if is_gold else Color("#a9222e")
-	var bright := Color("#ffe59a") if is_gold else Color("#fb7c80")
-	var base := Color("#ffc23f") if is_gold else Color("#ee3d48")
-	var shade := Color("#e58b1d") if is_gold else Color("#c92639")
-	if kind == "blue_diamond":
-		dark = Color("#1489ad")
-		bright = Color("#a9fff2")
-		base = Color("#30d4df")
-		shade = Color("#16a6c9")
-	elif kind == "yellow_star":
-		dark = Color("#c58b25")
-		bright = Color("#fff5b8")
-		base = Color("#ffd34c")
-		shade = Color("#e8a42f")
-	var edge := clampf(side * 0.014, 0.28, 0.80)
-	var rim_scale := 1.0 + edge / (side * 0.30)
-	# Short colored extrusion and a narrow rim give volume without a sticker halo.
-	canvas.draw_colored_polygon(_target_points(shape, center + Vector2(0.0, side * 0.037), side * 1.025), Color(0.40, 0.24, 0.11, alpha * 0.22))
-	canvas.draw_colored_polygon(_target_points(shape, center + Vector2(0.0, side * 0.025), side * rim_scale), _alpha(dark, alpha))
-	canvas.draw_colored_polygon(_target_points(shape, center, side * rim_scale), _alpha(dark, alpha))
-	canvas.draw_colored_polygon(points, _alpha(base, alpha))
-	for i in range(points.size()):
-		var next := (i + 1) % points.size()
-		var normal := ((shape[i] + shape[next]) * 0.5).normalized()
-		var light := clampf(0.5 + normal.dot(Vector2(-0.52, -0.86)) * 0.5, 0.0, 1.0)
-		var facet := shade.lerp(bright, light)
-		canvas.draw_colored_polygon(PackedVector2Array([points[i], points[next], inset[next], inset[i]]), _alpha(facet, alpha))
-	var table_colors := PackedColorArray()
-	for point in shape:
-		var top_light := clampf(0.10 - point.y * 0.22, 0.03, 0.17)
-		table_colors.append(_alpha(base.lerp(bright, top_light + clampf(glow, 0.0, 2.0) * 0.012), alpha))
-	canvas.draw_polygon(inset, table_colors)
+	var palette := _target_palette(kind)
+	var body := _target_points(shape, center, side)
+	if side <= 10.0:
+		canvas.draw_colored_polygon(body, _target_color(palette[2], alpha, glow))
+		return
+	if embedded:
+		_draw_target_slot(canvas, shape, center, side, alpha)
+	var cap_center := center - Vector2(0.006, 0.009) * side
+	var cap := _target_points(shape, cap_center, side * 0.90)
+	# A proportional side wall keeps the cap inside even the concave stars.
+	_draw_target_ring(canvas, body, cap, palette[0], palette[1], alpha, glow)
+	if kind == "red_star" or kind == "yellow_star":
+		_draw_target_star_face(canvas, shape, cap, cap_center, side * 0.90, palette, alpha, glow)
+	elif kind == "gold_gem":
+		_draw_target_gem_face(canvas, shape, cap, cap_center, side * 0.90, palette, alpha, glow)
+	else:
+		_draw_target_face_fan(canvas, cap, cap_center, palette, alpha, glow)
+
+static func _target_palette(kind: String) -> PackedColorArray:
+	# Side shadow, side light, face, front highlight, front shadow.
+	match kind:
+		"yellow_star": return PackedColorArray([Color("#bb6309"), Color("#fff4a5"), Color("#ffd035"), Color("#fffbb2"), Color("#eb8a0a")])
+		"gold_gem": return PackedColorArray([Color("#a74402"), Color("#ffe6a3"), Color("#ffa426"), Color("#fff0b4"), Color("#d76005")])
+		"blue_diamond": return PackedColorArray([Color("#087fa4"), Color("#b8fff3"), Color("#40d6e4"), Color("#b0fff2"), Color("#0b9ec4")])
+	return PackedColorArray([Color("#9f071d"), Color("#ff8593"), Color("#fb3441"), Color("#ffa6b1"), Color("#c50720")])
+
+static func _target_color(color: Color, opacity: float, glow: float = 0.0) -> Color:
+	# Collection pulses change the existing faces slightly, without a halo.
+	return _alpha(color.lerp(Color.WHITE, clampf(glow, 0.0, 2.0) * 0.008), opacity)
+
+static func _draw_target_slot(canvas: CanvasItem, shape: PackedVector2Array, center: Vector2, side: float, alpha: float) -> void:
+	var outer := _target_points(shape, center + Vector2(0.0, 0.003) * side, side * 1.10)
+	var inner := _target_points(shape, center, side * 1.022)
+	# Reversed lighting makes a shallow recess: dark upper wall, lower lip.
+	_draw_target_ring(canvas, outer, inner, Color("#ffe6aa"), Color("#85532e"), alpha)
+	canvas.draw_colored_polygon(inner, _alpha(Color("#754321"), alpha))
+
+static func _draw_target_ring(canvas: CanvasItem, outer: PackedVector2Array, inner: PackedVector2Array, dark: Color, bright: Color, alpha: float, glow: float = 0.0) -> void:
+	for index in range(outer.size()):
+		var next := (index + 1) % outer.size()
+		var edge := outer[next] - outer[index]
+		var normal := Vector2(edge.y, -edge.x).normalized()
+		var light := clampf(0.5 + normal.dot(Vector2(-0.55, -0.835)) * 0.5, 0.0, 1.0)
+		var color := _target_color(dark.lerp(bright, light), alpha, glow)
+		# Each strip is two triangles; no concave ring polygon is triangulated.
+		canvas.draw_colored_polygon(PackedVector2Array([outer[index], outer[next], inner[next]]), color)
+		canvas.draw_colored_polygon(PackedVector2Array([outer[index], inner[next], inner[index]]), color)
+
+static func _draw_target_star_face(canvas: CanvasItem, shape: PackedVector2Array, cap: PackedVector2Array, center: Vector2, side: float, palette: PackedColorArray, alpha: float, glow: float) -> void:
+	var tip_count := shape.size() / 2
+	var crown := PackedVector2Array()
+	for index in range(tip_count):
+		crown.append(center + shape[index * 2] * side * (0.42 if tip_count == 6 else 0.30))
+	for index in range(tip_count):
+		var next := (index + 1) % tip_count
+		var tip := cap[index * 2]
+		var valley := cap[index * 2 + 1]
+		var next_tip := cap[next * 2]
+		var direction := shape[index * 2].normalized()
+		var light := clampf(0.5 + direction.dot(Vector2(-0.62, -0.785)) * 0.5, 0.0, 1.0)
+		var front := palette[4].lerp(palette[2], light)
+		var ridge := palette[2].lerp(palette[3], light * light)
+		canvas.draw_colored_polygon(PackedVector2Array([tip, valley, crown[index]]), _target_color(front, alpha, glow))
+		canvas.draw_colored_polygon(PackedVector2Array([valley, crown[next], crown[index]]), _target_color(palette[2].lerp(front, 0.42), alpha, glow))
+		canvas.draw_colored_polygon(PackedVector2Array([valley, next_tip, crown[next]]), _target_color(ridge, alpha, glow))
+	# The small convex crown preserves a raised, bright center at board size.
+	_draw_target_face_fan(canvas, crown, center, palette, alpha, glow)
+
+static func _draw_target_gem_face(canvas: CanvasItem, shape: PackedVector2Array, cap: PackedVector2Array, center: Vector2, side: float, palette: PackedColorArray, alpha: float, glow: float) -> void:
+	var table := _target_points(shape, center + Vector2(-0.015, 0.005) * side, side * 0.60)
+	_draw_target_ring(canvas, cap, table, palette[4], palette[3], alpha, glow)
+	canvas.draw_polygon(table, PackedColorArray([
+		_target_color(Color("#ffb333"), alpha, glow), _target_color(Color("#ffa122"), alpha, glow),
+		_target_color(Color("#f5931a"), alpha, glow), _target_color(Color("#ff9c24"), alpha, glow),
+		_target_color(Color("#ffb33d"), alpha, glow)
+	]))
+
+static func _draw_target_face_fan(canvas: CanvasItem, outline: PackedVector2Array, center: Vector2, palette: PackedColorArray, alpha: float, glow: float) -> void:
+	for index in range(outline.size()):
+		var next := (index + 1) % outline.size()
+		var direction := ((outline[index] + outline[next]) * 0.5 - center).normalized()
+		var light := clampf(0.5 + direction.dot(Vector2(-0.62, -0.785)) * 0.5, 0.0, 1.0)
+		var color := palette[4].lerp(palette[2], clampf(light * 1.35, 0.0, 1.0))
+		color = color.lerp(palette[3], light * light * 0.32)
+		canvas.draw_colored_polygon(PackedVector2Array([center, outline[index], outline[next]]), _target_color(color, alpha, glow))
 
 static func _target_outline(kind: String) -> PackedVector2Array:
 	if kind == "blue_diamond":
@@ -257,20 +315,21 @@ static func _target_outline(kind: String) -> PackedVector2Array:
 	if kind == "yellow_star":
 		var star := PackedVector2Array()
 		for index in range(10):
-			star.append(Vector2.from_angle(-PI * 0.5 + float(index) * PI / 5.0) * (0.33 if index % 2 == 0 else 0.22))
+			var angle := -PI * 0.5 + float(index) * PI / 5.0
+			var radius := 0.34 if index % 2 == 0 else 0.185
+			star.append(Vector2(cos(angle) * 0.97, sin(angle) * 1.05) * radius)
 		return star
 	if kind == "gold_gem":
 		return PackedVector2Array([
-			Vector2(0.0, -0.315), Vector2(0.30, -0.09), Vector2(0.19, 0.28),
-			Vector2(-0.19, 0.28), Vector2(-0.30, -0.09)
+			Vector2(0.0, -0.30), Vector2(0.30, -0.075), Vector2(0.185, 0.30),
+			Vector2(-0.185, 0.30), Vector2(-0.30, -0.075)
 		])
-	# Inner corners sit at roughly three quarters of the outer radius:
-	# six broad points remain readable when the board cell is only 30px wide.
+	# Broad six-point rays match the approved inset, including its taller axis.
 	return PackedVector2Array([
-		Vector2(0.0, -0.30), Vector2(0.115, -0.20), Vector2(0.28, -0.15),
-		Vector2(0.23, 0.0), Vector2(0.28, 0.15), Vector2(0.115, 0.20),
-		Vector2(0.0, 0.30), Vector2(-0.115, 0.20), Vector2(-0.28, 0.15),
-		Vector2(-0.23, 0.0), Vector2(-0.28, -0.15), Vector2(-0.115, -0.20)
+		Vector2(0.0, -0.35), Vector2(0.124, -0.212), Vector2(0.31, -0.175),
+		Vector2(0.248, 0.0), Vector2(0.31, 0.175), Vector2(0.124, 0.212),
+		Vector2(0.0, 0.35), Vector2(-0.124, 0.212), Vector2(-0.31, 0.175),
+		Vector2(-0.248, 0.0), Vector2(-0.31, -0.175), Vector2(-0.124, -0.212)
 	])
 
 static func _target_points(shape: PackedVector2Array, center: Vector2, side: float) -> PackedVector2Array:

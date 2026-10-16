@@ -4,6 +4,18 @@
 引擎：Godot 4.7.2 stable  
 平台目标：Windows 桌面，鼠标输入
 
+## 获选嵌合与明亮立体图案（2026-10-16；源码 0.8.2，待用户验收）
+
+用户最终明确“暂时就用这一版本实装”，批准图为最新对照图右列「立体提亮预览」。原 PNG 原样保存至 `docs/art/approved-inset-symbols.png`（1322×1190、SHA256 `a11dfdcb776d8f34fc55c8d56bcbd200efa1ab53388751323f178b4a4eeebea3`），`.gdignore` 避免作为运行素材导入；代码按比例几何和分面颜色复现，不声称逐像素采样贴图。
+
+BlockArt 统一暖 tan 底托和嵌件：同形浅槽 1.10/1.022、窄暗缝与逆向槽壁受光、.90 前盖与下右侧壁、红六角/黄五角中心冠折面、金橙五边形宽前面，蓝钻兼容。marker 尾增 embedded 默认 false；Main/MoveFeedback 五处方块内使用 true，HUD/介绍/飞行/结果保留独立图案。非法预览对占用格仅画红轮廓，消除主色后仍最后画 marker。
+
+BlockArt、Main、MoveFeedback、GameplayControls、CollectionFlights、已有 UI action 六份 Godot 4.7.2 `--check-only` 均退出 0，无 SCRIPT/Parse/Compile/Failedload 错误；日志仅本地 `work/verification/*-approved-inset-syntax.log`。尾参数向后兼容，已有检查无需新增断言，测试仅编译、未执行。
+
+调用链与几何分别独立静态复核无 P1/P2：底托短边内缩保护、槽环/侧壁环和星冠各三角面正面积，原普通块防退化修复保留；最终将槽内轮廓与 body 同心，消除黄星约 .021px 的极小越界，BlockArt 已再次语法检查并静态复核通过。≤4px/4–10px 简化分支保留安全性，缩放经过 10px 时会切换细节级别。
+
+未执行游戏、用例、GUI、桌面控制或导出包。静态及语法结果不代表 24/30px 厚度、亮度或批准预览相似度已通过；用户 F5 核对全显示链路、非法重叠、清线统一主色、无新增多边形错误和减少动画。
+
 ## 极小碎片无效多边形（2026-10-16；源码 0.8.1，待用户验收）
 
 用户截图精确指向原 `block_art.gd:42–45 draw_block()` 的四个斜面 `Invalid polygon data, triangulation failed`。消除粒子以 3D 方块绘制，半径在原 accent 内缩至 .35 倍；旧 2px 平面阈值之外仍存在退化区间：2.1px 方块 rim=.55、face≈1、bevel=.525，中心为 −.05；2.2px 时中心为零。每个碎片每帧重画，故错误大量重复。
