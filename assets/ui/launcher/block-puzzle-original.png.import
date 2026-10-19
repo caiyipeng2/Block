@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://b2hnwqnla45yd"
-path="res://.godot/imported/adaptive-foreground.svg-a3d64edc7b5a07f314a678a18aa5f8fc.ctex"
+uid="uid://dcx5iog2koeuj"
+path="res://.godot/imported/block-puzzle-original.png-ee9d588de102d033fb722d62c2a1645c.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui/launcher/adaptive-foreground.svg"
-dest_files=["res://.godot/imported/adaptive-foreground.svg-a3d64edc7b5a07f314a678a18aa5f8fc.ctex"]
+source_file="res://assets/ui/launcher/block-puzzle-original.png"
+dest_files=["res://.godot/imported/block-puzzle-original.png-ee9d588de102d033fb722d62c2a1645c.ctex"]
 
 [params]
 
@@ -38,6 +38,3 @@ process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
 detect_3d/compress_to=1
-svg/scale=1.0
-editor/scale_with_editor_scale=false
-editor/convert_colors_with_editor_theme=false

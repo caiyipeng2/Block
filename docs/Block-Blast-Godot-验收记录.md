@@ -4,9 +4,15 @@
 引擎：Godot 4.7.2 stable  
 平台目标：Windows 桌面，鼠标输入
 
-## 包体图标替换（2026-10-19；0.8.5 / versionCode3）
+## 原创包体图标（2026-10-19；0.8.6 / versionCode4，待核验）
 
-按用户要求搜索并采用HungryStudio官方Google Play Block Blast图标。取得512×512原始PNG，来源、SHA256见 [资源说明](../assets/ui/launcher/README.md)。项目和Windows主图标、两个Android预设传统图标均接PNG；432×432自适应前景内嵌同图、深蓝背景补齐mask外侧，避免旧Godot图标fallback。
+用户撤回直接使用竞品官方图标的方向，要求休闲拼块风格相近、突出自身玩法且形成视觉差异。两版原创生成图经审阅选定九格阶梯方案：青色立体方块、中央暖金底托镶青钻、底部四格珊瑚色消除行，无竞品文字或品牌标识。原图 `assets/ui/launcher/block-puzzle-original.png` 为1254×1254，SHA256为 `c165e4e73a52d30d064eefdd23b2f299ddffcddbf4a1603cb919f82534c0abe1`。自适应前景432px画布中同图位于(52,52)、328px见方，配独立蓝底；旧官方PNG及旧自适应资源移出运行资源，不进入新包。
+
+版本配置0.8.6(4)，沿用 `com.funblockstudio.block` 与原上传签名。Godot无界面导入、实际APK/AAB图标、48px预览、正式签名/16KB及三星更新/桌面截图待实际执行核验；最终结果以 `dist/Block-0.8.6-android-build-info.json` 和本地构建日志为准。此处不提前记为通过，不沿用旧包证据。视觉差异化不保证Google Play审核通过，本轮不上传Play后台，不改变游戏规则或存档。
+
+## 历史包体图标替换（2026-10-19；0.8.5 / versionCode3，已由原创图标取代）
+
+当时按用户要求搜索并采用HungryStudio官方Google Play Block Blast图标，取得512×512原始PNG；项目和Windows主图标、两个Android预设传统图标均接PNG，432×432自适应前景内嵌同图、深蓝背景补齐mask外侧。用户随后撤回此方向，相关运行资源已在0.8.6移除；以下仅为旧包历史证据。
 
 Godot无界面导入退出0、无错误，已提取实际导入前景纹理核对图案及透明留白。最终APK/AAB传统与自适应图标像素一致，正式签名/API36/16KB/CSV检查通过；三星安装0.8.5(3)成功，桌面Block已显示新图标，本地截图work/launcher-icon/samsung-block-icon.png。未改脚本/玩法/存档或签名；包文件/哈希见dist对应build-info，图标显示核对不等于游戏游玩验收。
 

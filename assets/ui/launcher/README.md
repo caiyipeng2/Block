@@ -1,13 +1,16 @@
-# 安装包图标
+# 原创安装包图标
 
-用户于2026-10-19要求搜索Block Blast图标，并将包体图标替换为相同图案。
+当前资源由内置 `imagegen` 生成，2026-10-19选择第二版九格构图。用户要求保留方块消除的熟悉风格，同时区别于先前使用的竞品图标并突出本游戏内容。
 
-- 官方页面：[Block Blast! / HungryStudio](https://play.google.com/store/apps/details?id=com.block.juggle&hl=en_US)。
-- 图像源：`https://play-lh.googleusercontent.com/5FLR-EBlfNvoV9ydZkOMDqRF10nV64XcKdZzW_oQzmz2e8Me9PS5Zncnvviki0J3XumjO2a_lg6_IdwOqwnV=s512-rp`。
-- `block-blast-official.png`：512×512 RGB，来自上述官方CDN的PNG字节，未重绘；SHA256 `8e1a2f6994b55f3414c0cbe8c3cb0e5cc168715922b64df4e0c83c03f92e0b9a`。
-- 项目与Windows导出主图标、Android传统启动图标都使用此PNG。
-- Android `adaptive-foreground.svg`：432×432透明图层，嵌入原PNG并等比放置于64..368区域。`adaptive-background.svg`为深蓝底，避免三星圆角/圆形mask大幅裁掉完整方块构图。
-- 两个Android预设显式设置主图标、adaptive前景及背景，避免回退Godot默认机器人图标。未添加主题单色图标，保留用户要求的彩色图案。
-- SVG导入已核对引擎实际纹理432×432、前景边界64..368，无损导入且未限制尺寸。
+- `block-puzzle-original.png`：1254×1254，原始生成文件；SHA256 `c165e4e73a52d30d064eefdd23b2f299ddffcddbf4a1603cb919f82534c0abe1`。
+- 主要元素：九格阶梯、青色立体块、中央暖金底托镶青钻、底部珊瑚色完整行与消除扫光。
+- 配色及构图均重新设计，未沿用竞品的四色角落分区、黄色L形主体或官方图片像素。
+- `original-adaptive-foreground.svg`：432×432透明图层，在(52,52)放置328×328的完整原创图像，约76%画布，核心九格再由原图留白进入中央安全区；内嵌PNG字节与源文件完全相同。
+- `original-adaptive-background.svg`：独立蓝色渐变背景，填充启动器mask之外的边缘。不同桌面仍可能裁切边缘光点。
+- 项目/Windows主图标及Android传统图标使用原PNG；APK/AAB明确设置同一自适应前景/背景，避免Godot默认图标回退。
+- 原官方PNG和旧自适应资源已从生产目录移除，历史提交不作为当前运行素材。
+- 生成方向：保留宽倒角方块的休闲游戏质感，用镶嵌宝石与横向整行消除表达玩法，减少复杂光环和装饰。第二版比首版完整棋盘构图更适合48px图标。
 
-图标变更不修改包名、签名、游戏菜单、美术、玩法或存档。
+生成来源：内置 `image_gen.imagegen`，新图生成，无竞品图像引用。原始文件名 `exec-8f380364-996d-4f71-bcf5-406f17d2f9d8.png`。完整最终提示词见 [生成说明](../../../docs/art/original-launcher-generation.md)。
+
+资源与图案差异化不构成Google Play审核结果保证。图标变更不修改包名、签名、菜单、玩法、音乐修复或存档。

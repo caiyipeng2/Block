@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://p3xu3j81bb4e"
-path="res://.godot/imported/block-blast-official.png-d31ccc9e6298761498ed800348c347fb.ctex"
+uid="uid://coryvbl7nyu85"
+path="res://.godot/imported/original-adaptive-background.svg-244c9431aa0d906d77b0911cf2567e41.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui/launcher/block-blast-official.png"
-dest_files=["res://.godot/imported/block-blast-official.png-d31ccc9e6298761498ed800348c347fb.ctex"]
+source_file="res://assets/ui/launcher/original-adaptive-background.svg"
+dest_files=["res://.godot/imported/original-adaptive-background.svg-244c9431aa0d906d77b0911cf2567e41.ctex"]
 
 [params]
 
@@ -38,3 +38,6 @@ process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
 detect_3d/compress_to=1
+svg/scale=1.0
+editor/scale_with_editor_scale=false
+editor/convert_colors_with_editor_theme=false

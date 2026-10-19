@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://clv7fju7x71gt"
-path="res://.godot/imported/adaptive-background.svg-506d9168bcfa6f851e40a530fce9ede9.ctex"
+uid="uid://1j2a2231iwfv"
+path="res://.godot/imported/original-adaptive-foreground.svg-36c6fb8cbb87a081c09015e565defbda.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui/launcher/adaptive-background.svg"
-dest_files=["res://.godot/imported/adaptive-background.svg-506d9168bcfa6f851e40a530fce9ede9.ctex"]
+source_file="res://assets/ui/launcher/original-adaptive-foreground.svg"
+dest_files=["res://.godot/imported/original-adaptive-foreground.svg-36c6fb8cbb87a081c09015e565defbda.ctex"]
 
 [params]
 
