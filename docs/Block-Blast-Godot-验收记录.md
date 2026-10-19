@@ -4,11 +4,13 @@
 引擎：Godot 4.7.2 stable  
 平台目标：Windows 桌面，鼠标输入
 
-## 原创包体图标（2026-10-19；0.8.6 / versionCode4，待核验）
+## 原创包体图标（2026-10-19；0.8.6 / versionCode4）
 
 用户撤回直接使用竞品官方图标的方向，要求休闲拼块风格相近、突出自身玩法且形成视觉差异。两版原创生成图经审阅选定九格阶梯方案：青色立体方块、中央暖金底托镶青钻、底部四格珊瑚色消除行，无竞品文字或品牌标识。传统图标原图 `assets/ui/launcher/block-puzzle-original.png` 为1254×1254，SHA256为 `c165e4e73a52d30d064eefdd23b2f299ddffcddbf4a1603cb919f82534c0abe1`。自适应前景使用提取出的透明主体 `block-puzzle-foreground.png`，在432px画布(64,64)起304px见方区域内等比放置（终点368,368），核心九格宽约260px，配独立蓝底，避免完整不透明原图带来的方框接缝；旧官方PNG及旧自适应资源移出运行资源，不进入新包。
 
-版本配置0.8.6(4)，沿用 `com.funblockstudio.block` 与原上传签名。Godot无界面导入、实际APK/AAB图标、48px预览、正式签名/16KB及三星更新/桌面截图待实际执行核验；最终结果以 `dist/Block-0.8.6-android-build-info.json` 和本地构建日志为准。此处不提前记为通过，不沿用旧包证据。视觉差异化不保证Google Play审核通过，本轮不上传Play后台，不改变游戏规则或存档。
+0.8.6(4)沿用 `com.funblockstudio.block` 与原上传签名。Godot无界面资源导入完成，APK/AAB均从干净提交 `1f8e52f71f260e1023d840ee2679888e035360ab` 实际导出；正式签名证书与旧包一致，API36/min24/arm64、ZIP CRC、16KB及CSV校验均通过。两包48px传统图标和432px透明前景像素一致，已查看48px与192px预览；旧官方资源无包内条目。
+
+三星SM-S9280更新安装返回Success，设备versionCode为4；桌面截图 `work/launcher-icon/samsung-original-block.png` 已查看，显示原创九格、镶钻和整行消除图案，没有不透明方形接缝。已从手机读取安装的base.apk，SHA256与最终交付APK一致。未卸载清数据或改变游戏规则、存档。最终包哈希见 `dist/Block-0.8.6-android-build-info.json`；不同启动器和其他mask仍待用户确认。本轮未上传Play后台，视觉差异化及本地校验不保证Google Play审核通过。
 
 ## 历史包体图标替换（2026-10-19；0.8.5 / versionCode3，已由原创图标取代）
 

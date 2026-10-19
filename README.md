@@ -12,7 +12,7 @@ Godot 4.7 的方块消除游戏：拖动方块、填满行或列并消除，无�
 
 默认面向 Windows 桌面鼠标输入，渲染配置为 Forward Plus / D3D12。
 
-Android当前版本配置为 `0.8.6 (4)`，使用突出拼块、目标收集与整行消除的原创图标，取代 `0.8.5` 的竞品官方图标。保留 `0.8.4` 的音乐循环闪退修复与手机适配；本轮构建及三星更新结果以 [Android发布](docs/Block-Blast-Godot-Android发布.md) 和 `dist/Block-0.8.6-android-build-info.json` 为准。包名仍为 `com.funblockstudio.block`，上传签名及用户存档保持。
+Android当前版本 `0.8.6 (4)` 已构建APK/AAB并更新三星SM-S9280，使用突出拼块、目标收集与整行消除的原创图标，取代 `0.8.5` 的竞品官方图标；桌面截图确认无方形接缝。保留 `0.8.4` 的音乐循环闪退修复与手机适配；本轮构建及三星更新结果见 [Android发布](docs/Block-Blast-Godot-Android发布.md) 和 `dist/Block-0.8.6-android-build-info.json`。包名仍为 `com.funblockstudio.block`，上传签名及用户存档保持。
 
 ## 玩法与操作
 
@@ -108,11 +108,11 @@ python tools/export_windows.py --godot "E:\Tools\Godot\Godot_v4.7.2-stable_win64
 
 加 `--check` 仅预检、不导出；`--configuration debug` 生成调试包。版本号来自 `project.godot`，当前源码为 `0.8.3`，后续发布输出遵循 `dist/Block-<版本>-windows-x86_64-release.zip`。CSV 已设置为保留原文导入，并由导出包含规则带入 `.pck`；源码改表后需重新导出才能更新玩家包。须完整解压后按 `START-HERE.txt` 运行，保留 `.pck` 和所有随附文件；若导出生成 DLL 或 `x86_64` 子目录，也须完整保留。包内 `build-info.json` 含文件 SHA256，ZIP 旁 `.sha256` 用于核对压缩包。
 
-前一阶段的 `0.1.0` release/debug 包已导出，文件 SHA256、ZIP CRC 与压缩包校验值均匹配，独立 EXE 尚待用户验收。本地已有 `build/`、`dist/` 中的 `0.1.0` 包仍是粉色逻辑基线，**不含当前美术与三种模式**；本轮不重新打包 `0.8.3`，先按 F5 验收源码。当前本机使用已校验的 `work/release-templates/4.7.2.stable` 模板，将来重新打包时追加 `--templates-dir "work/release-templates/4.7.2.stable"`。模板安装、包结构和用户验收步骤见 [Windows 发布说明](docs/Block-Blast-Godot-Windows发布.md)，历史检查证据见 [验收记录](docs/Block-Blast-Godot-验收记录.md)。
+前一阶段的Windows `0.1.0` release/debug 包已导出，文件 SHA256、ZIP CRC 与压缩包校验值均匹配，独立 EXE 尚待用户验收。本地已有Windows `0.1.0` 包仍是粉色逻辑基线，**不含当前美术与三种模式**；本轮未重打Windows包，Android已交付 `0.8.6` APK/AAB。当前本机使用已校验的 `work/release-templates/4.7.2.stable` 模板，将来重新打包Windows时追加 `--templates-dir "work/release-templates/4.7.2.stable"`。模板安装、包结构和用户验收步骤见 [Windows 发布说明](docs/Block-Blast-Godot-Windows发布.md)，历史检查证据见 [验收记录](docs/Block-Blast-Godot-验收记录.md)。
 
 ## 当前开发状态（2026-10-19）
 
-`0.8.6` 完成原创包体图标及版本配置，包名与上传签名保持。本轮资源导入、APK/AAB签名与16KB校验、三星更新及桌面图标检查待实际执行后记录；最终结果以 `dist/Block-0.8.6-android-build-info.json` 和 [验收记录](docs/Block-Blast-Godot-验收记录.md) 为准，不沿用旧包验收结论。
+`0.8.6` 原创包体图标已完成资源导入、APK/AAB正式签名、API36/min24/arm64、CRC/16KB和CSV校验；两包传统图标及透明前景像素一致，已查看48px与192px预览，旧官方资源未进入新包。两包来自干净源码提交 `1f8e52f71f260e1023d840ee2679888e035360ab`；三星已更新0.8.6(4)，桌面截图显示原创图案且无方框接缝。最终哈希以 `dist/Block-0.8.6-android-build-info.json` 为准，完整证据见 [验收记录](docs/Block-Blast-Godot-验收记录.md)。不同桌面裁切、完整玩法及Google Play后台接收仍未验收。
 
 `0.8.4` 已将三星两次AudioTrack SIGSEGV定位到第264600帧尾后读取，终点改为最后可读帧264599；七份语法检查通过，独立静态复核无剩余重要问题。用户明确授权真机启动、前台观察及界面截图，候选版进程持续超过7分钟、活动音轨约437秒，没有新的退出/崩溃记录。尚不能将有限观察等同所有玩法和系统场景验收通过。
 
