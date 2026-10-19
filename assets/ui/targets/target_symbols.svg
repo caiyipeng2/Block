@@ -1,0 +1,165 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1024" height="512" viewBox="0 0 1024 512">
+  <!-- 256 px cells. Row 0: seated insert and narrow socket. Row 1: standalone insert. -->
+  <!-- Both rows reuse the same symbols without position or scale changes. -->
+  <defs>
+    <linearGradient id="socket-lip" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#80502a"/>
+      <stop offset="48%" stop-color="#9d6b35"/>
+      <stop offset="69%" stop-color="#f5d18b"/>
+      <stop offset="100%" stop-color="#fff1ba"/>
+    </linearGradient>
+    <linearGradient id="red-body" gradientUnits="objectBoundingBox" x1="22%" y1="0%" x2="76%" y2="100%">
+      <stop offset="0%" stop-color="#ff6f7d"/>
+      <stop offset="46%" stop-color="#ff3545"/>
+      <stop offset="100%" stop-color="#cd0828"/>
+    </linearGradient>
+    <linearGradient id="red-front" gradientUnits="objectBoundingBox" x1="15%" y1="0%" x2="80%" y2="100%">
+      <stop offset="0%" stop-color="#ff5060"/>
+      <stop offset="100%" stop-color="#f31d35"/>
+    </linearGradient>
+    <linearGradient id="red-left" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffbac2"/>
+      <stop offset="100%" stop-color="#ff7587"/>
+    </linearGradient>
+    <linearGradient id="red-right" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ee2037"/>
+      <stop offset="100%" stop-color="#b70424"/>
+    </linearGradient>
+    <linearGradient id="red-bottom" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f3213b"/>
+      <stop offset="100%" stop-color="#cc0626"/>
+    </linearGradient>
+    <linearGradient id="yellow-body" gradientUnits="objectBoundingBox" x1="25%" y1="0%" x2="70%" y2="100%">
+      <stop offset="0%" stop-color="#fff28a"/>
+      <stop offset="53%" stop-color="#ffd33c"/>
+      <stop offset="100%" stop-color="#ef9b0d"/>
+    </linearGradient>
+    <linearGradient id="yellow-light" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fffdd1"/>
+      <stop offset="100%" stop-color="#fff094"/>
+    </linearGradient>
+    <linearGradient id="yellow-front" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffe267"/>
+      <stop offset="100%" stop-color="#ffc229"/>
+    </linearGradient>
+    <linearGradient id="yellow-dark" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffbd24"/>
+      <stop offset="100%" stop-color="#e78308"/>
+    </linearGradient>
+    <linearGradient id="amber-body" gradientUnits="objectBoundingBox" x1="18%" y1="0%" x2="82%" y2="100%">
+      <stop offset="0%" stop-color="#ffd074"/>
+      <stop offset="49%" stop-color="#ff9c1b"/>
+      <stop offset="100%" stop-color="#df5b02"/>
+    </linearGradient>
+    <linearGradient id="amber-front" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffb93a"/>
+      <stop offset="100%" stop-color="#ff9017"/>
+    </linearGradient>
+    <linearGradient id="amber-left" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fff5cb"/>
+      <stop offset="100%" stop-color="#ffdb83"/>
+    </linearGradient>
+    <linearGradient id="amber-right" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f68d0b"/>
+      <stop offset="100%" stop-color="#dc5401"/>
+    </linearGradient>
+    <linearGradient id="amber-bottom" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ef8510"/>
+      <stop offset="100%" stop-color="#db5d04"/>
+    </linearGradient>
+    <linearGradient id="blue-body" gradientUnits="objectBoundingBox" x1="16%" y1="0%" x2="84%" y2="100%">
+      <stop offset="0%" stop-color="#9bfff3"/>
+      <stop offset="50%" stop-color="#35d7e9"/>
+      <stop offset="100%" stop-color="#038abe"/>
+    </linearGradient>
+    <linearGradient id="blue-front" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#5ceaf0"/>
+      <stop offset="100%" stop-color="#1eb9df"/>
+    </linearGradient>
+    <linearGradient id="blue-left" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#cefff6"/>
+      <stop offset="100%" stop-color="#79f6f1"/>
+    </linearGradient>
+    <linearGradient id="blue-right" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#29c6e2"/>
+      <stop offset="100%" stop-color="#0088bb"/>
+    </linearGradient>
+    <!-- A few continuous broad planes reproduce the approved bright right-hand column. -->
+    <path id="red-outline" d="M128 35 157 70 208 82 191 125 208 168 157 180 128 215 99 180 48 168 65 125 48 82 99 70Z"/>
+    <path id="yellow-outline" d="M128 35 159 91 208 105 173 148 177 211 128 190 79 211 83 148 48 105 97 91Z"/>
+    <path id="amber-outline" d="M128 39 208 98 177 213 79 213 48 98Z"/>
+    <path id="blue-outline" d="M128 35 208 125 128 215 48 125Z"/>
+    <g id="red-symbol" stroke="none">
+      <path d="M128 35 157 70 208 82 191 125 208 168 157 180 128 215 99 180 48 168 65 125 48 82 99 70Z" fill="url(#red-body)" stroke="none"/>
+      <path d="M128 35 128 78 100 108 48 82 99 70Z" fill="url(#red-left)"/>
+      <path d="M128 35 157 70 145 96 128 78Z" fill="#ff3449"/>
+      <path d="M157 70 208 82 174 120 145 96Z" fill="#ff5362"/>
+      <path d="M208 82 191 125 208 168 154 150 174 120Z" fill="url(#red-right)"/>
+      <path d="M208 168 157 180 128 215 154 150Z" fill="#c7082a"/>
+      <path d="M128 215 99 180 48 168 99 150 128 140 154 150Z" fill="url(#red-bottom)"/>
+      <path d="M48 168 65 125 48 82 100 108 99 150Z" fill="#ff4c5d"/>
+      <path d="M128 78 145 96 174 120 154 150 128 140 99 150 100 108Z" fill="url(#red-front)"/>
+      <path d="M48 168 99 180 128 215 157 180 208 168" fill="none" stroke="#940b23" stroke-width="2.7" stroke-linejoin="round"/>
+    </g>
+    <g id="yellow-symbol" stroke="none">
+      <path d="M128 35 159 91 208 105 173 148 177 211 128 190 79 211 83 148 48 105 97 91Z" fill="url(#yellow-body)" stroke="none"/>
+      <path d="M128 35 128 118 48 105 97 91Z" fill="url(#yellow-light)"/>
+      <path d="M128 35 159 91 148 105 128 118Z" fill="#ffd13b"/>
+      <path d="M159 91 208 105 128 118 148 105Z" fill="#ffe57b"/>
+      <path d="M208 105 173 148 177 211 151 156 128 118Z" fill="url(#yellow-dark)"/>
+      <path d="M177 211 128 190 79 211 121 160 151 156Z" fill="#ed9a0e"/>
+      <path d="M79 211 83 148 48 105 128 118 121 160Z" fill="#ffce39"/>
+      <path d="M128 118 151 156 121 160Z" fill="url(#yellow-front)"/>
+      <path d="M79 211 121 160 128 118 128 190Z" fill="#ffdc52"/>
+      <path d="M128 190 128 118 151 156 177 211Z" fill="#ffba25"/>
+      <path d="M79 211 128 190 177 211" fill="none" stroke="#a96408" stroke-width="2.5" stroke-linejoin="round"/>
+    </g>
+    <g id="amber-symbol" stroke="none">
+      <path d="M128 39 208 98 177 213 79 213 48 98Z" fill="url(#amber-body)" stroke="none"/>
+      <path d="M128 39 128 68 78 108 48 98Z" fill="url(#amber-left)"/>
+      <path d="M128 39 208 98 175 109 128 68Z" fill="#ffc357"/>
+      <path d="M208 98 177 213 154 184 175 109Z" fill="url(#amber-right)"/>
+      <path d="M177 213 79 213 99 184 154 184Z" fill="url(#amber-bottom)"/>
+      <path d="M79 213 48 98 78 108 99 184Z" fill="#ff971c"/>
+      <path d="M128 68 175 109 154 184 99 184 78 108Z" fill="url(#amber-front)"/>
+      <path d="M79 213 177 213" fill="none" stroke="#a64606" stroke-width="2.8" stroke-linejoin="round"/>
+    </g>
+    <g id="blue-symbol" stroke="none">
+      <path d="M128 35 208 125 128 215 48 125Z" fill="url(#blue-body)" stroke="none"/>
+      <path d="M128 35 128 75 86 125 48 125Z" fill="url(#blue-left)"/>
+      <path d="M128 35 208 125 170 125 128 75Z" fill="#39d8ea"/>
+      <path d="M208 125 128 215 128 176 170 125Z" fill="url(#blue-right)"/>
+      <path d="M128 215 48 125 86 125 128 176Z" fill="#15b7d9"/>
+      <path d="M128 75 170 125 128 176 86 125Z" fill="url(#blue-front)"/>
+      <path d="M48 125 128 215 208 125" fill="none" stroke="#087ca6" stroke-width="2.6" stroke-linejoin="round"/>
+    </g>
+    <g id="red-socket">
+      <use xlink:href="#red-outline" fill="none" stroke="url(#socket-lip)" stroke-width="11" stroke-linejoin="round"/>
+      <use xlink:href="#red-outline" fill="#794722" stroke="#794722" stroke-width="4" stroke-linejoin="round"/>
+    </g>
+    <g id="yellow-socket">
+      <use xlink:href="#yellow-outline" fill="none" stroke="url(#socket-lip)" stroke-width="11" stroke-linejoin="round"/>
+      <use xlink:href="#yellow-outline" fill="#794722" stroke="#794722" stroke-width="4" stroke-linejoin="round"/>
+    </g>
+    <g id="amber-socket">
+      <use xlink:href="#amber-outline" fill="none" stroke="url(#socket-lip)" stroke-width="11" stroke-linejoin="round"/>
+      <use xlink:href="#amber-outline" fill="#794722" stroke="#794722" stroke-width="4" stroke-linejoin="round"/>
+    </g>
+    <g id="blue-socket">
+      <use xlink:href="#blue-outline" fill="none" stroke="url(#socket-lip)" stroke-width="11" stroke-linejoin="round"/>
+      <use xlink:href="#blue-outline" fill="#794722" stroke="#794722" stroke-width="4" stroke-linejoin="round"/>
+    </g>
+  </defs>
+  <g>
+    <use xlink:href="#red-socket"/><use xlink:href="#red-symbol"/>
+    <g transform="translate(256)"><use xlink:href="#yellow-socket"/><use xlink:href="#yellow-symbol"/></g>
+    <g transform="translate(512)"><use xlink:href="#amber-socket"/><use xlink:href="#amber-symbol"/></g>
+    <g transform="translate(768)"><use xlink:href="#blue-socket"/><use xlink:href="#blue-symbol"/></g>
+  </g>
+  <g transform="translate(0 256)">
+    <use xlink:href="#red-symbol"/>
+    <use xlink:href="#yellow-symbol" transform="translate(256)"/>
+    <use xlink:href="#amber-symbol" transform="translate(512)"/>
+    <use xlink:href="#blue-symbol" transform="translate(768)"/>
+  </g>
+</svg>

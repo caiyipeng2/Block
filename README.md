@@ -1,6 +1,6 @@
 # Block
 
-Godot 4.7 的桌面方块消除游戏：拖动方块、填满行或列并消除，无时间限制。当前源码为 `0.8.2`，提供自由、经典和闯关三种模式，采用蓝色背景、凹槽棋盘和立体斜面方块。
+Godot 4.7 的桌面方块消除游戏：拖动方块、填满行或列并消除，无时间限制。当前源码为 `0.8.3`，提供自由、经典和闯关三种模式，采用蓝色背景、凹槽棋盘和立体斜面方块。
 
 项目仓库：[caiyipeng2/Block](https://github.com/caiyipeng2/Block)。本地交付、提交和推送状态以本次交付记录为准。
 
@@ -48,6 +48,7 @@ Godot 4.7 的桌面方块消除游戏：拖动方块、填满行或列并消除�
 
 ## 第二阶段美术与反馈
 
+- `0.8.3` 修复特殊图案小尺寸锯齿与切面碎裂：撤下现场三角面星冠，按获选右列重绘宽亮暗面的透明 SVG 图集，嵌槽与独立符号共用图形。无损导入、生成 mipmaps，并由 CanvasTexture 固定线性 mipmap 采样，覆盖棋盘、备选、拖动、回弹、HUD、弹窗与收集飞行。[资源与维护说明](assets/ui/targets/README.md)。
 - `0.8.2` 实装用户确认的「立体提亮预览」右列：方正暖黄褐底托、同形浅槽、窄接触缝，红六角星/黄五角星的明亮凸面折线、金橙五边形的宽亮前面和侧壁；已有蓝钻按同一结构兼容。棋盘/备选/拖动/回弹/清除使用嵌合图案，HUD/开局/飞行/结果使用同款独立图案。普通块与规则不改。[获选原图与说明](docs/art/README.md)随项目保存。
 - `0.8.1` 修复极小消除碎片引起 `Invalid polygon data, triangulation failed` 连续刷屏：≤4px 碎片使用简单矩形，其他小尺寸斜面受扣边后的面宽限制，避免顶点重合/交叉。正常方块材质、供块与反馈规则保持。
 - `0.8.0` 自由/经典加入前 1500 分清除倾向供块，使用有界模拟与完整组三块证书，搜索未完成则回退原生成器。普通首单消显示 `Nice! / 1 Line`，真实 Combo 数字更突出，新增局部金青星爆/冲击环及有上限轻震，真实连击/多线音效轻微升调。反馈持续用于普通模式，1500 只限制供块；闯关、计分及最新柔光材质保持。
@@ -100,11 +101,13 @@ Godot 4.7 的桌面方块消除游戏：拖动方块、填满行或列并消除�
 python tools/export_windows.py --godot "E:\Tools\Godot\Godot_v4.7.2-stable_win64.exe" --configuration release
 ```
 
-加 `--check` 仅预检、不导出；`--configuration debug` 生成调试包。版本号来自 `project.godot`，当前源码为 `0.8.2`，后续发布输出遵循 `dist/Block-<版本>-windows-x86_64-release.zip`。CSV 已设置为保留原文导入，并由导出包含规则带入 `.pck`；源码改表后需重新导出才能更新玩家包。须完整解压后按 `START-HERE.txt` 运行，保留 `.pck` 和所有随附文件；若导出生成 DLL 或 `x86_64` 子目录，也须完整保留。包内 `build-info.json` 含文件 SHA256，ZIP 旁 `.sha256` 用于核对压缩包。
+加 `--check` 仅预检、不导出；`--configuration debug` 生成调试包。版本号来自 `project.godot`，当前源码为 `0.8.3`，后续发布输出遵循 `dist/Block-<版本>-windows-x86_64-release.zip`。CSV 已设置为保留原文导入，并由导出包含规则带入 `.pck`；源码改表后需重新导出才能更新玩家包。须完整解压后按 `START-HERE.txt` 运行，保留 `.pck` 和所有随附文件；若导出生成 DLL 或 `x86_64` 子目录，也须完整保留。包内 `build-info.json` 含文件 SHA256，ZIP 旁 `.sha256` 用于核对压缩包。
 
-前一阶段的 `0.1.0` release/debug 包已导出，文件 SHA256、ZIP CRC 与压缩包校验值均匹配，独立 EXE 尚待用户验收。本地已有 `build/`、`dist/` 中的 `0.1.0` 包仍是粉色逻辑基线，**不含当前美术与三种模式**；本轮不重新打包 `0.8.2`，先按 F5 验收源码。当前本机使用已校验的 `work/release-templates/4.7.2.stable` 模板，将来重新打包时追加 `--templates-dir "work/release-templates/4.7.2.stable"`。模板安装、包结构和用户验收步骤见 [Windows 发布说明](docs/Block-Blast-Godot-Windows发布.md)，历史检查证据见 [验收记录](docs/Block-Blast-Godot-验收记录.md)。
+前一阶段的 `0.1.0` release/debug 包已导出，文件 SHA256、ZIP CRC 与压缩包校验值均匹配，独立 EXE 尚待用户验收。本地已有 `build/`、`dist/` 中的 `0.1.0` 包仍是粉色逻辑基线，**不含当前美术与三种模式**；本轮不重新打包 `0.8.3`，先按 F5 验收源码。当前本机使用已校验的 `work/release-templates/4.7.2.stable` 模板，将来重新打包时追加 `--templates-dir "work/release-templates/4.7.2.stable"`。模板安装、包结构和用户验收步骤见 [Windows 发布说明](docs/Block-Blast-Godot-Windows发布.md)，历史检查证据见 [验收记录](docs/Block-Blast-Godot-验收记录.md)。
 
-## 当前开发状态（2026-10-16）
+## 当前开发状态（2026-10-19）
+
+`0.8.3` 根据实机反馈撤下现场小三角切面，接入宽切面透明 SVG 图集。Godot 无界面资源导入退出 0、无错误；实际纹理 2048×1024，完整 12 级 mipmap，已查看引擎原生 64/32px 单元并核对渐变、透明边和区域映射。六份相关脚本 `--check-only` 均退出 0、无脚本错误，独立静态复核无 P1/P2。未运行游戏、用例或 GUI，未导出新包。停止旧游戏后 F5 对照批准图验收棋盘、托盘、目标栏、拖动和飞行缩放。
 
 `0.8.2` 已按获选右列以比例几何复现嵌合底托与明亮立体图案，原图原样保存在 docs/art；方块内与独立目标共用同一嵌件面片。非法落点在占用格只画红轮廓，避免叠双槽。BlockArt/Main/MoveFeedback/GameplayControls/CollectionFlights/UI action 六份 `--check-only` 均退出 0，无脚本错误；独立调用与几何复核无 P1/P2，极小尺寸有简化保护。未运行游戏或用例；用户 F5 对照预览验收 24/30px、小窗、拖动/清除与目标飞行。
 
