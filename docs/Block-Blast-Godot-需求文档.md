@@ -677,3 +677,9 @@ Godot 4.7.2 单脚本编译复现 `board_view.gd` 三处解析错误：第 20 �
 直接调用方 `GameScreen` 的编译还暴露 `piece_tray.gd` 同类问题：第 17、24 行槽宽与单格尺寸推断为 Variant，导致第 25 行偏移量也无法推断。槽宽改用 `maxf()`，单格尺寸显式声明 `float`，保留原三值取最小尺寸及托盘布局计算。
 
 本次检查记录见[验收记录](Block-Blast-Godot-验收记录.md)。剩余验收：用户重新加载脚本或重开项目，确认不再出现 `Failed to load script ... board_view.gd ... Parse error`，并按 F5 确认正常进入游戏；第 38 节的特殊图案观感仍待用户确认。
+
+## 40. Android 首次交付（2026-10-19）
+
+用户新增明确要求：构建APK安装三星，并构建AAB用于Google后台上传；确认首次包名 `com.funblockstudio.block` 及独立本机上传签名。版本 `0.8.3 (1)`，Android7/API24起、目标API36、arm64，游戏分类；Android专属竖屏720×1280、Compatibility、触摸模拟鼠标及系统返回复用Escape，桌面布局不变。
+
+正式release包从隔离副本导出，移除Godot AI autoload/插件，保留CSV和生产资源；凭据只留本机、经环境传入，日志脱敏，校验后发布。两包同签名、CRC/清单/16KB/资源检查，APK在SM-S9280安装并核对文件SHA256。AAB本地检查不能替代Play后台接收；未自动操作游戏。构建命令、证据和签名备份位置见 [Android发布](Block-Blast-Godot-Android发布.md)。

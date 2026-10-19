@@ -4,6 +4,12 @@
 引擎：Godot 4.7.2 stable  
 平台目标：Windows 桌面，鼠标输入
 
+## Android首次交付（2026-10-19；0.8.3 / versionCode 1）
+
+用户授权同时打APK/AAB并安装三星，确认首次包名 `com.funblockstudio.block` 与独立上传签名。两种release构建完成，同签名、API36/min24、游戏分类、arm64和16KB检查通过；APK安装到SM-S9280，设备base.apk SHA256与交付文件一致，未自动启动或操作游戏。AAB未上传Play Console。最终哈希、源码快照、构建命令和签名备份见 [Android发布](Block-Blast-Godot-Android发布.md)。
+
+Android专属720×1280竖屏、Compatibility、ETC2导入、触摸转鼠标；系统返回转既有Escape逻辑，Main --check-only退出0。独立staging清AI、保留CSV，签名不进Git；包内CSV/资源检查通过。脚本半包发布和交付ACL已修复，Windows模板替换限定自身预设。真实导出修正原生APK SDK字段/ETC2约束，安装处理ADB冲突并streamed成功。手机游玩和Google后台接收仍待用户验收。
+
 ## BoardView 与托盘脚本解析修复（2026-10-19，待用户验收）
 
 Godot 4.7.2 对 `board_view.gd` 执行 headless `--check-only`，修复前退出码 1：第 28、32 行无法推断颜色类型，第 20 行从 Variant 推断变量触发“警告视为错误”。将调色板声明为 `Array[Color]`，并把尺寸比较改用 `minf()`，保留原颜色和绘制计算。

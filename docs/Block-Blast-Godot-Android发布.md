@@ -1,0 +1,60 @@
+# Android APK / AAB 发布
+
+首次交付：2026-10-19；游戏版本 `0.8.3`，Android `versionCode=1`。用户确认首次包名与独立本机上传签名。
+
+## 文件与用途
+
+- `dist/Block-0.8.3-android-release.apk`：手机直接安装，约30MB。
+- `dist/Block-0.8.3-android-release.aab`：Google Play 后台上传，约30MB。
+- 两包旁有 `.sha256`；最终字节数、SHA256和验证摘要在 `dist/Block-0.8.3-android-build-info.json`。
+
+包名 `com.funblockstudio.block`，版本 `0.8.3 (1)`；Android7/API24起，目标Android16/API36，仅 `arm64-v8a`，游戏分类。Android采用720×1280竖屏基准、Compatibility/OpenGL ES3、触摸模拟鼠标，系统返回复用Escape暂停/返回逻辑。不申请网络或存储权限。
+
+本轮APK已安装到三星 **SM-S9280 / Android16**，读取手机base.apk的SHA256与交付APK一致。仅安装及核对，没有自动启动游戏或进行点击、拖动、声音验收。同工作区合入的BoardView/托盘类型修复由最终构建一起带入；具体源码快照以构建记录的 `source_commit` / `source_dirty` 为准。
+
+AAB已完成本地验证，**尚未上传或经Play Console接收**。在Google Play对应应用的测试轨道/版本页上传上述 `.aab`，再按后台完成Play App Signing、商店资料与内容声明。本轮不包含后台账号操作。
+
+## 构建与校验
+
+- Godot4.7.2正式匹配模板，Java21、SDK Platform36、Build Tools36.1.0、NDK29.0.14206865；模板Gradle8.11.1 / AGP8.6.1。
+- APK：ZIP CRC、apksigner v2/v3正式签名、`zipalign -c -P 16 -v 4`。
+- AAB：bundletool1.18.3 validate、JAR签名与证书一致，`PAGE_ALIGNMENT_16K`。
+- 两包的arm64原生库全部PT_LOAD对齐16384；CSV与源码一致，没有Godot AI autoload、编辑器插件、私钥或凭据文件。
+- 公共上传证书SHA256：`7773132a390543e7873217549578b53ed9f61391770fa4301c7a6de8854c1d51`。
+- 详细日志和快照在 `work/android-export/`，不提交Git。
+
+依据：[Google Play目标API要求](https://developer.android.com/google/play/requirements/target-sdk)、[16KB页面要求](https://developer.android.com/guide/practices/page-sizes)。本地包校验不代表Play后台所有商店条件已通过。
+
+## 本机上传签名
+
+`work/android-signing/` 受本机账户ACL限制并被Git忽略：
+
+- `block-upload.jks`：RSA3072上传私钥库，PKCS12格式。
+- `credentials.json`：本机alias/password；不要提交或粘贴到聊天。
+- `block-upload-certificate.pem`：公开证书。
+
+请安全备份以上三项。后续上传使用同一上传密钥，并将两个预设的 `version/code` 同时递增，下一次至少为 `2`。启用Play App Signing后，后台应用签名与本地上传密钥可能不同；本地APK使用上传密钥签名。
+
+## 重新打包
+
+```powershell
+python tools/export_android.py --godot "C:/Users/EDY/Downloads/Godot_v4.7.2-stable_win64.exe/Godot_v4.7.2-stable_win64.exe" --sdk "D:/Unity/Editor/Data/PlaybackEngines/AndroidPlayer/SDK" --java "D:/java" --keystore "work/android-signing/block-upload.jks" --credentials-file "work/android-signing/credentials.json" --format apk
+```
+
+末尾改为 `--format aab` 构建Bundle；加 `--check` 仅预检。已有同名文件拒绝覆盖，先备份或递增版本。原生APK的Gradle SDK字段留空以使用模板默认min24/target36，AAB显式24/36。
+
+工具使用私有staging和自包含无界面引擎，清理AI引用、保留CSV，签名只经进程环境传入，日志脱敏；Gradle缓存位于E盘。先校验私有输出再原子发布至dist，Windows恢复交付目录继承权限，失败半包留work。Windows导出工具只替换自身预设的模板路径，兼容新增Android预设。
+
+## 三星安装
+
+```powershell
+& "D:/Unity/Editor/Data/PlaybackEngines/AndroidPlayer/SDK/platform-tools/adb.exe" -s R5CX211TXNT install --no-incremental -r "dist/Block-0.8.3-android-release.apk"
+```
+
+本机Unity旧ADB和Godot新版ADB会抢占5037端口，使用当前服务同版客户端即可；无需关闭编辑器或删除用户数据。此次增量安装失败后自动回退streamed成功，后续显式 `--no-incremental` 可直接安装。
+
+## 待用户验收
+
+- 手机三模式触控、特殊图案、竖屏布局/安全区、小屏适配。
+- 系统返回、切后台、暂停、重开、声音与存档。
+- Play Console实际上传、内部测试分发和审核。

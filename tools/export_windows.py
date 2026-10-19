@@ -176,9 +176,15 @@ def build(args: argparse.Namespace, engine: Path, engine_version: str, version: 
         preset_text = preset_path.read_text(encoding="utf-8-sig")
         template_path = (templates / f"windows_{args.configuration}_x86_64.exe").as_posix()
         key = f"custom_template/{args.configuration}"
-        preset_text, count = re.subn(rf"(?m)^{re.escape(key)}=.*$", lambda _: f"{key}={json.dumps(template_path)}", preset_text)
+        # Android presets also have custom_template keys. Patch only the
+        # Windows options section, preserving every other platform's template.
+        options_match = re.search(r"(?ms)^\[preset\.0\.options\]\s*\n(.*?)(?=^\[|\Z)", preset_text)
+        if not options_match:
+            raise ValueError("Missing Windows export options section.")
+        options_text, count = re.subn(rf"(?m)^{re.escape(key)}=.*$", lambda _: f"{key}={json.dumps(template_path)}", options_match.group(1))
         if count != 1:
             raise ValueError(f"Expected exactly one {key} in the preset.")
+        preset_text = preset_text[:options_match.start(1)] + options_text + preset_text[options_match.end(1):]
         preset_path.write_text(preset_text, encoding="utf-8")
         print(f"Exporting {args.configuration}; log: {log}", flush=True)
         try:

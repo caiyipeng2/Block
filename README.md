@@ -12,6 +12,8 @@ Godot 4.7 的桌面方块消除游戏：拖动方块、填满行或列并消除�
 
 默认面向 Windows 桌面鼠标输入，渲染配置为 Forward Plus / D3D12。
 
+Android首包已构建：`dist/Block-0.8.3-android-release.apk` 已安装三星SM-S9280，另有同签名Google Play `.aab`。Android使用竖屏、Compatibility和触屏模拟鼠标，版本 `0.8.3 (1)`、包名 `com.funblockstudio.block`。包结构/签名/16KB已本地检查，手机游玩与后台上传仍待确认。见 [Android发布与签名备份](docs/Block-Blast-Godot-Android发布.md)。
+
 ## 玩法与操作
 
 - 默认 8×8 棋盘，每轮三块，三块用完后才补充下一组。自由、经典和闯关前两关保持普通 3–5 格，前两关必要时可用 1–2 格教学救援；第 3 关起收集模式使用独立 2–9 格形状池，不影响公共形状配置。

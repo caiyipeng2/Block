@@ -133,6 +133,14 @@ func _process(delta: float) -> void:
 		move_feedback.set_board_offset(board_shake_offset)
 	queue_redraw()
 
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST and OS.has_feature("android"):
+		# Android's system back uses the same pause/menu path as desktop Esc.
+		var back_event := InputEventKey.new()
+		back_event.keycode = KEY_ESCAPE
+		back_event.pressed = true
+		_input(back_event)
+
 func _input(event: InputEvent) -> void:
 	if exiting:
 		return
