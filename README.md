@@ -1,6 +1,6 @@
 # Block
 
-Godot 4.7 的桌面方块消除游戏：拖动方块、填满行或列并消除，无时间限制。当前源码为 `0.8.3`，提供自由、经典和闯关三种模式，采用蓝色背景、凹槽棋盘和立体斜面方块。
+Godot 4.7 的方块消除游戏：拖动方块、填满行或列并消除，无时间限制。当前源码为 `0.8.4`，提供自由、经典和闯关三种模式，采用蓝色背景、凹槽棋盘和立体斜面方块，支持Windows与Android。
 
 项目仓库：[caiyipeng2/Block](https://github.com/caiyipeng2/Block)。本地交付、提交和推送状态以本次交付记录为准。
 
@@ -12,7 +12,7 @@ Godot 4.7 的桌面方块消除游戏：拖动方块、填满行或列并消除�
 
 默认面向 Windows 桌面鼠标输入，渲染配置为 Forward Plus / D3D12。
 
-Android首包已构建：`dist/Block-0.8.3-android-release.apk` 已安装三星SM-S9280，另有同签名Google Play `.aab`。Android使用竖屏、Compatibility和触屏模拟鼠标，版本 `0.8.3 (1)`、包名 `com.funblockstudio.block`。包结构/签名/16KB已本地检查，手机游玩与后台上传仍待确认。见 [Android发布与签名备份](docs/Block-Blast-Godot-Android发布.md)。
+Android当前版 `0.8.4 (2)` 修复约12秒背景音乐循环越界导致的三星闪退，加入安全区域、dp字号/按钮、统一备选块和手指上方拖动。候选版已在SM-S9280观察超过7分钟，无新崩溃，菜单/结束面板截图已核对；最终APK/AAB及签名说明见 [Android发布](docs/Block-Blast-Godot-Android发布.md)。包名仍为 `com.funblockstudio.block`，用户关卡和最高分保留。
 
 ## 玩法与操作
 
@@ -50,6 +50,7 @@ Android首包已构建：`dist/Block-0.8.3-android-release.apk` 已安装三星S
 
 ## 第二阶段美术与反馈
 
+- `0.8.4` 修复背景PCM音乐循环终点读取尾后帧，保留声音和音乐；Android按安全区与dp排版，扩大触控/目标/弹窗、整槽选择备选、上提拖动并统一预览/释放坐标。触摸取消不落子，桌面和计分/供块保持。
 - `0.8.3` 修复特殊图案小尺寸锯齿与切面碎裂：撤下现场三角面星冠，按获选右列重绘宽亮暗面的透明 SVG 图集，嵌槽与独立符号共用图形。无损导入、生成 mipmaps，并由 CanvasTexture 固定线性 mipmap 采样，覆盖棋盘、备选、拖动、回弹、HUD、弹窗与收集飞行。[资源与维护说明](assets/ui/targets/README.md)。
 - `0.8.2` 实装用户确认的「立体提亮预览」右列：方正暖黄褐底托、同形浅槽、窄接触缝，红六角星/黄五角星的明亮凸面折线、金橙五边形的宽亮前面和侧壁；已有蓝钻按同一结构兼容。棋盘/备选/拖动/回弹/清除使用嵌合图案，HUD/开局/飞行/结果使用同款独立图案。普通块与规则不改。[获选原图与说明](docs/art/README.md)随项目保存。
 - `0.8.1` 修复极小消除碎片引起 `Invalid polygon data, triangulation failed` 连续刷屏：≤4px 碎片使用简单矩形，其他小尺寸斜面受扣边后的面宽限制，避免顶点重合/交叉。正常方块材质、供块与反馈规则保持。
@@ -108,6 +109,8 @@ python tools/export_windows.py --godot "E:\Tools\Godot\Godot_v4.7.2-stable_win64
 前一阶段的 `0.1.0` release/debug 包已导出，文件 SHA256、ZIP CRC 与压缩包校验值均匹配，独立 EXE 尚待用户验收。本地已有 `build/`、`dist/` 中的 `0.1.0` 包仍是粉色逻辑基线，**不含当前美术与三种模式**；本轮不重新打包 `0.8.3`，先按 F5 验收源码。当前本机使用已校验的 `work/release-templates/4.7.2.stable` 模板，将来重新打包时追加 `--templates-dir "work/release-templates/4.7.2.stable"`。模板安装、包结构和用户验收步骤见 [Windows 发布说明](docs/Block-Blast-Godot-Windows发布.md)，历史检查证据见 [验收记录](docs/Block-Blast-Godot-验收记录.md)。
 
 ## 当前开发状态（2026-10-19）
+
+`0.8.4` 已将三星两次AudioTrack SIGSEGV定位到第264600帧尾后读取，终点改为最后可读帧264599；七份语法检查通过，独立静态复核无剩余重要问题。用户明确授权真机启动、前台观察及界面截图，候选版进程持续超过7分钟、活动音轨约437秒，没有新的退出/崩溃记录。尚不能将有限观察等同所有玩法和系统场景验收通过。
 
 `0.8.3` 根据实机反馈撤下现场小三角切面，接入宽切面透明 SVG 图集。Godot 无界面资源导入退出 0、无错误；实际纹理 2048×1024，完整 12 级 mipmap，已查看引擎原生 64/32px 单元并核对渐变、透明边和区域映射。六份相关脚本 `--check-only` 均退出 0、无脚本错误，独立静态复核无 P1/P2。未运行游戏、用例或 GUI，未导出新包。停止旧游戏后 F5 对照批准图验收棋盘、托盘、目标栏、拖动和飞行缩放。
 

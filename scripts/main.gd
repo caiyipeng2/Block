@@ -10,6 +10,7 @@ const GameplayControlsScript := preload("res://scripts/ui/gameplay_controls.gd")
 const ModeCatalog := preload("res://scripts/modes/mode_catalog.gd")
 const LevelSelectScript := preload("res://scripts/ui/level_select.gd")
 const MainMenuScript := preload("res://scripts/ui/main_menu.gd")
+const MobileLayout := preload("res://scripts/ui/mobile_layout.gd")
 
 signal quit_requested
 
@@ -40,6 +41,7 @@ var gameplay_ui: Control
 var move_feedback: Control
 var input_locked := false
 var drag_grab_offset := Vector2.ZERO
+var touch_drag_active := false
 var piece_colors: Dictionary = {}
 var pending_move: Dictionary = {}
 var pending_tray: Array[PieceData] = []
@@ -175,6 +177,10 @@ func _input(event: InputEvent) -> void:
 		if event.keycode == KEY_R and screen in ["game", "game_over", "level_complete"]:
 			_request_restart()
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.canceled:
+			_cancel_drag()
+			get_viewport().set_input_as_handled()
+			return
 		if not event.pressed and dragging_index >= 0:
 			_handle_release(event.position)
 			get_viewport().set_input_as_handled()
@@ -183,6 +189,7 @@ func _input(event: InputEvent) -> void:
 		if screen != "game" or paused or input_locked or event.position.y < _header_height():
 			return
 		if event.pressed:
+			touch_drag_active = MobileLayout.is_mobile() and event.device == InputEvent.DEVICE_ID_EMULATION
 			_handle_press(event.position)
 		else:
 			_handle_release(event.position)
@@ -224,7 +231,11 @@ func _handle_press(position: Vector2) -> void:
 			dragging_index = index
 			drag_mouse = position
 			var piece: PieceData = game.remaining_pieces[index]
-			drag_grab_offset = (position - _tray_piece_origin(index, piece)) / _tray_unit(index, piece)
+			if touch_drag_active:
+				var bounds := _piece_bounds(piece)
+				drag_grab_offset = Vector2(bounds.position) + Vector2(bounds.size) * 0.5
+			else:
+				drag_grab_offset = (position - _tray_piece_origin(index, piece)) / _tray_unit(index, piece)
 			_update_drag_preview()
 
 func _handle_release(position: Vector2) -> void:
@@ -238,7 +249,7 @@ func _handle_release(position: Vector2) -> void:
 	_update_drag_preview()
 	var index := dragging_index
 	var origin := drag_origin
-	var valid := drag_valid and _board_rect().has_point(position)
+	var valid := drag_valid and _board_rect().has_point(_drag_anchor(position))
 	var piece: PieceData = game.remaining_pieces[index] if index >= 0 else null
 	var from_origin := _floating_origin(position)
 	_cancel_drag()
@@ -615,7 +626,20 @@ func _show_confirmation(action: String) -> void:
 		confirmation_dialog.title = "确认返回" + destination
 		confirmation_dialog.dialog_text = "返回%s后，本局棋盘不会保存。\n最高分、通关记录和设置会保留。" % destination
 		confirmation_dialog.ok_button_text = "确定返回" + destination
-	confirmation_dialog.popup_centered(Vector2i(440, 190))
+	if MobileLayout.is_mobile():
+		var content := MobileLayout.safe_content_rect(self)
+		var unit := MobileLayout.dp(self, 1.0)
+		var popup_width := minf(content.size.x - 24.0 * unit, 420.0 * unit)
+		confirmation_dialog.min_size = Vector2i(roundi(popup_width), roundi(170.0 * unit))
+		confirmation_dialog.get_label().add_theme_font_size_override("font_size", roundi(16.0 * unit))
+		confirmation_dialog.cancel_button_text = "取消"
+		confirmation_dialog.ok_button_text = "重新开始" if action == "restart" else "确定返回"
+		for button: Button in [confirmation_dialog.get_ok_button(), confirmation_dialog.get_cancel_button()]:
+			button.custom_minimum_size = Vector2(popup_width * 0.42, MobileLayout.touch_target(self))
+			button.add_theme_font_size_override("font_size", roundi(16.0 * unit))
+		confirmation_dialog.popup_centered(Vector2i(roundi(popup_width), roundi(190.0 * unit)))
+	else:
+		confirmation_dialog.popup_centered(Vector2i(440, 190))
 	# Default keyboard focus stays on the non-destructive choice.
 	confirmation_dialog.get_cancel_button().grab_focus()
 	queue_redraw()
@@ -649,6 +673,7 @@ func _cancel_drag() -> void:
 	drag_valid = false
 	drag_origin = Vector2i(-99, -99)
 	drag_grab_offset = Vector2.ZERO
+	touch_drag_active = false
 	preview_clear_colors.clear()
 	clear_preview.reset()
 	queue_redraw()
@@ -1028,6 +1053,11 @@ func _layout_controls() -> void:
 	_set_control_rect(setting_controls["screen_shake"], _settings_shake_rect())
 	_set_control_rect(settings_controls.get_node("BackButton"), _settings_back_button_rect())
 	_set_control_rect(settings_controls.get_node("PreviewSoundButton"), _settings_preview_button_rect())
+	if MobileLayout.is_mobile():
+		for key: String in setting_controls:
+			setting_controls[key].add_theme_font_size_override("font_size", roundi(MobileLayout.dp(self, 16.0)))
+		for button_name in ["BackButton", "PreviewSoundButton"]:
+			settings_controls.get_node(button_name).add_theme_font_size_override("font_size", roundi(MobileLayout.dp(self, 16.0)))
 	_check_progress_milestones()
 
 func _set_control_rect(control: Control, rect: Rect2) -> void:
@@ -1102,6 +1132,8 @@ func _tray_hit(position: Vector2) -> int:
 		return -1
 	for index in range(game.remaining_pieces.size()):
 		var piece: PieceData = game.remaining_pieces[index]
+		if MobileLayout.is_mobile() and _tray_slot_rect(index).has_point(position):
+			return index
 		var unit := _tray_unit(index, piece)
 		var origin := _tray_piece_origin(index, piece)
 		for cell in piece.cells:
@@ -1116,6 +1148,10 @@ func _board_size() -> int:
 	return game.board.size if game != null else rules_config.board_size
 
 func _header_height() -> float:
+	if MobileLayout.is_mobile():
+		var content := MobileLayout.safe_content_rect(self)
+		var target := MobileLayout.touch_target(self)
+		return content.position.y + (maxf(clampf(content.size.y * 0.15, 200.0, 260.0), target * 2.4) if _is_collect_mode() else maxf(clampf(content.size.y * 0.20, 240.0, 330.0), target * 2.8))
 	# Resolve from the new game's state, before HUD set_mode has changed modes.
 	if _is_collect_mode():
 		return maxf(clampf(size.y * 0.15, 116.0, 180.0), 132.0 if size.y > size.x else 116.0)
@@ -1129,6 +1165,8 @@ func _header_height() -> float:
 	return height
 
 func _tray_height() -> float:
+	if MobileLayout.is_mobile():
+		return float(_tray_max_bounds().y) * _tray_preferred_unit() + MobileLayout.dp(self, 36.0)
 	var base_height := clampf(size.y * 0.21, 148.0, 230.0) if _is_collect_mode() else clampf(size.y * 0.16, 128.0, 190.0)
 	var padding := 32.0 if _is_collect_mode() else 52.0
 	return maxf(base_height, float(_tray_max_bounds().y) * _tray_preferred_unit() + padding)
@@ -1136,6 +1174,11 @@ func _tray_height() -> float:
 func _tray_preferred_unit() -> float:
 	# A common UI scale keeps the same cell size across game modes. Reserve
 	# space for long shapes first, rather than reducing collection pieces.
+	if MobileLayout.is_mobile():
+		var content_width := MobileLayout.safe_content_rect(self).size.x
+		var columns := float(maxi(1, rules_config.tray_count))
+		var slot_width := (content_width - MobileLayout.dp(self, 24.0) - (columns - 1.0) * MobileLayout.dp(self, 10.0)) / columns
+		return maxf(8.0, minf(content_width / 18.0, (slot_width - MobileLayout.dp(self, 8.0)) / 5.0))
 	var ui_scale := minf(size.x / 1280.0, size.y / 720.0)
 	return clampf(roundf(24.0 * ui_scale), 8.0, 48.0)
 
@@ -1147,6 +1190,14 @@ func _visible_tray() -> Array[PieceData]:
 func _tray_slot_rect(index: int) -> Rect2:
 	var count := maxi(1, rules_config.tray_count)
 	var inner_padding := 12.0 if _is_collect_mode() else 24.0
+	if MobileLayout.is_mobile():
+		var content := MobileLayout.safe_content_rect(self)
+		var gap := MobileLayout.dp(self, 10.0)
+		var margin := MobileLayout.dp(self, 12.0)
+		var width := maxf(1.0, content.size.x - margin * 2.0)
+		var slot_width := maxf(1.0, (width - float(count - 1) * gap) / float(count))
+		var tray_top := _board_rect().end.y + MobileLayout.dp(self, 48.0)
+		return Rect2(Vector2(content.position.x + margin + float(index) * (slot_width + gap), tray_top), Vector2(slot_width, _tray_height() - MobileLayout.dp(self, 12.0)))
 	var required_slot_width := float(_tray_max_bounds().x) * _tray_preferred_unit() + inner_padding
 	var required_width := float(count) * required_slot_width + float(count - 1) * 16.0
 	var tray_width := minf(size.x - BOARD_MARGIN * 2.0, maxf(maxf(_board_rect().size.x, 440.0), required_width))
@@ -1190,6 +1241,8 @@ func _tray_unit(_index: int, _piece: PieceData) -> float:
 	var extent := _tray_max_bounds()
 	var slot := _tray_slot_rect(0)
 	var padding := Vector2(12.0, 12.0) if _is_collect_mode() else Vector2(24.0, 20.0)
+	if MobileLayout.is_mobile():
+		padding = Vector2.ONE * MobileLayout.dp(self, 8.0)
 	var available := (slot.size - padding).max(Vector2.ONE)
 	var fit := minf(available.x / float(extent.x), available.y / float(extent.y))
 	return minf(_tray_preferred_unit(), fit)
@@ -1204,29 +1257,54 @@ func _tray_piece_origin(index: int, piece: PieceData) -> Vector2:
 	return slot.position + (slot.size - Vector2(bounds.size) * unit) * 0.5 - Vector2(bounds.position) * unit
 
 func _floating_origin(position: Vector2) -> Vector2:
-	return position - drag_grab_offset * _cell_size()
+	return _drag_anchor(position) - drag_grab_offset * _cell_size()
+
+func _drag_anchor(position: Vector2) -> Vector2:
+	# Use the same lifted anchor for the held piece, preview and release.
+	return position - Vector2(0.0, MobileLayout.dp(self, 64.0)) if touch_drag_active else position
 
 func _settings_panel_rect() -> Rect2:
+	if MobileLayout.is_mobile():
+		var content := MobileLayout.safe_content_rect(self)
+		var panel_size := Vector2(minf(content.size.x - MobileLayout.dp(self, 24.0), MobileLayout.dp(self, 420.0)), minf(content.size.y - MobileLayout.dp(self, 16.0), MobileLayout.dp(self, 416.0)))
+		return Rect2(content.get_center() - panel_size * 0.5, panel_size)
 	var panel_size := Vector2(minf(470.0, size.x - 40.0), 530.0)
 	return Rect2((size - panel_size) * 0.5, panel_size)
 
 func _settings_sound_rect() -> Rect2:
+	if MobileLayout.is_mobile():
+		return _mobile_settings_row(0)
 	return Rect2(_settings_panel_rect().position + Vector2(26, 84), Vector2(_settings_panel_rect().size.x - 52, 52))
 
 func _settings_music_rect() -> Rect2:
+	if MobileLayout.is_mobile():
+		return _mobile_settings_row(1)
 	return Rect2(_settings_panel_rect().position + Vector2(26, 152), Vector2(_settings_panel_rect().size.x - 52, 52))
 
 func _settings_motion_rect() -> Rect2:
+	if MobileLayout.is_mobile():
+		return _mobile_settings_row(2)
 	return Rect2(_settings_panel_rect().position + Vector2(26, 220), Vector2(_settings_panel_rect().size.x - 52, 52))
 
 func _settings_shake_rect() -> Rect2:
+	if MobileLayout.is_mobile():
+		return _mobile_settings_row(3)
 	return Rect2(_settings_panel_rect().position + Vector2(26, 288), Vector2(_settings_panel_rect().size.x - 52, 52))
 
 func _settings_back_button_rect() -> Rect2:
+	if MobileLayout.is_mobile():
+		return _mobile_settings_row(5)
 	return Rect2(_settings_panel_rect().position + Vector2(26, 428), Vector2(_settings_panel_rect().size.x - 52, 54))
 
 func _settings_preview_button_rect() -> Rect2:
+	if MobileLayout.is_mobile():
+		return _mobile_settings_row(4)
 	return Rect2(_settings_panel_rect().position + Vector2(26, 360), Vector2(_settings_panel_rect().size.x - 52, 48))
+
+func _mobile_settings_row(index: int) -> Rect2:
+	var panel := _settings_panel_rect()
+	var unit := MobileLayout.dp(self, 1.0)
+	return Rect2(panel.position + Vector2(16.0, 56.0 + float(index) * 58.0) * unit, Vector2(maxf(1.0, panel.size.x - 32.0 * unit), 48.0 * unit))
 
 func _restart_button_rect() -> Rect2:
 	return gameplay_ui.get_restart_rect() if gameplay_ui != null else Rect2()
@@ -1235,6 +1313,12 @@ func _menu_button_rect() -> Rect2:
 	return gameplay_ui.get_menu_rect() if gameplay_ui != null else Rect2()
 
 func _board_rect() -> Rect2:
+	if MobileLayout.is_mobile():
+		var content := MobileLayout.safe_content_rect(self)
+		var top := _header_height() + MobileLayout.dp(self, 16.0)
+		var available := content.end.y - top - _tray_height() - MobileLayout.dp(self, 88.0)
+		var board_side := maxf(48.0, minf(content.size.x - MobileLayout.dp(self, 24.0), available))
+		return Rect2(Vector2(content.get_center().x - board_side * 0.5, top), Vector2.ONE * board_side)
 	var top := _header_height() + (16.0 if _is_collect_mode() else (64.0 if game_mode == "adventure" else 48.0))
 	# Keep distinct bands for the notice, tray and bottom instruction.
 	var available_height := size.y - _tray_height() - top - (58.0 if _is_collect_mode() else 84.0)
@@ -1263,7 +1347,7 @@ func _update_drag_preview() -> void:
 		return
 	var piece: PieceData = game.remaining_pieces[dragging_index]
 	drag_origin = _board_origin_from_mouse(drag_mouse, piece)
-	drag_valid = _board_rect().has_point(drag_mouse) and game.board.can_place(piece, drag_origin)
+	drag_valid = _board_rect().has_point(_drag_anchor(drag_mouse)) and game.board.can_place(piece, drag_origin)
 	preview_clear_colors.clear()
 	if drag_valid:
 		var preview_board := game.board.duplicate_board()
@@ -1298,14 +1382,16 @@ func _draw_background() -> void:
 func _draw_settings() -> void:
 	var panel := _settings_panel_rect()
 	draw_style_box(Art.panel_style(Color("#1c3055"), 22, Color("#6284bb")), panel)
-	_draw_centered_text("设置", panel.position.y + 50, 30, rules_config.text_color)
+	var mobile := MobileLayout.is_mobile()
+	_draw_centered_text("设置", panel.position.y + (MobileLayout.dp(self, 32.0) if mobile else 50.0), roundi(MobileLayout.dp(self, 24.0)) if mobile else 30, rules_config.text_color)
 	var notice := "切换立即生效并自动保存" if save_status_text.is_empty() else save_status_text
-	_draw_centered_text(notice, panel.position.y + 507, 14, Color("#a8c1e5") if save_status_text.is_empty() else Color("#ffbd9c"))
+	_draw_centered_text(notice, panel.end.y - MobileLayout.dp(self, 8.0) if mobile else panel.position.y + 507, roundi(MobileLayout.dp(self, 12.0)) if mobile else 14, Color("#a8c1e5") if save_status_text.is_empty() else Color("#ffbd9c"))
 
 func _draw_centered_text(text: String, baseline: float, font_size: int, color: Color) -> void:
 	var width := ThemeDB.fallback_font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
-	draw_string(ThemeDB.fallback_font, Vector2((size.x - width) * 0.5, baseline + 2.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(0.035, 0.06, 0.14, 0.65))
-	draw_string(ThemeDB.fallback_font, Vector2((size.x - width) * 0.5, baseline), text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, color)
+	var center_x := MobileLayout.safe_content_rect(self).get_center().x if MobileLayout.is_mobile() else size.x * 0.5
+	draw_string(ThemeDB.fallback_font, Vector2(center_x - width * 0.5, baseline + 2.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(0.035, 0.06, 0.14, 0.65))
+	draw_string(ThemeDB.fallback_font, Vector2(center_x - width * 0.5, baseline), text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, color)
 
 func _draw_game() -> void:
 	if game == null:
@@ -1313,7 +1399,9 @@ func _draw_game() -> void:
 	_draw_board()
 	_draw_tray()
 	var hint_y := minf(_tray_slot_rect(0).end.y + 22.0, size.y - 8.0)
-	_draw_centered_text("选择一块，拖到棋盘" if dragging_index < 0 else "松开放置", hint_y, 14, Color("#b3cbed"))
+	if MobileLayout.is_mobile():
+		hint_y = minf(_tray_slot_rect(0).end.y + MobileLayout.dp(self, 20.0), MobileLayout.safe_content_rect(self).end.y - MobileLayout.dp(self, 8.0))
+	_draw_centered_text("选择一块，拖到棋盘" if dragging_index < 0 else "松开放置", hint_y, roundi(MobileLayout.dp(self, 14.0)) if MobileLayout.is_mobile() else 14, Color("#b3cbed"))
 
 func _draw_board() -> void:
 	var rect := _board_rect()

@@ -1,16 +1,18 @@
 # Android APK / AAB 发布
 
-首次交付：2026-10-19；游戏版本 `0.8.3`，Android `versionCode=1`。用户确认首次包名与独立本机上传签名。
+首次交付：2026-10-19；当前游戏版本 `0.8.4`，Android `versionCode=2`。沿用首次确认的包名和独立上传签名。
 
 ## 文件与用途
 
-- `dist/Block-0.8.3-android-release.apk`：手机直接安装，约30MB。
-- `dist/Block-0.8.3-android-release.aab`：Google Play 后台上传，约30MB。
-- 两包旁有 `.sha256`；最终字节数、SHA256和验证摘要在 `dist/Block-0.8.3-android-build-info.json`。
+- `dist/Block-0.8.4-android-release.apk`：手机更新安装。
+- `dist/Block-0.8.4-android-release.aab`：Google Play 后台上传。
+- 两包旁有 `.sha256`；最终字节数、SHA256和摘要在 `dist/Block-0.8.4-android-build-info.json`。
 
-包名 `com.funblockstudio.block`，版本 `0.8.3 (1)`；Android7/API24起，目标Android16/API36，仅 `arm64-v8a`，游戏分类。Android采用720×1280竖屏基准、Compatibility/OpenGL ES3、触摸模拟鼠标，系统返回复用Escape暂停/返回逻辑。不申请网络或存储权限。
+包名 `com.funblockstudio.block`，版本 `0.8.4 (2)`；Android7/API24起，目标Android16/API36，仅 `arm64-v8a`，游戏分类。Android采用720×1280竖屏基准、Compatibility/OpenGL ES3、触摸模拟鼠标，系统返回复用Escape暂停/返回逻辑。不申请网络或存储权限。
 
-本轮APK已安装到三星 **SM-S9280 / Android16**，读取手机base.apk的SHA256与交付APK一致。仅安装及核对，没有自动启动游戏或进行点击、拖动、声音验收。同工作区合入的BoardView/托盘类型修复由最终构建一起带入；具体源码快照以构建记录的 `source_commit` / `source_dirty` 为准。
+三星 **SM-S9280 / Android16** 当前1080×2340、450dpi。0.8.3首包出现约13秒闪退，已从两次tombstone精确定位到背景音乐PCM循环尾后帧读取；0.8.4将终点改为最后可读帧。用户明确授权后，候选版在真机前台运行超过7分钟，音频活动记录约437秒，无新崩溃；已核对菜单/结束面板截图。有限观察不代表全部玩法验收，具体包源码快照以构建记录为准。
+
+手机适配采用DisplayServer安全区和物理窗口交集，再逆变换到逻辑坐标；摄像头和导航栏保底留白，48dp操作按钮、可读字号、较宽弹窗、统一托盘单格与整槽触控。模拟触摸拖动上提64dp，绘制/预览/释放共用anchor，系统取消触摸只撤销、不落子。桌面尺寸分支与三模式玩法保持。
 
 AAB已完成本地验证，**尚未上传或经Play Console接收**。在Google Play对应应用的测试轨道/版本页上传上述 `.aab`，再按后台完成Play App Signing、商店资料与内容声明。本轮不包含后台账号操作。
 
@@ -33,7 +35,7 @@ AAB已完成本地验证，**尚未上传或经Play Console接收**。在Google 
 - `credentials.json`：本机alias/password；不要提交或粘贴到聊天。
 - `block-upload-certificate.pem`：公开证书。
 
-请安全备份以上三项。后续上传使用同一上传密钥，并将两个预设的 `version/code` 同时递增，下一次至少为 `2`。启用Play App Signing后，后台应用签名与本地上传密钥可能不同；本地APK使用上传密钥签名。
+请安全备份以上三项。后续上传使用同一上传密钥，并将两个预设的 `version/code` 同时递增，下一次至少为 `3`。启用Play App Signing后，后台应用签名与本地上传密钥可能不同；本地APK使用上传密钥签名。
 
 ## 重新打包
 
@@ -48,7 +50,7 @@ python tools/export_android.py --godot "C:/Users/EDY/Downloads/Godot_v4.7.2-stab
 ## 三星安装
 
 ```powershell
-& "D:/Unity/Editor/Data/PlaybackEngines/AndroidPlayer/SDK/platform-tools/adb.exe" -s R5CX211TXNT install --no-incremental -r "dist/Block-0.8.3-android-release.apk"
+& "D:/Unity/Editor/Data/PlaybackEngines/AndroidPlayer/SDK/platform-tools/adb.exe" -s R5CX211TXNT install --no-incremental -r "dist/Block-0.8.4-android-release.apk"
 ```
 
 本机Unity旧ADB和Godot新版ADB会抢占5037端口，使用当前服务同版客户端即可；无需关闭编辑器或删除用户数据。此次增量安装失败后自动回退streamed成功，后续显式 `--no-incremental` 可直接安装。

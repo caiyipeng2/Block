@@ -12,6 +12,7 @@ const Art := preload("res://scripts/ui/block_art.gd")
 const ModeButton := preload("res://scripts/ui/menu_mode_button.gd")
 const MenuLogo := preload("res://scripts/ui/menu_logo.gd")
 const IconButton := preload("res://scripts/ui/art_icon_button.gd")
+const MobileLayout := preload("res://scripts/ui/mobile_layout.gd")
 const OPENING_DURATION := 2.20
 const RETURN_DURATION := 0.30
 const MODE_FACE_ASPECT := 877.0 / 213.0
@@ -34,6 +35,7 @@ var _reduced_motion := false
 var _elapsed := 0.0
 var _font: Font
 var _best_rect := Rect2()
+var _content_rect := Rect2()
 var _epoch := 0
 var _skip_key_release := 0
 var _skip_mouse_release := false
@@ -235,6 +237,10 @@ func _label(font_size: int, color: Color) -> Label:
 func _layout_controls() -> void:
 	if not is_instance_valid(_logo):
 		return
+	_content_rect = MobileLayout.safe_content_rect(self)
+	if MobileLayout.is_mobile():
+		_layout_mobile_controls()
+		return
 	var scale_factor := clampf(size.y / 720.0, 0.62, 1.0)
 	var logo_width := minf(minf(400.0, maxf(size.x - 56.0, 120.0)), size.y * 0.55)
 	_logo.size = Vector2(logo_width, minf(logo_width * 0.47, size.y * (0.18 if size.y < 420.0 else 0.24)))
@@ -274,6 +280,51 @@ func _layout_controls() -> void:
 	_skip.position = Vector2(16.0, size.y - 47.0)
 	_skip.size = Vector2(maxf(size.x - 32.0, 0.0), 24.0)
 
+func _layout_mobile_controls() -> void:
+	var area := _content_rect
+	var unit := MobileLayout.dp(self, 1.0)
+	var padding := 20.0 * unit
+	var target := MobileLayout.touch_target(self)
+	var logo_width := minf(area.size.x * 0.72, 286.0 * unit)
+	_logo.size = Vector2(logo_width, logo_width * 0.47)
+	_logo.pivot_offset = _logo.size * 0.5
+	_logo_destination = area.position + Vector2((area.size.x - logo_width) * 0.5, area.size.y * 0.105)
+	var settings: Control = get_node("SettingsButton")
+	settings.size = Vector2.ONE * target
+	settings.tooltip_text = ""
+	settings.position = Vector2(area.end.x - padding - target, area.position.y + 12.0 * unit)
+	var exit_button: Button = get_node("ExitButton")
+	exit_button.size = Vector2(150.0 * unit, target)
+	exit_button.position = Vector2(area.get_center().x - exit_button.size.x * 0.5, area.end.y - 40.0 * unit - target)
+	exit_button.add_theme_font_size_override("font_size", roundi(18.0 * unit))
+	_best_rect = Rect2(Vector2(area.get_center().x - 120.0 * unit, _logo_destination.y + _logo.size.y + 12.0 * unit), Vector2(240.0, 32.0) * unit)
+	_best.position = _best_rect.position + Vector2(28.0 * unit, 0.0)
+	_best.size = _best_rect.size - Vector2(34.0 * unit, 0.0)
+	_best.add_theme_font_size_override("font_size", roundi(17.0 * unit))
+	var minimum_top := _best_rect.end.y + 28.0 * unit
+	var stack_end := exit_button.position.y - 24.0 * unit
+	var stack_space := maxf(stack_end - minimum_top, 0.0)
+	# Keep the approved face's proportions, with a mobile width independent of
+	# the intentionally compact desktop menu and a real finger-size target.
+	var button_height := minf(minf(area.size.x * 0.80, 330.0 * unit) / MODE_FACE_ASPECT, stack_space / 3.48)
+	var width := button_height * MODE_FACE_ASPECT
+	var gap := button_height * 0.24
+	var lowest_top := stack_end - button_height * 3.0 - gap * 2.0
+	var top := clampf(area.position.y + area.size.y * 0.49, minf(minimum_top, lowest_top), lowest_top)
+	_destinations.clear()
+	for index in range(_buttons.size()):
+		var button: Button = _buttons[index]
+		button.size = Vector2(width, button_height)
+		button.pivot_offset = button.size * 0.5
+		_destinations[button.name] = Vector2(area.get_center().x - width * 0.5, top + float(index) * (button_height + gap))
+	_warning.position = Vector2(area.position.x + padding, area.end.y - 22.0 * unit)
+	_warning.size = Vector2(maxf(area.size.x - padding * 2.0, 0.0), 20.0 * unit)
+	_warning.add_theme_font_size_override("font_size", roundi(12.0 * unit))
+	_skip.position = Vector2(area.position.x + padding, area.end.y - 28.0 * unit)
+	_skip.size = Vector2(maxf(area.size.x - padding * 2.0, 0.0), 24.0 * unit)
+	_skip.add_theme_font_size_override("font_size", roundi(13.0 * unit))
+	_skip.text = "轻触屏幕跳过"
+
 func _settle_controls() -> void:
 	_logo.position = _logo_destination
 	_logo.scale = Vector2.ONE
@@ -304,7 +355,7 @@ func _apply_opening(elapsed: float) -> void:
 	_elapsed = elapsed
 	var title_in := smoothstep(0.52, 0.92, elapsed)
 	var move_up := smoothstep(1.10, 1.68, elapsed)
-	var centered := Vector2((size.x - _logo.size.x) * 0.5, size.y * 0.34 - _logo.size.y * 0.5)
+	var centered := _content_rect.position + Vector2((_content_rect.size.x - _logo.size.x) * 0.5, _content_rect.size.y * 0.34 - _logo.size.y * 0.5)
 	_logo.visible = title_in > 0.0
 	_logo.position = centered.lerp(_logo_destination, move_up)
 	_logo.scale = Vector2.ONE * (0.70 + title_in * 0.30 + sin(title_in * PI) * 0.10)
@@ -351,13 +402,14 @@ func _draw() -> void:
 		_draw_spinner()
 	if not _opening and size.y >= 560.0:
 		draw_style_box(Art.panel_style(Color(0.06, 0.23, 0.50, 0.34), 16, Color(0.63, 0.87, 1.0, 0.20)), _best_rect)
-		Art.draw_icon(self, "crown", Rect2(_best_rect.position + Vector2(14.0, 5.0), Vector2(22.0, 22.0)), Color("#ffda64"))
+		var icon_scale := MobileLayout.dp(self, 1.0)
+		Art.draw_icon(self, "crown", Rect2(_best_rect.position + Vector2(14.0, 5.0) * icon_scale, Vector2(22.0, 22.0) * icon_scale), Color("#ffda64"))
 
 func _draw_studio() -> void:
 	var alpha := smoothstep(0.0, 0.14, _elapsed) * (1.0 - smoothstep(0.44, 0.66, _elapsed))
 	if alpha <= 0.0 or _font == null:
 		return
-	var center := size * Vector2(0.5, 0.42)
+	var center := _content_rect.position + _content_rect.size * Vector2(0.5, 0.42)
 	var unit := clampf(minf(size.x, size.y) * 0.039, 13.0, 25.0)
 	var cells := [Vector2(0, 0), Vector2(1, 0), Vector2(0, 1), Vector2(1, 1)]
 	for index in range(cells.size()):
@@ -373,7 +425,7 @@ func _draw_spinner() -> void:
 	if alpha <= 0.0:
 		return
 	var unit := clampf(minf(size.x, size.y) * 0.025, 10.0, 17.0)
-	var center := Vector2(size.x * 0.5, size.y * 0.55)
+	var center := _content_rect.position + _content_rect.size * Vector2(0.5, 0.55)
 	draw_set_transform(center, (_elapsed - 0.8) * 4.0)
 	for cell: Vector2 in [Vector2(-1.5, -0.5), Vector2(-0.5, -0.5), Vector2(0.5, -0.5), Vector2(-1.5, 0.5)]:
 		Art.draw_block(self, Rect2(cell * unit, Vector2.ONE * (unit - 1.0)), Color("#ffd149"), alpha)

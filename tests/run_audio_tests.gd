@@ -162,7 +162,9 @@ func _test_music_stream() -> void:
 		_expect_pcm(stream, "music")
 		_expect(stream.loop_mode == AudioStreamWAV.LOOP_FORWARD, "background melody loops forward")
 		_expect(stream.loop_begin == 0, "music loop starts at the first frame")
-		_expect(stream.loop_end == stream.data.size() / 2, "music loop covers all mono PCM frames")
+		var pcm_frames := stream.data.size() / 2
+		_expect(stream.loop_begin < stream.loop_end and stream.loop_end < pcm_frames, "inclusive music loop endpoints stay inside mono PCM data")
+		_expect(stream.loop_end == pcm_frames - 1, "music loop ends at the last readable PCM frame")
 		_expect(stream.get_length() >= 4.0 and stream.get_length() <= 16.0, "background is a short complete melody")
 		var levels := _effective_levels(stream, audio.music_player.volume_db)
 		_expect(float(levels["rms"]) >= 0.025, "music effective RMS is audible")

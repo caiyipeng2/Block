@@ -15,6 +15,7 @@ signal objective_intro_dismissed
 const BlockArt := preload("res://scripts/ui/block_art.gd")
 const ArtIconButton := preload("res://scripts/ui/art_icon_button.gd")
 const ProgressBanner := preload("res://scripts/ui/progress_banner.gd")
+const MobileLayout := preload("res://scripts/ui/mobile_layout.gd")
 const MODE_HIDDEN := "hidden"
 const MODE_PLAYING := "playing"
 const MODE_PAUSED := "paused"
@@ -268,10 +269,12 @@ func _draw_collect_targets() -> void:
 			draw_circle(rect.get_center(), rect.size.x * (0.55 + (1.0 - pulse) * 0.3), Color(0.65, 0.95, 1.0, pulse * 0.16))
 		BlockArt.draw_target_marker(self, marker_rect, 1.0, 1.0 + pulse * 0.5, kind)
 		var count_rect := Rect2(rect.get_center().x - 35.0, rect.end.y + 1.0, 70.0, 24.0)
+		if MobileLayout.is_mobile():
+			count_rect = Rect2(rect.position.x - MobileLayout.dp(self, 5.0), rect.end.y + MobileLayout.dp(self, 1.0), rect.size.x + MobileLayout.dp(self, 10.0), MobileLayout.dp(self, 22.0))
 		if _remaining_count(kind) <= 0:
-			_draw_check(self, count_rect.get_center(), 9.0, 1.0)
+			_draw_check(self, count_rect.get_center(), MobileLayout.dp(self, 9.0), 1.0)
 		else:
-			_draw_centered_text(self, str(_remaining_count(kind)), count_rect, 22, Color.WHITE)
+			_draw_centered_text(self, str(_remaining_count(kind)), count_rect, int(MobileLayout.dp(self, 16.0)) if MobileLayout.is_mobile() else 22, Color.WHITE)
 
 func _draw_check(canvas: CanvasItem, center: Vector2, side: float, opacity: float) -> void:
 	var points := PackedVector2Array([center + Vector2(-side * 0.70, 0.0), center + Vector2(-side * 0.12, side * 0.48), center + Vector2(side * 0.78, -side * 0.60)])
@@ -342,12 +345,15 @@ func _draw_overlay_objective_badge() -> void:
 			return
 		var spacing := minf(64.0, _overlay_objective_badge.size.x / float(maxi(kinds.size(), 1)))
 		var marker_side := minf(48.0, spacing * 0.80)
+		if MobileLayout.is_mobile():
+			spacing = minf(MobileLayout.dp(self, 64.0), _overlay_objective_badge.size.x / float(maxi(kinds.size(), 1)))
+			marker_side = minf(MobileLayout.dp(self, 48.0), spacing * 0.80)
 		for index in range(kinds.size()):
 			var marker_center := center + Vector2((float(index) - float(kinds.size() - 1) * 0.5) * spacing, 0.0)
 			BlockArt.draw_target_marker(_overlay_objective_badge, Rect2(marker_center - Vector2.ONE * marker_side * 0.5, Vector2.ONE * marker_side), 1.0, 1.0, kinds[index])
 	else:
-		_overlay_objective_badge.draw_circle(center, 25.0, Color("#293660"))
-		BlockArt.draw_icon(_overlay_objective_badge, "crown", Rect2(center - Vector2.ONE * 20.0, Vector2.ONE * 40.0), GOLD)
+		_overlay_objective_badge.draw_circle(center, MobileLayout.dp(self, 25.0), Color("#293660"))
+		BlockArt.draw_icon(_overlay_objective_badge, "crown", Rect2(center - Vector2.ONE * MobileLayout.dp(self, 20.0), Vector2.ONE * MobileLayout.dp(self, 40.0)), GOLD)
 
 func _victory_time() -> float:
 	return _victory_progress * VICTORY_SEQUENCE_DURATION
@@ -611,6 +617,12 @@ func set_mode(mode: String, stats: Dictionary = {}) -> void:
 	_apply_state(mode_changed)
 
 func header_height() -> float:
+	if MobileLayout.is_mobile():
+		var content := MobileLayout.safe_content_rect(self)
+		var touch := MobileLayout.touch_target(self)
+		if _is_collect_objective():
+			return content.position.y + maxf(clampf(content.size.y * 0.15, 200.0, 260.0), touch * 2.4)
+		return content.position.y + maxf(clampf(content.size.y * 0.20, 240.0, 330.0), touch * 2.8)
 	if _is_collect_objective():
 		return clampf(size.y * 0.15, 132.0 if size.y > size.x else 116.0, 180.0)
 	var height := clampf(size.y * 0.18, 148.0, 210.0)
@@ -924,19 +936,31 @@ func _draw_intro_ribbon() -> void:
 	var style := BlockArt.panel_style(Color("#2c62b4"), 20, Color("#73a9ef"))
 	style.set_border_width_all(2)
 	_intro_card.draw_style_box(style, panel)
-	_intro_card.draw_line(Vector2(32.0, 86.0), Vector2(width - 32.0, 86.0), Color(0.6, 0.8, 1.0, 0.24), 1.0, true)
+	var divider_y := MobileLayout.dp(self, 82.0) if MobileLayout.is_mobile() else 86.0
+	_intro_card.draw_line(Vector2(32.0, divider_y), Vector2(width - 32.0, divider_y), Color(0.6, 0.8, 1.0, 0.24), 1.0, true)
 
 func _draw_intro_targets() -> void:
 	var kinds := _active_target_kinds(_intro_stats)
 	var slot_width := minf(156.0, _intro_targets.size.x / float(kinds.size()))
 	var icon_side := minf(60.0, slot_width * 0.58)
+	var count_height := 30.0
+	var name_height := 18.0
+	var count_font := 28
+	var name_font := 13
+	if MobileLayout.is_mobile():
+		slot_width = minf(MobileLayout.dp(self, 120.0), _intro_targets.size.x / float(kinds.size()))
+		icon_side = minf(MobileLayout.dp(self, 64.0), slot_width * 0.68)
+		count_height = MobileLayout.dp(self, 25.0)
+		name_height = MobileLayout.dp(self, 18.0)
+		count_font = int(MobileLayout.dp(self, 20.0))
+		name_font = int(MobileLayout.dp(self, 12.0))
 	for index in range(kinds.size()):
 		var kind := kinds[index]
 		var center_x := _intro_targets.size.x * 0.5 + (float(index) - float(kinds.size() - 1) * 0.5) * slot_width
 		var icon_rect := Rect2(center_x - icon_side * 0.5, 0.0, icon_side, icon_side)
 		BlockArt.draw_target_marker(_intro_targets, icon_rect, 1.0, 1.0, kind)
-		_draw_centered_text(_intro_targets, str(_target_count(_intro_stats, "target_counts", kind)), Rect2(center_x - slot_width * 0.5 + 4.0, icon_side + 2.0, slot_width - 8.0, 30.0), 28, Color.WHITE)
-		_draw_centered_text(_intro_targets, BlockArt.target_name(kind), Rect2(center_x - slot_width * 0.5 + 4.0, icon_side + 34.0, slot_width - 8.0, 18.0), 13, Color("#d9ebff"))
+		_draw_centered_text(_intro_targets, str(_target_count(_intro_stats, "target_counts", kind)), Rect2(center_x - slot_width * 0.5 + 4.0, icon_side + 2.0, slot_width - 8.0, count_height), count_font, Color.WHITE)
+		_draw_centered_text(_intro_targets, BlockArt.target_name(kind), Rect2(center_x - slot_width * 0.5 + 4.0, icon_side + count_height + 4.0, slot_width - 8.0, name_height), name_font, Color("#d9ebff"))
 
 func _draw_intro_effects() -> void:
 	if not is_objective_intro_visible():
@@ -945,6 +969,9 @@ func _draw_intro_effects() -> void:
 		var kinds := _active_target_kinds(_intro_stats)
 		var slot_width := minf(156.0, _intro_targets.size.x / float(kinds.size()))
 		var icon_side := minf(60.0, slot_width * 0.58)
+		if MobileLayout.is_mobile():
+			slot_width = minf(MobileLayout.dp(self, 120.0), _intro_targets.size.x / float(kinds.size()))
+			icon_side = minf(MobileLayout.dp(self, 64.0), slot_width * 0.68)
 		var target_origin := _intro_targets.global_position - _intro_effects.global_position
 		for index in range(kinds.size()):
 			var progress := clampf((_intro_flight_progress - float(index) * 0.08) / 0.84, 0.0, 1.0)
@@ -952,7 +979,9 @@ func _draw_intro_effects() -> void:
 			var destination := objective_target(kinds[index])
 			var eased := progress * progress * (3.0 - 2.0 * progress)
 			var point := start.lerp(destination, eased) - Vector2(0.0, sin(progress * PI) * 34.0)
-			var side := lerpf(icon_side, 34.0, eased)
+			var destination_rect: Rect2 = _objective_rects.get(kinds[index], Rect2())
+			var destination_side := destination_rect.size.x if MobileLayout.is_mobile() and destination_rect.has_area() else 34.0
+			var side := lerpf(icon_side, destination_side, eased)
 			BlockArt.draw_target_marker(_intro_effects, Rect2(point - Vector2.ONE * side * 0.5, Vector2.ONE * side), 1.0 - clampf((progress - 0.94) / 0.06, 0.0, 1.0), 1.4, kinds[index])
 	if _entry_progress >= 0.0:
 		var field := _effective_playfield()
@@ -978,6 +1007,19 @@ func _layout_objective_intro() -> void:
 	_intro_root.size = size
 	_intro_scrim.position = Vector2.ZERO
 	_intro_scrim.size = size
+	if MobileLayout.is_mobile():
+		var content := MobileLayout.safe_content_rect(self)
+		var mobile_width := minf(content.size.x * 0.96, MobileLayout.dp(self, 420.0))
+		var mobile_height := minf(MobileLayout.dp(self, 306.0), content.size.y)
+		_intro_card.custom_minimum_size.y = MobileLayout.dp(self, 306.0)
+		_intro_scroll.size = Vector2(mobile_width, mobile_height)
+		_intro_scroll.position = content.position + (content.size - _intro_scroll.size) * 0.5
+		_intro_scroll.queue_sort()
+		_layout_objective_intro_content()
+		_intro_effects.position = Vector2.ZERO
+		_intro_effects.size = size
+		_intro_effects.queue_redraw()
+		return
 	var width := minf(680.0, maxf(size.x - 24.0, 1.0))
 	var viewport_height := minf(260.0, maxf(size.y - 24.0, 1.0))
 	_intro_scroll.size = Vector2(width, viewport_height)
@@ -991,6 +1033,9 @@ func _layout_objective_intro() -> void:
 
 func _layout_objective_intro_content() -> void:
 	if not is_instance_valid(_intro_start_button):
+		return
+	if MobileLayout.is_mobile():
+		_layout_mobile_intro_content()
 		return
 	var width := _intro_card.size.x
 	_intro_card.pivot_offset = _intro_card.size * 0.5
@@ -1011,6 +1056,32 @@ func _layout_objective_intro_content() -> void:
 	_intro_start_button.size = Vector2(button_width, 52.0)
 	_intro_skip_hint.position = Vector2(32.0, 238.0)
 	_intro_skip_hint.size = Vector2(inner_width, 18.0)
+	_intro_card.queue_redraw()
+	_intro_targets.queue_redraw()
+
+func _layout_mobile_intro_content() -> void:
+	var width := _intro_card.size.x
+	var padding := MobileLayout.dp(self, 18.0)
+	var inner_width := maxf(width - padding * 2.0, 1.0)
+	_intro_card.pivot_offset = _intro_card.size * 0.5
+	_intro_title.position = Vector2(padding, MobileLayout.dp(self, 8.0))
+	_intro_title.size = Vector2(inner_width, MobileLayout.dp(self, 40.0))
+	_intro_title.add_theme_font_size_override("font_size", int(MobileLayout.dp(self, 24.0)))
+	_intro_subtitle.position = Vector2(padding, MobileLayout.dp(self, 48.0))
+	_intro_subtitle.size = Vector2(inner_width, MobileLayout.dp(self, 26.0))
+	_intro_subtitle.add_theme_font_size_override("font_size", int(MobileLayout.dp(self, 15.0)))
+	_intro_targets.position = Vector2(padding, MobileLayout.dp(self, 92.0))
+	_intro_targets.size = Vector2(inner_width, MobileLayout.dp(self, 138.0))
+	_intro_description.position = Vector2(padding, MobileLayout.dp(self, 232.0))
+	_intro_description.size = Vector2(inner_width, MobileLayout.dp(self, 46.0))
+	_intro_description.add_theme_font_size_override("font_size", int(MobileLayout.dp(self, 14.0)))
+	_intro_start_button.custom_minimum_size.y = MobileLayout.touch_target(self)
+	_intro_start_button.size = Vector2(inner_width, MobileLayout.touch_target(self))
+	_intro_start_button.position = Vector2(padding, _intro_description.position.y)
+	_intro_skip_hint.position = Vector2(padding, MobileLayout.dp(self, 280.0))
+	_intro_skip_hint.size = Vector2(inner_width, MobileLayout.dp(self, 20.0))
+	_intro_skip_hint.add_theme_font_size_override("font_size", int(MobileLayout.dp(self, 12.0)))
+	_intro_skip_hint.text = "点击屏幕跳过"
 	_intro_card.queue_redraw()
 	_intro_targets.queue_redraw()
 
@@ -1482,6 +1553,9 @@ func _draw_victory_action_sheen(viewport_rect: Rect2) -> void:
 func _layout_controls() -> void:
 	if not _configured:
 		return
+	if MobileLayout.is_mobile():
+		_layout_mobile_controls()
+		return
 	_objective_rects.clear()
 	_playing_root.position = Vector2.ZERO
 	_playing_root.size = Vector2(size.x, header_height())
@@ -1569,6 +1643,86 @@ func _layout_controls() -> void:
 	_progress_banner.set_playfield(field, size)
 	queue_redraw()
 
+func _layout_mobile_controls() -> void:
+	# Keep this Control in Main coordinates so collection flights and board
+	# feedback continue to use the same destination positions after safe insets.
+	var content := MobileLayout.safe_content_rect(self)
+	var padding := MobileLayout.dp(self, 12.0)
+	var stage_left := content.position.x + padding
+	var stage_width := maxf(content.size.x - padding * 2.0, 1.0)
+	var touch := MobileLayout.touch_target(self)
+	var top := content.position.y + MobileLayout.dp(self, 4.0)
+	var gap := MobileLayout.dp(self, 6.0)
+	var icons_width := touch * 4.0 + gap * 3.0
+	var field := _effective_playfield()
+	_objective_rects.clear()
+	_playing_root.position = Vector2.ZERO
+	_playing_root.size = Vector2(size.x, header_height())
+	_overlay_root.position = Vector2.ZERO
+	_overlay_root.size = size
+	_playing_buttons.add_theme_constant_override("separation", int(gap))
+	for button: Button in [_settings_button, _pause_button, _playing_restart_button, _playing_menu_button]:
+		button.custom_minimum_size = Vector2.ONE * touch
+	_playing_buttons.position = Vector2(stage_left + stage_width - icons_width, top)
+	_playing_buttons.size = Vector2(icons_width, touch)
+	var crown_side := MobileLayout.dp(self, 26.0)
+	_crown_rect = Rect2(stage_left, top + (touch - crown_side) * 0.5, crown_side, crown_side)
+	_title_label.position = Vector2(_crown_rect.end.x + gap, top)
+	_title_label.size = Vector2(maxf(stage_width - icons_width - crown_side - gap * 2.0, 1.0), touch)
+	_title_label.add_theme_font_size_override("font_size", int(MobileLayout.dp(self, 23.0)))
+	_title_label.clip_text = true
+	_title_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_mode_label.position = Vector2(stage_left, top + touch + MobileLayout.dp(self, 2.0))
+	_mode_label.size = Vector2(stage_width, MobileLayout.dp(self, 23.0))
+	_mode_label.add_theme_font_size_override("font_size", int(MobileLayout.dp(self, 16.0)))
+	_mode_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var score_y := _mode_label.position.y + _mode_label.size.y + MobileLayout.dp(self, 2.0)
+	var detail_y := header_height() - MobileLayout.dp(self, 22.0)
+	var score_height := minf(MobileLayout.dp(self, 64.0), maxf(detail_y - score_y - MobileLayout.dp(self, 4.0), MobileLayout.dp(self, 38.0)))
+	_stats_label.add_theme_font_size_override("font_size", int(minf(MobileLayout.dp(self, 52.0), score_height * 0.78)))
+	_stats_label.position = Vector2(stage_left, score_y)
+	_stats_label.size = Vector2(stage_width, score_height)
+	_stats_label.pivot_offset = _stats_label.size * 0.5
+	_detail_label.position = Vector2(stage_left, detail_y)
+	_detail_label.size = Vector2(stage_width, MobileLayout.dp(self, 20.0))
+	_detail_label.add_theme_font_size_override("font_size", int(MobileLayout.dp(self, 12.0)))
+	if _is_adventure() and not _is_collect_objective():
+		# Score levels retain the integrated gauge below the navigation row.
+		_mode_label.position = Vector2(stage_left, top + MobileLayout.dp(self, 2.0))
+		_mode_label.size = Vector2(maxf(stage_width - icons_width - gap, 1.0), touch)
+		_mode_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		var badge_side := MobileLayout.dp(self, 54.0)
+		var band_y := maxf(top + touch + MobileLayout.dp(self, 12.0), header_height() - badge_side - MobileLayout.dp(self, 40.0))
+		_current_badge = Rect2(stage_left, band_y, badge_side, badge_side)
+		_goal_badge = Rect2(stage_left + stage_width - badge_side, band_y, badge_side, badge_side)
+		var track_height := badge_side * 0.76
+		_progress_track = Rect2(_current_badge.get_center().x, band_y + (badge_side - track_height) * 0.5, _goal_badge.get_center().x - _current_badge.get_center().x, track_height)
+		_goal_label.position = Vector2(stage_left, band_y + badge_side + MobileLayout.dp(self, 2.0))
+		_goal_label.size = Vector2(stage_width, MobileLayout.dp(self, 18.0))
+		_goal_label.add_theme_font_size_override("font_size", int(MobileLayout.dp(self, 14.0)))
+		_detail_label.position.y = header_height() - MobileLayout.dp(self, 16.0)
+		_detail_label.size.y = MobileLayout.dp(self, 14.0)
+	if _is_collect_objective():
+		_collect_navigation.position = Vector2.ZERO
+		_collect_navigation.size = _playing_root.size
+		for button: Button in [_collect_back_button, _collect_settings_button]:
+			button.custom_minimum_size = Vector2.ONE * touch
+			button.size = Vector2.ONE * touch
+		_collect_back_button.position = Vector2(stage_left, top)
+		_collect_settings_button.position = Vector2(stage_left + stage_width - touch, top)
+		var kinds := _active_target_kinds(_stats)
+		var spacing := minf(MobileLayout.dp(self, 68.0), stage_width / float(maxi(kinds.size(), 1)))
+		var target_side := minf(MobileLayout.dp(self, 48.0), spacing * 0.80)
+		var target_y := header_height() - target_side - MobileLayout.dp(self, 29.0)
+		for index in range(kinds.size()):
+			var center_x := stage_left + stage_width * 0.5 + (float(index) - float(kinds.size() - 1) * 0.5) * spacing
+			_objective_rects[kinds[index]] = Rect2(center_x - target_side * 0.5, target_y, target_side, target_side)
+	_layout_overlay()
+	_layout_notice()
+	_layout_objective_intro()
+	_progress_banner.set_playfield(field, size)
+	queue_redraw()
+
 func _layout_collect_hud(stage_left: float, stage_width: float) -> void:
 	_collect_navigation.position = Vector2.ZERO
 	_collect_navigation.size = Vector2(size.x, header_height())
@@ -1607,11 +1761,24 @@ func _layout_notice() -> void:
 	if not is_instance_valid(_notice):
 		return
 	var field := _effective_playfield()
+	if MobileLayout.is_mobile():
+		var content := MobileLayout.safe_content_rect(self)
+		var mobile_width := minf(field.size.x, content.size.x * 0.92)
+		_notice_label.add_theme_font_size_override("font_size", int(MobileLayout.dp(self, 14.0)))
+		_notice_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_notice_label.max_lines_visible = 2
+		_notice_label.custom_minimum_size.y = MobileLayout.dp(self, 24.0)
+		_notice.size = Vector2(maxf(mobile_width, 1.0), MobileLayout.dp(self, 36.0))
+		_notice.position = Vector2(field.get_center().x - mobile_width * 0.5, minf(field.end.y + MobileLayout.dp(self, 4.0), content.end.y - _notice.size.y))
+		return
 	var width := minf(field.size.x, 460.0)
 	_notice.size = Vector2(maxf(width, 1.0), 40.0)
 	_notice.position = Vector2(field.get_center().x - width * 0.5, field.end.y + 28.0)
 
 func _layout_overlay() -> void:
+	if MobileLayout.is_mobile():
+		_layout_mobile_overlay()
+		return
 	var collect_victory := _is_collect_objective() and _mode == MODE_LEVEL_COMPLETE
 	_overlay_objective_badge.custom_minimum_size = Vector2(minf(VICTORY_HERO_SIZE.x, maxf(size.x - 80.0, 96.0)) if collect_victory else (192.0 if _is_collect_objective() else 56.0), VICTORY_HERO_SIZE.y if collect_victory else 56.0)
 	_overlay_title.custom_minimum_size = Vector2(0.0, 64.0 if collect_victory else 32.0)
@@ -1649,6 +1816,67 @@ func _layout_overlay() -> void:
 	_card_viewport.queue_sort()
 	_card.pivot_offset = _card.size * 0.5
 	# PanelContainer owns Content and its margins; do not preset child anchors.
+
+func _layout_mobile_overlay() -> void:
+	var content := MobileLayout.safe_content_rect(self)
+	var collect_victory := _is_collect_objective() and _mode == MODE_LEVEL_COMPLETE
+	var card_width := minf(content.size.x * 0.92, MobileLayout.dp(self, 420.0))
+	var touch := MobileLayout.touch_target(self)
+	var padding := MobileLayout.dp(self, 18.0)
+	var inner_width := maxf(card_width - padding * 2.0, 1.0)
+	var separation := int(MobileLayout.dp(self, 8.0))
+	_overlay_box.add_theme_constant_override("separation", separation)
+	for row: HBoxContainer in [_overlay_buttons, _overlay_secondary_buttons]:
+		row.add_theme_constant_override("separation", separation)
+		row.custom_minimum_size = Vector2(0.0, touch)
+	# Three native buttons fit the portrait card without reducing their touch
+	# targets; concise labels leave room for the mobile font and focus outline.
+	_resume_button.text = "继续游戏"
+	_next_level_button.text = "下一关" if bool(_stats.get("has_next_level", false)) else "全部通关"
+	_next_level_button.tooltip_text = "开始下一关" if bool(_stats.get("has_next_level", false)) else "已通过所有关卡"
+	_overlay_restart_button.text = "重玩本关" if _is_adventure() else "重新开始"
+	_overlay_menu_button.text = "返回选关" if _is_adventure() else "返回菜单"
+	_overlay_restart_button.tooltip_text = _overlay_restart_button.text
+	_overlay_menu_button.tooltip_text = _overlay_menu_button.text
+	for button: Button in [_resume_button, _next_level_button, _overlay_restart_button, _overlay_menu_button, _overlay_settings_button]:
+		button.custom_minimum_size = Vector2(touch, touch)
+		button.add_theme_font_size_override("font_size", int(MobileLayout.dp(self, 14.0)))
+		button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_overlay_title.custom_minimum_size = Vector2(0.0, MobileLayout.dp(self, 42.0))
+	_overlay_title.add_theme_font_size_override("font_size", int(MobileLayout.dp(self, 30.0 if collect_victory else 24.0)))
+	_overlay_title.pivot_offset = _overlay_title.size * 0.5
+	_overlay_score.custom_minimum_size = Vector2(0.0, MobileLayout.dp(self, 72.0))
+	_overlay_score.add_theme_font_size_override("font_size", int(MobileLayout.dp(self, 52.0)))
+	_overlay_best.custom_minimum_size = Vector2(0.0, MobileLayout.dp(self, 28.0 if collect_victory else (54.0 if _is_collect_objective() else 28.0)))
+	_overlay_best.add_theme_font_size_override("font_size", int(MobileLayout.dp(self, 16.0)))
+	_overlay_best.add_theme_color_override("font_color", MUTED if collect_victory else GOLD)
+	_overlay_best.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_overlay_best.max_lines_visible = 3
+	_overlay_stats.custom_minimum_size = Vector2(0.0, MobileLayout.dp(self, 66.0))
+	_overlay_stats.add_theme_font_size_override("font_size", int(MobileLayout.dp(self, 14.0)))
+	var save_warning := collect_victory and bool(_stats.get("save_failed", false))
+	_new_record_label.custom_minimum_size = Vector2(0.0, MobileLayout.dp(self, 42.0 if save_warning else 26.0))
+	_new_record_label.add_theme_font_size_override("font_size", int(MobileLayout.dp(self, 14.0)))
+	_new_record_label.add_theme_color_override("font_color", Color("#ffc586") if save_warning else (MUTED if collect_victory else GOLD))
+	_new_record_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_new_record_label.max_lines_visible = 2
+	if collect_victory:
+		_overlay_objective_badge.custom_minimum_size = Vector2(minf(inner_width, MobileLayout.dp(self, 260.0)), MobileLayout.dp(self, 160.0))
+		var clear_panel := StyleBoxEmpty.new()
+		clear_panel.set_content_margin_all(padding)
+		_card.add_theme_stylebox_override("panel", clear_panel)
+	else:
+		_overlay_objective_badge.custom_minimum_size = Vector2(minf(inner_width, MobileLayout.dp(self, 240.0)) if _is_collect_objective() else MobileLayout.dp(self, 56.0), MobileLayout.dp(self, 56.0))
+		var panel := _card_box()
+		panel.set_content_margin_all(padding)
+		_card.add_theme_stylebox_override("panel", panel)
+	var card_height := MobileLayout.dp(self, 510.0 if collect_victory else (444.0 if _is_collect_objective() else 404.0))
+	var viewport_height := minf(card_height, content.size.y - MobileLayout.dp(self, 12.0))
+	_card_viewport.size = Vector2(card_width, maxf(viewport_height, 1.0))
+	_card_viewport.position = content.position + (content.size - _card_viewport.size) * 0.5
+	_card.custom_minimum_size = Vector2(0.0, card_height)
+	_card_viewport.queue_sort()
+	_card.pivot_offset = _card.size * 0.5
 
 func _grab_first_focus() -> void:
 	if not _configured or _mode == MODE_HIDDEN or _focus_mode == _mode:

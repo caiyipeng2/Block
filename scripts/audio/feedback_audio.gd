@@ -124,7 +124,9 @@ func _make_music() -> AudioStreamWAV:
 	var stream := _pcm_stream(pcm)
 	stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
 	stream.loop_begin = 0
-	stream.loop_end = frame_count
+	# Godot 4.7's WAV mixer reads loop_end as an inclusive frame index.
+	# Using the sample count reads one PCM16 frame past the buffer on Android.
+	stream.loop_end = frame_count - 1
 	return stream
 
 func _pcm_stream(pcm: PackedByteArray) -> AudioStreamWAV:

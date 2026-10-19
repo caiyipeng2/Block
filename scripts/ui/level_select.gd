@@ -4,6 +4,7 @@ extends Control
 const Art := preload("res://scripts/ui/block_art.gd")
 const IconButton := preload("res://scripts/ui/art_icon_button.gd")
 const UnlockEffect := preload("res://scripts/ui/level_unlock_effect.gd")
+const MobileLayout := preload("res://scripts/ui/mobile_layout.gd")
 
 signal back_requested
 signal level_started(level_id: int)
@@ -133,7 +134,7 @@ class LevelTile extends Button:
 	func refresh() -> void:
 		if is_instance_valid(_number):
 			_number.text = str(level_id)
-			_number.add_theme_font_size_override("font_size", clampi(roundi(visual_side * 0.45), 13, 16))
+			_number.add_theme_font_size_override("font_size", clampi(roundi(visual_side * 0.45), 13, 36 if OS.has_feature("android") else 16))
 			_number.add_theme_color_override("font_color", Color("#273451") if selected else (Color("#efffff") if completed else Color("#91a6ce")))
 			if _presentation_active:
 				_number.add_theme_color_override("font_color", _presentation_number_color)
@@ -409,6 +410,10 @@ func _layout_controls() -> void:
 	_cancel_unlock_animation()
 	_unlock_effect.position = Vector2.ZERO
 	_unlock_effect.size = size
+	if MobileLayout.is_mobile():
+		_layout_mobile_controls()
+		_layout_map()
+		return
 	var header_height := 104.0
 	var footer_height := 132.0
 	_header.position = Vector2.ZERO
@@ -435,6 +440,37 @@ func _layout_controls() -> void:
 	_save_warning.size = Vector2(maxf(0.0, size.x - 48.0), 18.0)
 	_layout_map()
 
+func _layout_mobile_controls() -> void:
+	var area := MobileLayout.safe_content_rect(self)
+	var unit := MobileLayout.dp(self, 1.0)
+	var target := MobileLayout.touch_target(self)
+	var header_height := 104.0 * unit
+	var footer_height := 124.0 * unit
+	_header.position = area.position
+	_header.size = Vector2(area.size.x, header_height)
+	_back.position = Vector2(12.0, 16.0) * unit
+	_back.size = Vector2.ONE * target
+	_title.position = Vector2(68.0, 12.0) * unit
+	_title.size = Vector2(maxf(1.0, area.size.x - 80.0 * unit), 34.0 * unit)
+	_title.add_theme_font_size_override("font_size", roundi(24.0 * unit))
+	_progress.position = Vector2(68.0, 52.0) * unit
+	_progress.size = Vector2(maxf(1.0, area.size.x - 80.0 * unit), 24.0 * unit)
+	_progress.add_theme_font_size_override("font_size", roundi(15.0 * unit))
+	_scroll.position = area.position + Vector2(8.0 * unit, header_height + 8.0 * unit)
+	_scroll.size = Vector2(maxf(1.0, area.size.x - 16.0 * unit), maxf(1.0, area.size.y - header_height - footer_height - 16.0 * unit))
+	_footer.position = Vector2(area.position.x, area.end.y - footer_height)
+	_footer.size = Vector2(area.size.x, footer_height)
+	_description.position = Vector2(12.0, 8.0) * unit
+	_description.size = Vector2(area.size.x - 24.0 * unit, 28.0 * unit)
+	_description.add_theme_font_size_override("font_size", roundi(15.0 * unit))
+	var button_width := maxf(1.0, area.size.x - 32.0 * unit)
+	_start.position = Vector2((area.size.x - button_width) * 0.5, 42.0 * unit)
+	_start.size = Vector2(button_width, target)
+	_start.add_theme_font_size_override("font_size", roundi(20.0 * unit))
+	_save_warning.position = Vector2(12.0, 100.0) * unit
+	_save_warning.size = Vector2(area.size.x - 24.0 * unit, 18.0 * unit)
+	_save_warning.add_theme_font_size_override("font_size", roundi(11.0 * unit))
+
 
 func _layout_map() -> void:
 	if not is_instance_valid(_map):
@@ -443,10 +479,18 @@ func _layout_map() -> void:
 	# Reserve scrollbar space so its appearance cannot clip the last column.
 	var content_width := maxf(56.0, _scroll.size.x - 24.0)
 	var available_width := minf(440.0, maxf(32.0, content_width - 24.0))
-	var columns := clampi(int((available_width + 4.0) / 40.0), 1, 11)
-	var tile_side := clampf(floorf((available_width - float(columns - 1) * 4.0) / float(columns)), 32.0, 36.0)
-	var pitch := tile_side + 4.0
-	var map_width := float(columns) * pitch - 4.0
+	var gap := 4.0
+	var minimum_side := 32.0
+	var maximum_side := 36.0
+	if MobileLayout.is_mobile():
+		available_width = maxf(1.0, content_width - MobileLayout.dp(self, 16.0))
+		gap = MobileLayout.dp(self, 4.0)
+		minimum_side = MobileLayout.dp(self, 40.0)
+		maximum_side = minimum_side
+	var columns := clampi(int((available_width + gap) / (minimum_side + gap * 2.0)), 1, 11)
+	var tile_side := clampf(floorf((available_width - float(columns - 1) * gap) / float(columns)), minimum_side, maximum_side)
+	var pitch := tile_side + gap
+	var map_width := float(columns) * pitch - gap
 	var proportions := [1.0, 0.82, 0.73, 0.55, 0.55, 0.64, 0.73, 0.82, 0.73, 0.64, 0.55, 0.73, 0.64, 0.55, 0.36]
 	var rows: Array[Dictionary] = []
 	var first_level := 1
@@ -464,6 +508,8 @@ func _layout_map() -> void:
 	_map_caption.position = Vector2(8.0, 142.0)
 	_map_caption.size = Vector2(maxf(0.0, content_width - 16.0), 32.0)
 	_map_caption.add_theme_font_size_override("font_size", 18 if content_width >= 440.0 else 15)
+	if MobileLayout.is_mobile():
+		_map_caption.add_theme_font_size_override("font_size", roundi(MobileLayout.dp(self, 14.0)))
 	var left := (content_width - map_width) * 0.5
 	for row_index in range(rows.size()):
 		var row: Dictionary = rows[row_index]
