@@ -1,14 +1,16 @@
 # Android APK / AAB 发布
 
-首次交付：2026-10-19；当前游戏版本 `0.8.4`，Android `versionCode=2`。沿用首次确认的包名和独立上传签名。
+首次交付：2026-10-19；当前游戏版本 `0.8.5`，Android `versionCode=3`。沿用首次确认的包名和独立上传签名。
 
 ## 文件与用途
 
-- `dist/Block-0.8.4-android-release.apk`：手机更新安装。
-- `dist/Block-0.8.4-android-release.aab`：Google Play 后台上传。
-- 两包旁有 `.sha256`；最终字节数、SHA256和摘要在 `dist/Block-0.8.4-android-build-info.json`。
+- `dist/Block-0.8.5-android-release.apk`：手机更新安装。
+- `dist/Block-0.8.5-android-release.aab`：Google Play 后台上传。
+- 两包旁有 `.sha256`；最终字节数、SHA256和摘要在 `dist/Block-0.8.5-android-build-info.json`。
 
-包名 `com.funblockstudio.block`，版本 `0.8.4 (2)`；Android7/API24起，目标Android16/API36，仅 `arm64-v8a`，游戏分类。Android采用720×1280竖屏基准、Compatibility/OpenGL ES3、触摸模拟鼠标，系统返回复用Escape暂停/返回逻辑。不申请网络或存储权限。
+包名 `com.funblockstudio.block`，版本 `0.8.5 (3)`；Android7/API24起，目标Android16/API36，仅 `arm64-v8a`，游戏分类。Android采用720×1280竖屏基准、Compatibility/OpenGL ES3、触摸模拟鼠标，系统返回复用Escape暂停/返回逻辑。不申请网络或存储权限。
+
+0.8.5按用户指定替换为Google Play官方Block Blast图标，传统图标与自适应前景/背景均显式接入。来源及原图哈希见 [图标说明](../assets/ui/launcher/README.md)，保留0.8.4的音乐修复和手机适配。
 
 三星 **SM-S9280 / Android16** 当前1080×2340、450dpi。0.8.3首包出现约13秒闪退，已从两次tombstone精确定位到背景音乐PCM循环尾后帧读取；0.8.4将终点改为最后可读帧。用户明确授权后，候选版在真机前台运行超过7分钟，音频活动记录约437秒，无新崩溃；已核对菜单/结束面板截图。有限观察不代表全部玩法验收，具体包源码快照以构建记录为准。
 
@@ -35,7 +37,7 @@ AAB已完成本地验证，**尚未上传或经Play Console接收**。在Google 
 - `credentials.json`：本机alias/password；不要提交或粘贴到聊天。
 - `block-upload-certificate.pem`：公开证书。
 
-请安全备份以上三项。后续上传使用同一上传密钥，并将两个预设的 `version/code` 同时递增，下一次至少为 `3`。启用Play App Signing后，后台应用签名与本地上传密钥可能不同；本地APK使用上传密钥签名。
+请安全备份以上三项。后续上传使用同一上传密钥，并将两个预设的 `version/code` 同时递增，下一次至少为 `4`。启用Play App Signing后，后台应用签名与本地上传密钥可能不同；本地APK使用上传密钥签名。
 
 ## 重新打包
 
@@ -50,7 +52,7 @@ python tools/export_android.py --godot "C:/Users/EDY/Downloads/Godot_v4.7.2-stab
 ## 三星安装
 
 ```powershell
-& "D:/Unity/Editor/Data/PlaybackEngines/AndroidPlayer/SDK/platform-tools/adb.exe" -s R5CX211TXNT install --no-incremental -r "dist/Block-0.8.4-android-release.apk"
+& "D:/Unity/Editor/Data/PlaybackEngines/AndroidPlayer/SDK/platform-tools/adb.exe" -s R5CX211TXNT install --no-incremental -r "dist/Block-0.8.5-android-release.apk"
 ```
 
 本机Unity旧ADB和Godot新版ADB会抢占5037端口，使用当前服务同版客户端即可；无需关闭编辑器或删除用户数据。此次增量安装失败后自动回退streamed成功，后续显式 `--no-incremental` 可直接安装。

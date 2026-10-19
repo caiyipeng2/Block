@@ -4,6 +4,12 @@
 引擎：Godot 4.7.2 stable  
 平台目标：Windows 桌面，鼠标输入
 
+## 包体图标替换（2026-10-19；0.8.5 / versionCode3）
+
+按用户要求搜索并采用HungryStudio官方Google Play Block Blast图标。取得512×512原始PNG，来源、SHA256见 [资源说明](../assets/ui/launcher/README.md)。项目和Windows主图标、两个Android预设传统图标均接PNG；432×432自适应前景内嵌同图、深蓝背景补齐mask外侧，避免旧Godot图标fallback。
+
+Godot无界面导入退出0、无错误，已提取实际导入前景纹理核对图案及透明留白。未改脚本/玩法/存档或签名。最终APK/AAB图标资源、签名、安装版本与哈希由本轮包校验记录；桌面图标显示不等于游戏游玩验收。
+
 ## 三星音频闪退与手机适配（2026-10-19；0.8.4 / versionCode2）
 
 SM-S9280 Android16两次13–14秒AudioTrack线程SIGSEGV，退出记录为native crash。APK原生库BuildId与日志相同，故障指令为PCM16样本读取；两次寄存器x8均为264600，fault减PCM起始地址均529200字节，恰好是264600帧×2。背景音乐设置loop_end=frame_count，当前Godot4.7.2混音器边界存在闭区间读取，修正为frame_count-1，保留音乐/音量/音效。已有音频断言改为可读帧边界，仅编译未运行套件。[上游同类问题](https://github.com/godotengine/godot/issues/119778)。
