@@ -8,7 +8,7 @@
 
 按用户要求搜索并采用HungryStudio官方Google Play Block Blast图标。取得512×512原始PNG，来源、SHA256见 [资源说明](../assets/ui/launcher/README.md)。项目和Windows主图标、两个Android预设传统图标均接PNG；432×432自适应前景内嵌同图、深蓝背景补齐mask外侧，避免旧Godot图标fallback。
 
-Godot无界面导入退出0、无错误，已提取实际导入前景纹理核对图案及透明留白。未改脚本/玩法/存档或签名。最终APK/AAB图标资源、签名、安装版本与哈希由本轮包校验记录；桌面图标显示不等于游戏游玩验收。
+Godot无界面导入退出0、无错误，已提取实际导入前景纹理核对图案及透明留白。最终APK/AAB传统与自适应图标像素一致，正式签名/API36/16KB/CSV检查通过；三星安装0.8.5(3)成功，桌面Block已显示新图标，本地截图work/launcher-icon/samsung-block-icon.png。未改脚本/玩法/存档或签名；包文件/哈希见dist对应build-info，图标显示核对不等于游戏游玩验收。
 
 ## 三星音频闪退与手机适配（2026-10-19；0.8.4 / versionCode2）
 
