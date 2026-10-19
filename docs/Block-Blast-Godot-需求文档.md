@@ -669,3 +669,11 @@ ClearPreview、MoveFeedback、Main 与维护后的 UI action 四份 `--check-onl
 SVG 源 1024×512，2× 无损导入为 2048×1024（512px/格），生成 mipmaps、修复透明边、不预乘、不限尺寸；CanvasTexture 固定 LINEAR_WITH_MIPMAPS 并禁重复，不改全局过滤。运行时按真实纹理尺寸除 (4,2) 求区域，短边等比居中，保留 opacity/glow 及 ≤4px 跳过保护；不逐帧生成纹理。五处 embedded 与七处独立调用、原底托及非法重叠保护保持。
 
 无界面资源导入退出 0、无错误，已核对实际 12 级 mipmap、渐变及原图/64/32px 单元透明边。六份脚本 --check-only 均退出 0、无脚本错误，独立静态复核无 P1/P2。未改玩法、计分、供块、CSV、布局或存档；未运行游戏、用例、GUI 或新导出，最终观感、动态缩放及相似度待用户 F5 验收。
+
+## 39. BoardView 脚本解析修复（2026-10-19）
+
+Godot 4.7.2 单脚本编译复现 `board_view.gd` 三处解析错误：第 20 行泛型 `min()` 推断为 Variant，警告被视为错误；第 28、32 行从未指定元素类型的调色板取色，无法推断颜色类型。调色板改为 `Array[Color]`，尺寸比较改用 `minf()`，保留原有颜色和棋盘绘制逻辑。
+
+直接调用方 `GameScreen` 的编译还暴露 `piece_tray.gd` 同类问题：第 17、24 行槽宽与单格尺寸推断为 Variant，导致第 25 行偏移量也无法推断。槽宽改用 `maxf()`，单格尺寸显式声明 `float`，保留原三值取最小尺寸及托盘布局计算。
+
+本次检查记录见[验收记录](Block-Blast-Godot-验收记录.md)。剩余验收：用户重新加载脚本或重开项目，确认不再出现 `Failed to load script ... board_view.gd ... Parse error`，并按 F5 确认正常进入游戏；第 38 节的特殊图案观感仍待用户确认。

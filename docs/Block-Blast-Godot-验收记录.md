@@ -4,6 +4,16 @@
 引擎：Godot 4.7.2 stable  
 平台目标：Windows 桌面，鼠标输入
 
+## BoardView 与托盘脚本解析修复（2026-10-19，待用户验收）
+
+Godot 4.7.2 对 `board_view.gd` 执行 headless `--check-only`，修复前退出码 1：第 28、32 行无法推断颜色类型，第 20 行从 Variant 推断变量触发“警告视为错误”。将调色板声明为 `Array[Color]`，并把尺寸比较改用 `minf()`，保留原颜色和绘制计算。
+
+检查直接调用方 `GameScreen` 时，还复现 `piece_tray.gd` 第 17、24、25 行同类错误；Godot 此次虽退出 0，仍输出解析与依赖编译错误，因此按失败处理。将槽宽比较改用 `maxf()`，单格尺寸显式声明 `float`，保留原三值最小值计算与布局。
+
+最终 `board_view.gd`、`piece_tray.gd`、`game_screen.gd`、`main.gd` 共四份 `--check-only` 均退出 0，日志无 `SCRIPT ERROR`、`Parse Error`、`Compile Error` 或加载失败。日志仅留本地 `work/verification/*-board-parse-fix-syntax.log`，BoardView 修复前证据为 `board-view-before-syntax.log`。独立静态复核覆盖类型与直接依赖接口。
+
+未运行游戏、测试用例、GUI 或完整自动验收；没有生成新发布包。剩余验收：用户重新加载脚本或重开项目，确认编辑器不再提示这两份脚本解析失败，再按 F5 检查正常进入游戏。工作区 Android 发布相关改动保持原样，未纳入本次修复提交。
+
 ## 特殊图案清晰度（2026-10-19；源码 0.8.3，待用户验收）
 
 用户实机截图显示 0.8.2 特殊星形切面细碎、槽边阶梯明显。该版本使用现场三角面近似，未使用批准 PNG；大量未抗锯齿细边和高反差小面在实际尺寸直接采样。canvas_items 没有发现低分辨率 Viewport 放大或特殊图案有损导入问题。

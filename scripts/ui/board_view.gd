@@ -7,7 +7,7 @@ var preview_origin := Vector2i(-99, -99)
 var preview_color := 0
 var board_rect := Rect2()
 var cell_size := 40.0
-var palette := [Color("#39c979"), Color("#f4b942"), Color("#ec6a5b"), Color("#55a7e8"), Color("#b07cf2")]
+var palette: Array[Color] = [Color("#39c979"), Color("#f4b942"), Color("#ec6a5b"), Color("#55a7e8"), Color("#b07cf2")]
 
 func setup(state: GameState) -> void:
 	game_state = state
@@ -17,7 +17,7 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_RESIZED: queue_redraw()
 
 func _draw() -> void:
-	var side := min(size.x, size.y)
+	var side := minf(size.x, size.y)
 	cell_size = floor((side - 24.0) / 8.0)
 	var total := cell_size * 8.0
 	board_rect = Rect2((size - Vector2(total, total)) * 0.5, Vector2(total, total))
