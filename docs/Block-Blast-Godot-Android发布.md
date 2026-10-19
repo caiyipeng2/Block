@@ -10,7 +10,7 @@
 
 包名 `com.funblockstudio.block`，版本 `0.8.6 (4)`；Android7/API24起，目标Android16/API36，仅 `arm64-v8a`，游戏分类。Android采用720×1280竖屏基准、Compatibility/OpenGL ES3、触摸模拟鼠标，系统返回复用Escape暂停/返回逻辑。不申请网络或存储权限。
 
-0.8.6使用AI生成并经审阅选定的原创九格阶梯图案：青色立体方块、中央暖金底托镶青钻、底部珊瑚色整行消除，突出实际玩法。`assets/ui/launcher/block-puzzle-original.png` 为1254×1254，SHA256为 `c165e4e73a52d30d064eefdd23b2f299ddffcddbf4a1603cb919f82534c0abe1`；432×432自适应前景将同图等比置于(52,52)、328×328区域，背景为独立蓝底。来源和导入设置见 [图标说明](../assets/ui/launcher/README.md)。
+0.8.6使用AI生成并经审阅选定的原创九格阶梯图案：青色立体方块、中央暖金底托镶青钻、底部珊瑚色整行消除，突出实际玩法。传统图标 `assets/ui/launcher/block-puzzle-original.png` 为1254×1254，SHA256为 `c165e4e73a52d30d064eefdd23b2f299ddffcddbf4a1603cb919f82534c0abe1`；Android自适应前景使用提取出的透明主体 `block-puzzle-foreground.png`，等比放入432×432画布的(64,64)起304×304区域（终点368,368），与独立蓝底分层，避免不透明方形背景产生接缝。来源和导入设置见 [图标说明](../assets/ui/launcher/README.md)。
 
 0.8.5采用竞品官方图标的方向已被用户撤回；旧官方PNG及旧自适应资源从运行资源中移除，不进入新包。此轮为视觉差异化调整，不保证Google Play审核通过。音乐修复、手机适配、玩法和存档保持。
 

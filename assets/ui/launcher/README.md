@@ -5,12 +5,13 @@
 - `block-puzzle-original.png`：1254×1254，原始生成文件；SHA256 `c165e4e73a52d30d064eefdd23b2f299ddffcddbf4a1603cb919f82534c0abe1`。
 - 主要元素：九格阶梯、青色立体块、中央暖金底托镶青钻、底部珊瑚色完整行与消除扫光。
 - 配色及构图均重新设计，未沿用竞品的四色角落分区、黄色L形主体或官方图片像素。
-- `original-adaptive-foreground.svg`：432×432透明图层，在(52,52)放置328×328的完整原创图像，约76%画布，核心九格再由原图留白进入中央安全区；内嵌PNG字节与源文件完全相同。
+- `block-puzzle-foreground.png`：使用内置图像工具从选定设计提取透明主体，1254×1254 RGBA；SHA256 `12df773cfbc6ba8457ecc266d7b5a9e5848388f25d94d11ca2f5b5357d942c7c`。四角及方块外背景透明，避免嵌入完整蓝方图产生接缝。
+- `original-adaptive-foreground.svg`：432×432透明图层，在(64,64)放置304×304的透明主体，核心九格宽约260px；内嵌PNG字节与透明源完全相同。实际引擎导入alpha边界约(64,99)..(368,345)，边缘光点允许被mask裁切。
 - `original-adaptive-background.svg`：独立蓝色渐变背景，填充启动器mask之外的边缘。不同桌面仍可能裁切边缘光点。
 - 项目/Windows主图标及Android传统图标使用原PNG；APK/AAB明确设置同一自适应前景/背景，避免Godot默认图标回退。
 - 原官方PNG和旧自适应资源已从生产目录移除，历史提交不作为当前运行素材。
 - 生成方向：保留宽倒角方块的休闲游戏质感，用镶嵌宝石与横向整行消除表达玩法，减少复杂光环和装饰。第二版比首版完整棋盘构图更适合48px图标。
 
-生成来源：内置 `image_gen.imagegen`，新图生成，无竞品图像引用。原始文件名 `exec-8f380364-996d-4f71-bcf5-406f17d2f9d8.png`。完整最终提示词见 [生成说明](../../../docs/art/original-launcher-generation.md)。
+生成来源：内置 `image_gen.imagegen`，原创设计生成未使用竞品图像。主图原文件 `exec-8f380364-996d-4f71-bcf5-406f17d2f9d8.png`，透明主体由同工具背景提取生成 `exec-0ed03309-a20e-481b-9336-687691108e19.png`。完整最终提示词见 [生成说明](../../../docs/art/original-launcher-generation.md)。
 
 资源与图案差异化不构成Google Play审核结果保证。图标变更不修改包名、签名、菜单、玩法、音乐修复或存档。

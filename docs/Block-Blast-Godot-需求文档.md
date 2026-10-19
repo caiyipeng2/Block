@@ -690,7 +690,7 @@ Godot 4.7.2 单脚本编译复现 `board_view.gd` 三处解析错误：第 20 �
 
 用户撤回直接采用竞品官方图标的要求，改为相近休闲拼块风格下的原创构图，突出自身游戏内容。采用新生成并审阅选定的九格阶梯：青色立体方块、中央暖金底托镶青钻目标、底部四格珊瑚色消除行；不使用竞品原图、名称或品牌标识。
 
-传统图标使用1254×1254原创PNG；Android自适应前景为432px画布、(52,52)处328px等比同图，独立蓝色背景补齐mask外侧。旧官方PNG及旧自适应资源从运行资源中移除，不进入新包。来源及哈希见 [图标资源](../assets/ui/launcher/README.md)。包名 `com.funblockstudio.block`、上传签名、三模式规则及存档不变，版本0.8.6、Android versionCode4，后续至少递增至5。
+传统图标使用1254×1254原创PNG；Android自适应前景改用同款图案提取出的透明主体 `block-puzzle-foreground.png`，在432px画布(64,64)起304×304区域内等比放置（终点368,368），独立蓝色背景补齐mask外侧，避免方形底图接缝。旧官方PNG及旧自适应资源从运行资源中移除，不进入新包。来源及哈希见 [图标资源](../assets/ui/launcher/README.md)。包名 `com.funblockstudio.block`、上传签名、三模式规则及存档不变，版本0.8.6、Android versionCode4，后续至少递增至5。
 
 本轮资源导入、实际包内资源、48px预览、APK/AAB正式签名与16KB、三星更新及桌面显示待核验；结果以 `dist/Block-0.8.6-android-build-info.json` 与 [验收记录](Block-Blast-Godot-验收记录.md) 为准。Google Play后台接收和审核不在本轮操作范围，视觉差异化不保证审核通过。
 
