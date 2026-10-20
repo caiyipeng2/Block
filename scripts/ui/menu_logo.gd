@@ -137,7 +137,9 @@ func _draw_glint(origin: Vector2, fit: float) -> void:
 
 
 func _draw_spark(center: Vector2, radius: float, opacity: float) -> void:
-	if radius <= 0.0:
+	# Subpixel stars at large local coordinates lose area precision during
+	# triangulation. They are already fading out, so omit the invisible endpoint.
+	if radius <= 0.5:
 		return
 	draw_circle(center, radius * 1.45, Color(0.68, 0.98, 1.0, opacity * 0.055))
 	draw_colored_polygon(PackedVector2Array([
