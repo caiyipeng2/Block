@@ -1,14 +1,16 @@
 # Android APK / AAB 发布
 
-首次交付：2026-10-19；当前交付版本 `0.8.6`，Android `versionCode=4`。APK/AAB均从干净提交 `1f8e52f71f260e1023d840ee2679888e035360ab` 导出，沿用首次确认的包名和独立上传签名；三星SM-S9280更新安装及桌面图标显示已核对。
+首次交付：2026-10-19；当前交付版本 `0.8.7`，Android `versionCode=5`。APK/AAB均从干净提交 `751d9aaba0e4e1c2bf52a501db45753c1cf340df` 导出，沿用首次确认的包名和独立上传签名；三星SM-S9280已更新并核对菜单设置与经典模式设置截图。
 
 ## 文件与用途
 
-- `dist/Block-0.8.6-android-release.apk`：手机更新安装。
-- `dist/Block-0.8.6-android-release.aab`：Google Play 后台上传。
-- 两包旁有 `.sha256`；最终字节数、SHA256和实际校验摘要见 `dist/Block-0.8.6-android-build-info.json`。两包正式签名、API/16KB、CRC及资源检查均通过；三星安装版本已核对为0.8.6(4)。
+- `dist/Block-0.8.7-android-release.apk`：手机更新安装。
+- `dist/Block-0.8.7-android-release.aab`：Google Play 后台上传。
+- 两包旁有 `.sha256`；最终字节数、SHA256和实际校验摘要见 `dist/Block-0.8.7-android-build-info.json`。两包正式签名、API/16KB、CRC及资源检查均通过；三星安装版本已核对为0.8.7(5)，安装的base.apk哈希与交付文件一致。
 
-包名 `com.funblockstudio.block`，版本 `0.8.6 (4)`；Android7/API24起，目标Android16/API36，仅 `arm64-v8a`，游戏分类。Android采用720×1280竖屏基准、Compatibility/OpenGL ES3、触摸模拟鼠标，系统返回复用Escape暂停/返回逻辑。不申请网络或存储权限。
+包名 `com.funblockstudio.block`，版本 `0.8.7 (5)`；Android7/API24起，目标Android16/API36，仅 `arm64-v8a`，游戏分类。Android采用720×1280竖屏基准、Compatibility/OpenGL ES3、触摸模拟鼠标，系统返回复用Escape暂停/返回逻辑。不申请网络或存储权限。
+
+0.8.7将设置及重开/返回/退出确认改成蓝色圆角弹窗：顶部三图标开关、绿色纵向按钮、真实设置保存及短屏滚动。手机触摸隐藏焦点边框，键盘/手柄导航保留可见焦点。候选真机截图暴露的原生滑块残留、滚动溢出和首次提示换行高度已修，最终设置卡截图无残留和多余留白。未代玩、清除存档或完成关卡；完整游玩、声音与其他设备仍待用户验收。
 
 0.8.6使用AI生成并经审阅选定的原创九格阶梯图案：青色立体方块、中央暖金底托镶青钻、底部珊瑚色整行消除，突出实际玩法。传统图标 `assets/ui/launcher/block-puzzle-original.png` 为1254×1254，SHA256为 `c165e4e73a52d30d064eefdd23b2f299ddffcddbf4a1603cb919f82534c0abe1`；Android自适应前景使用提取出的透明主体 `block-puzzle-foreground.png`，等比放入432×432画布的(64,64)起304×304区域（终点368,368），与独立蓝底分层，避免不透明方形背景产生接缝。来源和导入设置见 [图标说明](../assets/ui/launcher/README.md)。
 
@@ -22,7 +24,7 @@ AAB **尚未上传或经Play Console接收**。本轮完成本地校验后，在
 
 ## 构建与校验
 
-0.8.6已实际完成以下包校验，证据见 `dist/Block-0.8.6-android-build-info.json` 和本地日志，不沿用0.8.5或更早包的校验结果。两包的48px传统图标与432px透明前景像素一致，旧竞品官方资源无包内条目；已查看48px及192px预览。
+0.8.7已重新完成以下包校验，证据见 `dist/Block-0.8.7-android-build-info.json` 和本地日志，不沿用候选包或更早包的校验结果。原创图标沿用0.8.6资源；本轮图标未修改。
 
 - Godot4.7.2正式匹配模板，Java21、SDK Platform36、Build Tools36.1.0、NDK29.0.14206865；模板Gradle8.11.1 / AGP8.6.1。
 - APK：ZIP CRC、apksigner v2/v3正式签名、`zipalign -c -P 16 -v 4`。
@@ -41,7 +43,7 @@ AAB **尚未上传或经Play Console接收**。本轮完成本地校验后，在
 - `credentials.json`：本机alias/password；不要提交或粘贴到聊天。
 - `block-upload-certificate.pem`：公开证书。
 
-请安全备份以上三项。后续上传使用同一上传密钥，并将两个预设的 `version/code` 同时递增，下一次至少为 `5`。启用Play App Signing后，后台应用签名与本地上传密钥可能不同；本地APK使用上传密钥签名。
+请安全备份以上三项。后续上传使用同一上传密钥，并将两个预设的 `version/code` 同时递增，下一次至少为 `6`。启用Play App Signing后，后台应用签名与本地上传密钥可能不同；本地APK使用上传密钥签名。
 
 ## 重新打包
 
@@ -56,10 +58,10 @@ python tools/export_android.py --godot "C:/Users/EDY/Downloads/Godot_v4.7.2-stab
 ## 三星安装
 
 ```powershell
-& "D:/Unity/Editor/Data/PlaybackEngines/AndroidPlayer/SDK/platform-tools/adb.exe" -s R5CX211TXNT install --no-incremental -r "dist/Block-0.8.6-android-release.apk"
+& "D:/Unity/Editor/Data/PlaybackEngines/AndroidPlayer/SDK/platform-tools/adb.exe" -s R5CX211TXNT install --no-incremental -r "dist/Block-0.8.7-android-release.apk"
 ```
 
-本机Unity旧ADB和Godot新版ADB会抢占5037端口，使用当前服务同版客户端即可；无需关闭编辑器或删除用户数据。首次交付曾在增量安装失败后回退streamed成功，后续显式 `--no-incremental` 可直接安装。本轮三星更新返回Success，设备版本为0.8.6(4)；桌面截图 `work/launcher-icon/samsung-original-block.png` 已查看，显示原创九格、镶钻及整行消除图案，无不透明方形接缝。普通更新安装保留存档，未卸载清数据；最终安装文件核对以本轮构建记录为准。
+本机Unity旧ADB和Godot新版ADB会抢占5037端口，使用当前服务同版客户端即可；无需关闭编辑器或删除用户数据。首次交付曾在增量安装失败后回退streamed成功，后续显式 `--no-incremental` 可直接安装。本轮三星更新返回Success，设备版本为0.8.7(5)；设置与确认截图保存在本地 `work/settings-panel-20261020/`，不提交Git。最终安装base.apk与交付APK的SHA256均为 `f040f84cfe8d2ff65d977a26a44133dfec0202f688e221f89cf6456d30e0eecb`，未卸载或清数据。当前游戏进程的有限日志观察未见脚本或fatal错误，不代表完整玩法验收。
 
 ## 待用户验收
 
