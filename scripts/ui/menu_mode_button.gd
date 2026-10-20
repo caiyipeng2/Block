@@ -69,15 +69,7 @@ func _draw() -> void:
 	var brightness := 1.035 if hovered_now and not pressed_now else 1.0
 	_draw_art_face(face, radius, Color(brightness, brightness, brightness, opacity))
 
-	# Focus uses an outline only: it never darkens or depresses the artwork.
-	if has_focus() and not disabled:
-		var outline := StyleBoxFlat.new()
-		outline.bg_color = Color.TRANSPARENT
-		outline.border_color = Color("#b9fff6")
-		outline.set_border_width_all(2)
-		outline.set_corner_radius_all(roundi(radius + 2.0))
-		outline.anti_aliasing = true
-		draw_style_box(outline, face.grow(2.0))
+	# Native focus and activation remain available without a visible focus outline.
 
 
 func _draw_art_face(rect: Rect2, radius: float, tint: Color) -> void:

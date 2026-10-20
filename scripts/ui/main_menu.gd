@@ -13,12 +13,16 @@ const ModeButton := preload("res://scripts/ui/menu_mode_button.gd")
 const MenuLogo := preload("res://scripts/ui/menu_logo.gd")
 const IconButton := preload("res://scripts/ui/art_icon_button.gd")
 const MobileLayout := preload("res://scripts/ui/mobile_layout.gd")
-const OPENING_DURATION := 2.20
+const OPENING_DURATION := 3.60
+const OPENING_PHASE_DURATION := 2.20
 const RETURN_DURATION := 0.30
 const MODE_FACE_ASPECT := 877.0 / 213.0
 const MODE_GAP_RATIO := 0.34
-const MODE_SIZE_SCALE := 0.68
+const MODE_SIZE_SCALE := 0.60
 const MODE_FOOTER_CLEARANCE := 18.0
+const MOBILE_MODE_WIDTH_RATIO := 0.66
+const MOBILE_MODE_GAP_RATIO := 0.24
+const SPINNER_SIZE_SCALE := 1.30
 
 var _logo: Control
 var _best: Label
@@ -258,7 +262,8 @@ func _layout_controls() -> void:
 	width = button_height * MODE_FACE_ASPECT
 	var gap := button_height * MODE_GAP_RATIO
 	var stack_height := button_height * 3.0 + gap * 2.0
-	var lowest_top := exit_top - MODE_FOOTER_CLEARANCE - stack_height
+	var future_row := button_height + gap if stack_space >= button_height * 4.0 + gap * 3.0 else 0.0
+	var lowest_top := exit_top - MODE_FOOTER_CLEARANCE - stack_height - future_row
 	var top := clampf(size.y * 0.49, minf(minimum_top, lowest_top), lowest_top)
 	_destinations.clear()
 	for index in range(_buttons.size()):
@@ -304,12 +309,17 @@ func _layout_mobile_controls() -> void:
 	var minimum_top := _best_rect.end.y + 28.0 * unit
 	var stack_end := exit_button.position.y - 24.0 * unit
 	var stack_space := maxf(stack_end - minimum_top, 0.0)
-	# Keep the approved face's proportions, with a mobile width independent of
-	# the intentionally compact desktop menu and a real finger-size target.
-	var button_height := minf(minf(area.size.x * 0.80, 330.0 * unit) / MODE_FACE_ASPECT, stack_space / 3.48)
+	# Reserve a fourth row for the future More entry when space permits. Fit the
+	# three real modes first on short screens, keeping the approved face intact.
+	var available_width := maxf(area.size.x - padding * 2.0, 0.0)
+	var minimum_height := minf(target, available_width / MODE_FACE_ASPECT)
+	var preferred_width := minf(area.size.x * MOBILE_MODE_WIDTH_RATIO, 280.0 * unit)
+	var preferred_height := clampf(preferred_width / MODE_FACE_ASPECT, minimum_height, available_width / MODE_FACE_ASPECT)
+	var rows := 4.0 if stack_space >= minimum_height * (4.0 + 3.0 * MOBILE_MODE_GAP_RATIO) else 3.0
+	var button_height := minf(preferred_height, stack_space / (rows + (rows - 1.0) * MOBILE_MODE_GAP_RATIO))
 	var width := button_height * MODE_FACE_ASPECT
-	var gap := button_height * 0.24
-	var lowest_top := stack_end - button_height * 3.0 - gap * 2.0
+	var gap := button_height * MOBILE_MODE_GAP_RATIO
+	var lowest_top := stack_end - button_height * rows - gap * (rows - 1.0)
 	var top := clampf(area.position.y + area.size.y * 0.49, minf(minimum_top, lowest_top), lowest_top)
 	_destinations.clear()
 	for index in range(_buttons.size()):
@@ -352,6 +362,9 @@ func _advance_opening(elapsed: float, epoch: int) -> void:
 		_apply_opening(elapsed)
 
 func _apply_opening(elapsed: float) -> void:
+	# Keep all existing phase transitions synchronized while slowing the whole
+	# introduction. Spinner rotation uses this same clock, so it slows too.
+	elapsed = elapsed * OPENING_PHASE_DURATION / OPENING_DURATION
 	_elapsed = elapsed
 	var title_in := smoothstep(0.52, 0.92, elapsed)
 	var move_up := smoothstep(1.10, 1.68, elapsed)
@@ -424,11 +437,13 @@ func _draw_spinner() -> void:
 	var alpha := smoothstep(0.76, 0.90, _elapsed) * (1.0 - smoothstep(1.30, 1.53, _elapsed))
 	if alpha <= 0.0:
 		return
-	var unit := clampf(minf(size.x, size.y) * 0.025, 10.0, 17.0)
+	var unit := clampf(minf(size.x, size.y) * 0.025, 10.0, 17.0) * SPINNER_SIZE_SCALE
 	var center := _content_rect.position + _content_rect.size * Vector2(0.5, 0.55)
 	draw_set_transform(center, (_elapsed - 0.8) * 4.0)
 	for cell: Vector2 in [Vector2(-1.5, -0.5), Vector2(-0.5, -0.5), Vector2(0.5, -0.5), Vector2(-1.5, 0.5)]:
-		Art.draw_block(self, Rect2(cell * unit, Vector2.ONE * (unit - 1.0)), Color("#ffd149"), alpha)
+		# Rotate the larger piece around its bounding-box center, without orbiting.
+		var origin := (cell - Vector2(0.0, 0.5)) * unit + Vector2.ONE * 0.5
+		Art.draw_block(self, Rect2(origin, Vector2.ONE * (unit - 1.0)), Color("#ffd149"), alpha)
 	draw_set_transform(Vector2.ZERO)
 
 func _draw_centered(message: String, center: Vector2, font_size: int, color: Color) -> void:
