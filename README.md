@@ -108,11 +108,11 @@ python tools/export_windows.py --godot "E:\Tools\Godot\Godot_v4.7.2-stable_win64
 
 加 `--check` 仅预检、不导出；`--configuration debug` 生成调试包。版本号来自 `project.godot`，当前源码为 `0.8.3`，后续发布输出遵循 `dist/Block-<版本>-windows-x86_64-release.zip`。CSV 已设置为保留原文导入，并由导出包含规则带入 `.pck`；源码改表后需重新导出才能更新玩家包。须完整解压后按 `START-HERE.txt` 运行，保留 `.pck` 和所有随附文件；若导出生成 DLL 或 `x86_64` 子目录，也须完整保留。包内 `build-info.json` 含文件 SHA256，ZIP 旁 `.sha256` 用于核对压缩包。
 
-前一阶段的Windows `0.1.0` release/debug 包已导出，文件 SHA256、ZIP CRC 与压缩包校验值均匹配，独立 EXE 尚待用户验收。本地已有Windows `0.1.0` 包仍是粉色逻辑基线，**不含当前美术与三种模式**；本轮未重打Windows包，Android已交付 `0.8.9` APK/AAB。当前本机使用已校验的 `work/release-templates/4.7.2.stable` 模板，将来重新打包Windows时追加 `--templates-dir "work/release-templates/4.7.2.stable"`。模板安装、包结构和用户验收步骤见 [Windows 发布说明](docs/Block-Blast-Godot-Windows发布.md)，历史检查证据见 [验收记录](docs/Block-Blast-Godot-验收记录.md)。
+历史Windows `0.1.0` ZIP和解包目录已按两版保留策略清理，导出步骤与历史证据保留；当前尚未生成Windows新包。Android仅保留 `0.8.9` 与 `0.8.8` 的APK/AAB和对应校验记录。本机模板 `work/release-templates/4.7.2.stable` 继续保留，重新打包Windows时追加 `--templates-dir "work/release-templates/4.7.2.stable"`。模板与后续打包方法见 [Windows 发布说明](docs/Block-Blast-Godot-Windows发布.md)。
 
 ## 当前开发状态（2026-10-19）
 
-首轮 `0.8.9` 候选来自干净提交 `f7414b1411661904e3d05f875beda1a802800601`，包体校验与三星截图已完成。根据用户反馈追加标识立体比例、去阴影和奖杯进度显示，相关脚本check-only及独立静态复核通过，最终包与摘要在重新构建后更新。证据见 [验收记录](docs/Block-Blast-Godot-验收记录.md)；完整玩法、解锁动效及其他设备仍待用户验收，未运行整套测试、桌面GUI或上传Play。
+最终 `0.8.9` 两包来自干净提交 `cca0067ea160ae2db53a6a0a3fd299e4c45f5f9b`，签名、CRC、16KB、API与配置资源校验通过，三星安装哈希一致。已查看最终选关截图：标识恢复立体且无底影，0通关奖杯暗色；奖杯进度属性诊断通过。清理旧包、候选与staging共17.019GiB，只保留0.8.9/0.8.8。摘要见 `dist/Block-0.8.9-android-build-info.json` 和 [验收记录](docs/Block-Blast-Godot-验收记录.md)；中后段点亮观感、解锁动效及其他设备仍待验收，未运行整套测试、桌面GUI或上传Play。
 
 `0.8.4` 已将三星两次AudioTrack SIGSEGV定位到第264600帧尾后读取，终点改为最后可读帧264599；七份语法检查通过，独立静态复核无剩余重要问题。用户明确授权真机启动、前台观察及界面截图，候选版进程持续超过7分钟、活动音轨约437秒，没有新的退出/崩溃记录。尚不能将有限观察等同所有玩法和系统场景验收通过。
 
