@@ -1,6 +1,6 @@
 extends Control
 
-## Native, scrollable adventure map. The owner supplies progress and level goals.
+## Native, scrollable adventure map. Concrete objectives are shown in-game.
 const Art := preload("res://scripts/ui/block_art.gd")
 const IconButton := preload("res://scripts/ui/art_icon_button.gd")
 const UnlockEffect := preload("res://scripts/ui/level_unlock_effect.gd")
@@ -25,12 +25,10 @@ var _map: Control
 var _marker: GoldDiamond
 var _trophy: Control
 var _map_caption: Label
-var _description: Label
 var _start: Button
 var _save_warning: Label
 var _save_status := ""
 var _tiles: Dictionary = {}
-var _description_text: String = ""
 var _reveal_queued: bool = false
 var _focus_on_reveal: bool = false
 var _center_on_reveal: bool = false
@@ -52,6 +50,7 @@ var _unlock_epoch := 0
 class GoldDiamond extends Control:
 
 	var reduced_motion: bool = false
+	var bob_amplitude: float = 3.0
 	var _phase: float = 0.0
 
 	func _ready() -> void:
@@ -77,7 +76,7 @@ class GoldDiamond extends Control:
 		queue_redraw()
 
 	func _draw() -> void:
-		var bob := 0.0 if reduced_motion else sin(_phase) * 3.0
+		var bob := 0.0 if reduced_motion else sin(_phase) * bob_amplitude
 		var center := Vector2(size.x * 0.5, 13.0 + bob)
 		for radius in [15.0, 12.0, 9.0]:
 			draw_circle(center, radius, Color(1.0, 0.82, 0.23, 0.035))
@@ -223,7 +222,6 @@ func configure(level_count: int, completed_count: int, initial_selection: int = 
 	highest_completed = clampi(completed_count, 0, total_levels)
 	_unlocked_level = mini(total_levels, highest_completed + 1)
 	selected_level = _unlocked_level if initial_selection <= 0 else clampi(initial_selection, 1, _unlocked_level)
-	_description_text = ""
 	if is_node_ready():
 		_rebuild_tiles()
 		_refresh_selection()
@@ -296,15 +294,10 @@ func _cancel_scroll_animation() -> void:
 	_animate_on_reveal = false
 
 
-func set_level_description(value: String) -> void:
-	_description_text = value
-	_refresh_description()
-
-
 func _build_controls() -> void:
 	_header = Panel.new()
 	_header.mouse_filter = Control.MOUSE_FILTER_STOP
-	_header.add_theme_stylebox_override("panel", Art.panel_style(Color("#3f5fac"), 0, Color("#597ec5")))
+	_header.add_theme_stylebox_override("panel", Art.panel_style(Color("#4e66c1"), 0, Color("#6c88d6")))
 	add_child(_header)
 	_back = Button.new()
 	_back.set_script(IconButton)
@@ -341,11 +334,8 @@ func _build_controls() -> void:
 	_map.add_child(_marker)
 	_footer = Panel.new()
 	_footer.mouse_filter = Control.MOUSE_FILTER_STOP
-	_footer.add_theme_stylebox_override("panel", Art.panel_style(Color("#304b87"), 0, Color("#597ec5")))
+	_footer.add_theme_stylebox_override("panel", Art.panel_style(Color("#4e66c1"), 0, Color("#6c88d6")))
 	add_child(_footer)
-	_description = _label(18, Color("#d7ebff"))
-	_description.clip_text = true
-	_footer.add_child(_description)
 	_start = Button.new()
 	_start.custom_minimum_size = Vector2(48.0, 56.0)
 	_start.focus_mode = Control.FOCUS_ALL
@@ -415,11 +405,13 @@ func _layout_controls() -> void:
 		_layout_map()
 		return
 	var header_height := 104.0
-	var footer_height := 132.0
+	var footer_height := 104.0
 	_header.position = Vector2.ZERO
 	_header.size = Vector2(size.x, header_height)
 	_back.position = Vector2(24.0, 20.0)
 	_back.size = Vector2(52.0, 52.0)
+	_back.set("frameless", false)
+	_back.set("icon_scale", 0.55)
 	var heading_right_margin := 86.0 if size.x >= 480.0 else 20.0
 	_title.position = Vector2(86.0, 16.0)
 	_title.size = Vector2(maxf(0.0, size.x - 86.0 - heading_right_margin), 42.0)
@@ -431,12 +423,10 @@ func _layout_controls() -> void:
 	_scroll.size = Vector2(maxf(0.0, size.x - 32.0), maxf(0.0, size.y - header_height - footer_height - 24.0))
 	_footer.position = Vector2(0.0, maxf(header_height, size.y - footer_height))
 	_footer.size = Vector2(size.x, footer_height)
-	_description.position = Vector2(24.0, 10.0)
-	_description.size = Vector2(maxf(0.0, size.x - 48.0), 32.0)
 	var button_width := minf(600.0, maxf(48.0, size.x - 64.0))
-	_start.position = Vector2((size.x - button_width) * 0.5, 51.0)
+	_start.position = Vector2((size.x - button_width) * 0.5, 18.0)
 	_start.size = Vector2(button_width, 58.0)
-	_save_warning.position = Vector2(24.0, 112.0)
+	_save_warning.position = Vector2(24.0, 82.0)
 	_save_warning.size = Vector2(maxf(0.0, size.x - 48.0), 18.0)
 	_layout_map()
 
@@ -444,30 +434,29 @@ func _layout_mobile_controls() -> void:
 	var area := MobileLayout.safe_content_rect(self)
 	var unit := MobileLayout.dp(self, 1.0)
 	var target := MobileLayout.touch_target(self)
-	var header_height := 104.0 * unit
-	var footer_height := 124.0 * unit
+	var header_height := 84.0 * unit
+	var footer_height := 96.0 * unit
 	_header.position = area.position
 	_header.size = Vector2(area.size.x, header_height)
-	_back.position = Vector2(12.0, 16.0) * unit
+	_back.position = Vector2(8.0, 8.0) * unit
 	_back.size = Vector2.ONE * target
-	_title.position = Vector2(68.0, 12.0) * unit
-	_title.size = Vector2(maxf(1.0, area.size.x - 80.0 * unit), 34.0 * unit)
-	_title.add_theme_font_size_override("font_size", roundi(24.0 * unit))
-	_progress.position = Vector2(68.0, 52.0) * unit
-	_progress.size = Vector2(maxf(1.0, area.size.x - 80.0 * unit), 24.0 * unit)
-	_progress.add_theme_font_size_override("font_size", roundi(15.0 * unit))
+	_back.set("frameless", true)
+	_back.set("icon_scale", 0.48)
+	_title.position = Vector2(64.0, 12.0) * unit
+	_title.size = Vector2(maxf(1.0, area.size.x - 128.0 * unit), 40.0 * unit)
+	_title.add_theme_font_size_override("font_size", roundi(26.0 * unit))
+	_progress.position = Vector2(64.0, 56.0) * unit
+	_progress.size = Vector2(maxf(1.0, area.size.x - 128.0 * unit), 20.0 * unit)
+	_progress.add_theme_font_size_override("font_size", roundi(13.0 * unit))
 	_scroll.position = area.position + Vector2(8.0 * unit, header_height + 8.0 * unit)
 	_scroll.size = Vector2(maxf(1.0, area.size.x - 16.0 * unit), maxf(1.0, area.size.y - header_height - footer_height - 16.0 * unit))
 	_footer.position = Vector2(area.position.x, area.end.y - footer_height)
 	_footer.size = Vector2(area.size.x, footer_height)
-	_description.position = Vector2(12.0, 8.0) * unit
-	_description.size = Vector2(area.size.x - 24.0 * unit, 28.0 * unit)
-	_description.add_theme_font_size_override("font_size", roundi(15.0 * unit))
-	var button_width := maxf(1.0, area.size.x - 32.0 * unit)
-	_start.position = Vector2((area.size.x - button_width) * 0.5, 42.0 * unit)
-	_start.size = Vector2(button_width, target)
-	_start.add_theme_font_size_override("font_size", roundi(20.0 * unit))
-	_save_warning.position = Vector2(12.0, 100.0) * unit
+	var button_width := minf(280.0 * unit, maxf(1.0, area.size.x * 0.66))
+	_start.position = Vector2((area.size.x - button_width) * 0.5, 16.0 * unit)
+	_start.size = Vector2(button_width, maxf(target, 56.0 * unit))
+	_start.add_theme_font_size_override("font_size", roundi(23.0 * unit))
+	_save_warning.position = Vector2(12.0, 76.0) * unit
 	_save_warning.size = Vector2(area.size.x - 24.0 * unit, 18.0 * unit)
 	_save_warning.add_theme_font_size_override("font_size", roundi(11.0 * unit))
 
@@ -484,10 +473,12 @@ func _layout_map() -> void:
 	var maximum_side := 36.0
 	if MobileLayout.is_mobile():
 		available_width = maxf(1.0, content_width - MobileLayout.dp(self, 16.0))
-		gap = MobileLayout.dp(self, 4.0)
-		minimum_side = MobileLayout.dp(self, 40.0)
-		maximum_side = minimum_side
+		gap = MobileLayout.dp(self, 1.5)
+		minimum_side = MobileLayout.dp(self, 28.0)
+		maximum_side = MobileLayout.dp(self, 32.0)
 	var columns := clampi(int((available_width + gap) / (minimum_side + gap * 2.0)), 1, 11)
+	if MobileLayout.is_mobile():
+		columns = clampi(int((available_width + gap) / (minimum_side + gap)), 1, 11)
 	var tile_side := clampf(floorf((available_width - float(columns - 1) * gap) / float(columns)), minimum_side, maximum_side)
 	var pitch := tile_side + gap
 	var map_width := float(columns) * pitch - gap
@@ -500,9 +491,6 @@ func _layout_map() -> void:
 		var count := mini(row_capacity, total_levels - first_level + 1)
 		rows.append({"first": first_level, "count": count})
 		first_level += count
-	var top_space := 190.0
-	var map_height := top_space + float(rows.size()) * pitch + 28.0
-	_map.custom_minimum_size = Vector2(0.0, map_height)
 	_trophy.position = Vector2((content_width - 124.0) * 0.5, 14.0)
 	_trophy.size = Vector2(124.0, 124.0)
 	_map_caption.position = Vector2(8.0, 142.0)
@@ -510,6 +498,12 @@ func _layout_map() -> void:
 	_map_caption.add_theme_font_size_override("font_size", 18 if content_width >= 440.0 else 15)
 	if MobileLayout.is_mobile():
 		_map_caption.add_theme_font_size_override("font_size", roundi(MobileLayout.dp(self, 14.0)))
+	var top_space := 190.0
+	if MobileLayout.is_mobile():
+		# The larger floating badge needs its own space below the map caption.
+		top_space = maxf(top_space, _map_caption.position.y + _map_caption.size.y + MobileLayout.dp(self, 24.0))
+	var map_height := top_space + float(rows.size()) * pitch + 28.0
+	_map.custom_minimum_size = Vector2(0.0, map_height)
 	var left := (content_width - map_width) * 0.5
 	for row_index in range(rows.size()):
 		var row: Dictionary = rows[row_index]
@@ -534,10 +528,30 @@ func _position_marker() -> void:
 	var tile: LevelTile = _tiles.get(_unlock_source if _unlock_destination > 0 else selected_level)
 	if not is_instance_valid(tile) or not is_instance_valid(_marker):
 		return
-	# A small badge at the tile's upper edge leaves both rows' numbers clear.
 	_marker.size = Vector2(34.0, 34.0)
-	_marker.scale = Vector2.ONE * 0.65
-	_marker.position = Vector2(tile.position.x + tile.size.x * 0.5 - 11.05, tile.position.y - 12.0)
+	_marker.scale = _marker_layout_scale()
+	_marker.bob_amplitude = 2.0 if MobileLayout.is_mobile() else 3.0
+	_marker.position = _marker_position_for_tile(tile)
+	_marker.queue_redraw()
+
+
+func _marker_layout_scale() -> Vector2:
+	if not MobileLayout.is_mobile():
+		return Vector2.ONE * 0.65
+	var horizontal := MobileLayout.dp(self, 28.0) / 22.0
+	# A broad, low pyramid fits the band between adjacent level numbers.
+	return Vector2(horizontal, horizontal * 0.53)
+
+
+func _marker_position_for_tile(tile: LevelTile) -> Vector2:
+	var marker_scale := _marker_layout_scale()
+	var x := tile.position.x + tile.size.x * 0.5 - 17.0 * marker_scale.x
+	if not MobileLayout.is_mobile():
+		return Vector2(x, tile.position.y - 12.0)
+	var face_top := tile.position.y + (tile.size.y - tile.visual_side) * 0.5
+	# The diamond's neutral tip is local y=24.2. Keep it at the upper edge,
+	# above the selected number, even as density changes its visible size.
+	return Vector2(x, face_top + MobileLayout.dp(self, 5.0) - 24.2 * marker_scale.y)
 
 
 func _prepare_unlock_visuals() -> void:
@@ -601,9 +615,10 @@ func _on_unlock_frame(elapsed: float) -> void:
 	var destination_color := Color("#263c68").lerp(Color("#ffd154"), smoothstep(0.0, 1.0, unlocking))
 	var destination_text := Color("#91a6ce").lerp(Color("#273451"), unlocking)
 	destination.set_presentation(destination_color, destination_text, 1.0 + sin(unlocking * PI) * 0.20, sin(unlocking * PI) * 0.42)
-	var start := Vector2(source.position.x + source.size.x * 0.5 - 11.05, source.position.y - 12.0)
-	var finish := Vector2(destination.position.x + destination.size.x * 0.5 - 11.05, destination.position.y - 12.0)
-	_marker.position = start.lerp(finish, smoothstep(0.0, 1.0, unlocking)) + Vector2(0.0, -sin(unlocking * PI) * 20.0)
+	var start := _marker_position_for_tile(source)
+	var finish := _marker_position_for_tile(destination)
+	var hop := MobileLayout.dp(self, 12.0) if MobileLayout.is_mobile() else 20.0
+	_marker.position = start.lerp(finish, smoothstep(0.0, 1.0, unlocking)) + Vector2(0.0, -sin(unlocking * PI) * hop)
 
 
 func _cancel_unlock_animation() -> void:
@@ -628,7 +643,6 @@ func _select_level(level_id: int) -> void:
 		return
 	_cancel_unlock_animation()
 	selected_level = level_id
-	_description_text = ""
 	_refresh_selection()
 	level_selected.emit(selected_level)
 	_schedule_reveal()
@@ -644,21 +658,6 @@ func _refresh_selection() -> void:
 	_progress.text = "已通关 %d / %d" % [highest_completed, total_levels]
 	_start.text = "开始第 %d 关" % selected_level
 	_position_marker()
-	_refresh_description()
-
-
-func _refresh_description() -> void:
-	if not is_instance_valid(_description):
-		return
-	if not _description_text.is_empty():
-		_description.text = _description_text
-	elif selected_level <= highest_completed:
-		_description.text = "第 %d 关 · 已通关，可以再次挑战" % selected_level
-	elif selected_level == total_levels:
-		_description.text = "第 %d 关 · 挑战最后一关，点亮整张地图" % selected_level
-	else:
-		_description.text = "第 %d 关 · 通过后解锁下一关" % selected_level
-	_description.tooltip_text = _description.text
 
 
 func _start_selected_level() -> void:
@@ -712,12 +711,14 @@ func _reveal_selection() -> void:
 	var viewport_height := _scroll.size.y
 	var visible_top := float(_scroll.scroll_vertical)
 	var target := visible_top
+	var marker_top := _marker_position_for_tile(tile).y - 5.0 * _marker_layout_scale().y
+	var padding := MobileLayout.dp(self, 8.0) if MobileLayout.is_mobile() else 12.0
 	if _center_on_reveal:
 		target = tile.position.y + tile.size.y * 0.5 - viewport_height * 0.66
-	elif tile.position.y - 56.0 < visible_top + 12.0:
-		target = tile.position.y - 68.0
-	elif tile.position.y + tile.size.y + 16.0 > visible_top + viewport_height:
-		target = tile.position.y + tile.size.y + 24.0 - viewport_height
+	elif marker_top < visible_top + padding:
+		target = marker_top - padding
+	elif tile.position.y + tile.size.y + padding > visible_top + viewport_height:
+		target = tile.position.y + tile.size.y + padding * 2.0 - viewport_height
 	var scroll_bar := _scroll.get_v_scroll_bar()
 	var maximum := maxf(0.0, scroll_bar.max_value - scroll_bar.page)
 	target = clampf(target, 0.0, maximum)

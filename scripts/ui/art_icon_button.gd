@@ -16,6 +16,17 @@ const Art := preload("res://scripts/ui/block_art.gd")
 		fill_color = value
 		if is_inside_tree():
 			_apply_theme()
+@export var frameless: bool = false:
+	set(value):
+		frameless = value
+		if is_inside_tree():
+			_apply_theme()
+		else:
+			queue_redraw()
+@export var icon_scale: float = 0.55:
+	set(value):
+		icon_scale = clampf(value, 0.2, 1.0)
+		queue_redraw()
 
 func _ready() -> void:
 	custom_minimum_size = custom_minimum_size.max(Vector2(48.0, 48.0))
@@ -36,11 +47,16 @@ func _draw() -> void:
 		color.a *= 0.38
 	elif is_hovered():
 		color = color.lightened(0.12)
-	var side := minf(size.x, size.y) * 0.55
+	var side := minf(size.x, size.y) * icon_scale
 	var offset := Vector2(0.0, 1.5) if is_pressed() else Vector2.ZERO
 	Art.draw_icon(self, icon_kind, Rect2((size - Vector2.ONE * side) * 0.5 + offset, Vector2.ONE * side), color)
 
 func _apply_theme() -> void:
+	if frameless:
+		for state in ["normal", "hover", "pressed", "disabled", "focus"]:
+			add_theme_stylebox_override(state, StyleBoxEmpty.new())
+		queue_redraw()
+		return
 	add_theme_stylebox_override("normal", Art.button_style(fill_color))
 	add_theme_stylebox_override("hover", Art.button_style(fill_color.lightened(0.10)))
 	add_theme_stylebox_override("pressed", Art.button_style(fill_color, true))

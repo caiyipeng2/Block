@@ -110,7 +110,6 @@ func _ready() -> void:
 	add_child(level_select)
 	level_select.back_requested.connect(_show_menu)
 	level_select.level_started.connect(_start_adventure_level)
-	level_select.level_selected.connect(_update_level_description)
 	_create_menu_controls()
 	_create_confirmation_dialog()
 	resized.connect(_layout_controls)
@@ -495,7 +494,6 @@ func _open_levels(reload_table: bool = true) -> void:
 	level_select.set_reduced_motion(_reduced_motion())
 	level_select.set_save_status("进度保存失败，仅本次运行有效" if not save_status_text.is_empty() else "")
 	_refresh_controls()
-	_update_level_description(level_select.selected_level)
 	var unlock_event := pending_level_unlock
 	pending_level_unlock = {}
 	level_select.activate(int(unlock_event.get("completed", 0)), int(unlock_event.get("unlocked", 0)))
@@ -529,9 +527,6 @@ func _show_level_config_error(details: String) -> void:
 	var width := mini(720, maxi(260, int(size.x) - 48))
 	level_config_dialog.min_size = Vector2i(width, 200)
 	level_config_dialog.popup_centered(Vector2i(width, 0))
-
-func _update_level_description(level_id: int) -> void:
-	level_select.set_level_description("第 %d 关 · %s" % [level_id, ModeCatalog.objective_description(level_id)])
 
 func _start_adventure_level(level_id: int) -> void:
 	if level_id >= 1 and level_id <= _unlocked_level():
