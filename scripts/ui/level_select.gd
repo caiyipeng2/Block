@@ -5,6 +5,7 @@ const Art := preload("res://scripts/ui/block_art.gd")
 const IconButton := preload("res://scripts/ui/art_icon_button.gd")
 const UnlockEffect := preload("res://scripts/ui/level_unlock_effect.gd")
 const MobileLayout := preload("res://scripts/ui/mobile_layout.gd")
+const TrophyProgress := preload("res://scripts/ui/trophy_progress.gd")
 
 signal back_requested
 signal level_started(level_id: int)
@@ -45,6 +46,7 @@ var _unlock_destination: int = 0
 var _unlock_running := false
 var _unlock_waiting := false
 var _unlock_epoch := 0
+var _marker_gap_levels: Array[int] = [1]
 
 
 class GoldDiamond extends Control:
@@ -80,8 +82,6 @@ class GoldDiamond extends Control:
 		var center := Vector2(size.x * 0.5, 13.0 + bob)
 		for radius in [15.0, 12.0, 9.0]:
 			draw_circle(center, radius, Color(1.0, 0.82, 0.23, 0.035))
-		draw_set_transform(Vector2(size.x * 0.5, size.y - 3.0), 0.0, Vector2(1.0, 0.22))
-		draw_circle(Vector2.ZERO, 7.0 - bob * 0.16, Color(0.03, 0.08, 0.17, 0.27))
 		draw_set_transform(center, 0.0 if reduced_motion else sin(_phase * 0.5) * 0.055)
 		var top := Vector2(0.0, -9.5)
 		var right := Vector2(11.0, -2.0)
@@ -178,33 +178,6 @@ class LevelTile extends Button:
 			draw_rect(rect.grow(2.5), Color("#82f5e9"), false, 1.6)
 
 
-class TrophyArt extends Control:
-
-	func _draw() -> void:
-		var side := minf(size.x, size.y)
-		var origin := (size - Vector2.ONE * side) * 0.5
-		var gold := Color("#ffd154")
-		var points := PackedVector2Array([
-			origin + Vector2(0.20, 0.12) * side,
-			origin + Vector2(0.80, 0.12) * side,
-			origin + Vector2(0.73, 0.51) * side,
-			origin + Vector2(0.61, 0.65) * side,
-			origin + Vector2(0.39, 0.65) * side,
-			origin + Vector2(0.27, 0.51) * side
-		])
-		draw_arc(origin + Vector2(0.27, 0.32) * side, side * 0.19, PI * 0.5, PI * 1.5, 24, gold.darkened(0.14), side * 0.055, true)
-		draw_arc(origin + Vector2(0.73, 0.32) * side, side * 0.19, -PI * 0.5, PI * 0.5, 24, gold.darkened(0.14), side * 0.055, true)
-		draw_colored_polygon(points, gold)
-		draw_rect(Rect2(origin + Vector2(0.44, 0.62) * side, Vector2(0.12, 0.17) * side), gold.darkened(0.08))
-		draw_rect(Rect2(origin + Vector2(0.30, 0.79) * side, Vector2(0.40, 0.08) * side), gold)
-		draw_line(origin + Vector2(0.24, 0.15) * side, origin + Vector2(0.76, 0.15) * side, gold.lightened(0.40), side * 0.035, true)
-		var star := PackedVector2Array()
-		for point in range(10):
-			var radius := side * (0.16 if point % 2 == 0 else 0.075)
-			star.append(origin + Vector2(0.50, 0.36) * side + Vector2.from_angle(-PI * 0.5 + float(point) * PI / 5.0) * radius)
-		draw_colored_polygon(star, Color("#ac7728"))
-
-
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_build_controls()
@@ -222,6 +195,7 @@ func configure(level_count: int, completed_count: int, initial_selection: int = 
 	highest_completed = clampi(completed_count, 0, total_levels)
 	_unlocked_level = mini(total_levels, highest_completed + 1)
 	selected_level = _unlocked_level if initial_selection <= 0 else clampi(initial_selection, 1, _unlocked_level)
+	_marker_gap_levels = [selected_level]
 	if is_node_ready():
 		_rebuild_tiles()
 		_refresh_selection()
@@ -321,7 +295,7 @@ func _build_controls() -> void:
 	_map.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_map.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_scroll.add_child(_map)
-	_trophy = TrophyArt.new()
+	_trophy = TrophyProgress.new()
 	_trophy.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_map.add_child(_trophy)
 	_map_caption = _label(18, Color("#c8e9ff"))
@@ -491,6 +465,26 @@ func _layout_map() -> void:
 		var count := mini(row_capacity, total_levels - first_level + 1)
 		rows.append({"first": first_level, "count": count})
 		first_level += count
+	var marker_gap_rows: Array[int] = []
+	var marker_clearance := 0.0
+	if MobileLayout.is_mobile():
+		marker_clearance = MobileLayout.dp(self, 14.0)
+		# Reserve a band only when an occupied row lies above the marker. This
+		# keeps the full-height pyramid clear of numbers without flattening it.
+		for level_id: int in _marker_gap_levels:
+			for row_index in range(rows.size() - 1):
+				var row: Dictionary = rows[row_index]
+				var row_first := int(row["first"])
+				var row_count := int(row["count"])
+				if level_id < row_first or level_id >= row_first + row_count:
+					continue
+				var marker_column := _row_offset(columns, row_count, row_index) + level_id - row_first
+				var above: Dictionary = rows[row_index + 1]
+				var above_count := int(above["count"])
+				var above_start := _row_offset(columns, above_count, row_index + 1)
+				if marker_column >= above_start and marker_column < above_start + above_count and not marker_gap_rows.has(row_index):
+					marker_gap_rows.append(row_index)
+				break
 	_trophy.position = Vector2((content_width - 124.0) * 0.5, 14.0)
 	_trophy.size = Vector2(124.0, 124.0)
 	_map_caption.position = Vector2(8.0, 142.0)
@@ -501,17 +495,18 @@ func _layout_map() -> void:
 	var top_space := 190.0
 	if MobileLayout.is_mobile():
 		# The larger floating badge needs its own space below the map caption.
-		top_space = maxf(top_space, _map_caption.position.y + _map_caption.size.y + MobileLayout.dp(self, 24.0))
-	var map_height := top_space + float(rows.size()) * pitch + 28.0
+		top_space = maxf(top_space, _map_caption.position.y + _map_caption.size.y + MobileLayout.dp(self, 40.0))
+	var map_height := top_space + float(rows.size()) * pitch + 28.0 + float(marker_gap_rows.size()) * marker_clearance
 	_map.custom_minimum_size = Vector2(0.0, map_height)
 	var left := (content_width - map_width) * 0.5
 	for row_index in range(rows.size()):
 		var row: Dictionary = rows[row_index]
 		var count := int(row["count"])
-		var free_columns := columns - count
-		var stagger := 1 if row_index % 4 == 2 else 0
-		var offset_columns := clampi(floori(float(free_columns) * 0.5) + stagger, 0, free_columns)
+		var offset_columns := _row_offset(columns, count, row_index)
 		var y := top_space + float(rows.size() - row_index - 1) * pitch
+		for gap_row: int in marker_gap_rows:
+			if row_index <= gap_row:
+				y += marker_clearance
 		for index in range(count):
 			var tile: LevelTile = _tiles.get(int(row["first"]) + index)
 			if not is_instance_valid(tile):
@@ -524,13 +519,19 @@ func _layout_map() -> void:
 	_schedule_reveal()
 
 
+func _row_offset(columns: int, count: int, row_index: int) -> int:
+	var free_columns := columns - count
+	var stagger := 1 if row_index % 4 == 2 else 0
+	return clampi(floori(float(free_columns) * 0.5) + stagger, 0, free_columns)
+
+
 func _position_marker() -> void:
 	var tile: LevelTile = _tiles.get(_unlock_source if _unlock_destination > 0 else selected_level)
 	if not is_instance_valid(tile) or not is_instance_valid(_marker):
 		return
 	_marker.size = Vector2(34.0, 34.0)
 	_marker.scale = _marker_layout_scale()
-	_marker.bob_amplitude = 2.0 if MobileLayout.is_mobile() else 3.0
+	_marker.bob_amplitude = 1.5 if MobileLayout.is_mobile() else 3.0
 	_marker.position = _marker_position_for_tile(tile)
 	_marker.queue_redraw()
 
@@ -539,8 +540,7 @@ func _marker_layout_scale() -> Vector2:
 	if not MobileLayout.is_mobile():
 		return Vector2.ONE * 0.65
 	var horizontal := MobileLayout.dp(self, 28.0) / 22.0
-	# A broad, low pyramid fits the band between adjacent level numbers.
-	return Vector2(horizontal, horizontal * 0.53)
+	return Vector2.ONE * horizontal
 
 
 func _marker_position_for_tile(tile: LevelTile) -> Vector2:
@@ -562,7 +562,8 @@ func _prepare_unlock_visuals() -> void:
 		return
 	source.set_presentation(Color("#ffd154"), Color("#273451"))
 	destination.set_presentation(Color("#263c68"), Color("#91a6ce"))
-	_position_marker()
+	_marker_gap_levels = [_unlock_source, _unlock_destination]
+	_layout_map()
 
 
 func _begin_unlock_animation() -> void:
@@ -635,6 +636,8 @@ func _cancel_unlock_animation() -> void:
 			tile.reset_presentation()
 	_unlock_source = 0
 	_unlock_destination = 0
+	# Keep the reserved bands until selection/reconfigure, so cancelling an
+	# animation on pointer-down cannot move another tile under that same press.
 	_position_marker()
 
 
@@ -643,6 +646,9 @@ func _select_level(level_id: int) -> void:
 		return
 	_cancel_unlock_animation()
 	selected_level = level_id
+	_marker_gap_levels = [selected_level]
+	if MobileLayout.is_mobile():
+		_layout_map()
 	_refresh_selection()
 	level_selected.emit(selected_level)
 	_schedule_reveal()
@@ -656,6 +662,7 @@ func _refresh_selection() -> void:
 		tile.selected = int(level_id) == selected_level
 		tile.refresh()
 	_progress.text = "已通关 %d / %d" % [highest_completed, total_levels]
+	_trophy.set_progress(highest_completed, total_levels)
 	_start.text = "开始第 %d 关" % selected_level
 	_position_marker()
 
