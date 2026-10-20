@@ -353,9 +353,8 @@ func _layout_controls() -> void:
 	var gap := 10.0 * _unit
 	var motion_height := maxf(62.0 * _unit, MobileLayout.touch_target(self))
 	var hint_height := (42.0 if not _save_warning.is_empty() else 26.0) * _unit
-	# Set children first, then ask the native containers for their real minimum.
-	# Rounding dp, fonts, separators and invisible rows makes a hand-counted sum
-	# slightly too short on high-density Android, causing a full-length scrollbar.
+	# Set children first, then total their real minimum sizes. Read visible rows
+	# directly: VBox's aggregate cache can still include rows hidden this frame.
 	_content.add_theme_constant_override("separation", maxi(roundi(gap), 1))
 	_top.add_theme_constant_override("separation", maxi(roundi(5.0 * _unit), 1))
 	_top.custom_minimum_size.y = top_height
@@ -377,7 +376,13 @@ func _layout_controls() -> void:
 	_hint.custom_minimum_size.y = hint_height
 	_hint.add_theme_font_size_override("font_size", roundi(12.0 * _unit))
 	_hint.add_theme_color_override("font_color", Color("#d4e2ff") if _save_warning.is_empty() else Color("#ffe2a8"))
-	var content_minimum := ceilf(_content.get_combined_minimum_size().y)
+	var content_minimum := 0.0
+	var visible_rows := 0
+	for child in _content.get_children():
+		if child is Control and child.visible:
+			content_minimum += child.get_combined_minimum_size().y
+			visible_rows += 1
+	content_minimum = ceilf(content_minimum + float(maxi(visible_rows - 1, 0) * _content.get_theme_constant("separation")))
 	# 16dp outer bottom + 12dp inner top/bottom + 8dp rounding/visual clearance.
 	var desired_height := header + 48.0 * _unit + content_minimum
 	var height := minf(desired_height, maxf(safe.size.y - margin * 2.0, 0.0))
