@@ -38,7 +38,7 @@ func _run_tests() -> void:
 	settings_button.pressed.emit()
 	_equal(main.screen, "settings", "点击原生设置按钮进入设置面板")
 	_equal(main.game, null, "设置界面不会创建游戏局面")
-	var preview_button: Button = main.get_node_or_null("SettingsControls/PreviewSoundButton")
+	var preview_button: Button = main.settings_controls.get_action_button("PreviewSoundButton")
 	_check(preview_button != null and preview_button.visible, "设置提供可见试听音效按钮")
 	if preview_button != null:
 		main._set_setting("sound_enabled", true)
@@ -49,7 +49,8 @@ func _run_tests() -> void:
 		main._set_setting("sound_enabled", true)
 	for key in ["sound_enabled", "music_enabled", "reduced_motion", "screen_shake"]:
 		var toggle: CheckButton = main.setting_controls[key]
-		_equal(toggle.get_theme_color("font_focus_color"), main.rules_config.text_color, "键盘聚焦时开关文字保持可读")
+		_equal(toggle.focus_mode, Control.FOCUS_ALL, "图标开关支持键盘聚焦")
+		_check(not toggle.text.is_empty(), "图标开关保留中文可访问名称")
 		var previous: bool = main.save_data[key]
 		toggle.button_pressed = not previous
 		_equal(main.save_data[key], not previous, "%s 点击切换" % key)

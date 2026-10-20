@@ -11,6 +11,8 @@ const ModeCatalog := preload("res://scripts/modes/mode_catalog.gd")
 const LevelSelectScript := preload("res://scripts/ui/level_select.gd")
 const MainMenuScript := preload("res://scripts/ui/main_menu.gd")
 const MobileLayout := preload("res://scripts/ui/mobile_layout.gd")
+const SettingsPanelScript := preload("res://scripts/ui/settings_panel.gd")
+const ActionConfirmationScript := preload("res://scripts/ui/action_confirmation.gd")
 
 signal quit_requested
 
@@ -34,7 +36,8 @@ var setting_controls: Dictionary = {}
 var feedback_audio: Node
 var transition: Tween
 var exiting := false
-var confirmation_dialog: ConfirmationDialog
+var confirmation_dialog: Control
+var confirmation_return_focus: Control
 var confirmation_action := ""
 var confirmation_was_paused := false
 var gameplay_ui: Control
@@ -173,7 +176,7 @@ func _input(event: InputEvent) -> void:
 			elif screen == "settings":
 				_close_settings()
 			elif screen == "menu":
-				_request_quit()
+				_ask_quit()
 		if event.keycode == KEY_R and screen in ["game", "game_over", "level_complete"]:
 			_request_restart()
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
@@ -204,16 +207,6 @@ func _handle_press(position: Vector2) -> void:
 		# Native menu buttons own their input and animated bounds.
 		return
 	if screen == "settings":
-		if _settings_sound_rect().has_point(position):
-			_toggle_setting("sound_enabled")
-		elif _settings_music_rect().has_point(position):
-			_toggle_setting("music_enabled")
-		elif _settings_motion_rect().has_point(position):
-			_toggle_setting("reduced_motion")
-		elif _settings_shake_rect().has_point(position):
-			_toggle_setting("screen_shake")
-		elif _settings_back_button_rect().has_point(position):
-			_close_settings()
 		return
 	if screen == "game_over":
 		return
@@ -570,27 +563,11 @@ func _record_level_failure() -> void:
 	_persist_data()
 
 func _create_confirmation_dialog() -> void:
-	confirmation_dialog = ConfirmationDialog.new()
+	confirmation_dialog = ActionConfirmationScript.new()
 	confirmation_dialog.name = "ConfirmActionDialog"
-	confirmation_dialog.dialog_autowrap = true
-	var dialog_theme := Theme.new()
-	dialog_theme.set_stylebox("panel", "AcceptDialog", Art.panel_style(Color("#1c3055"), 20, Color("#6385bd")))
-	dialog_theme.set_color("font_color", "Label", rules_config.text_color)
-	dialog_theme.set_color("font_color", "Button", rules_config.text_color)
-	dialog_theme.set_stylebox("normal", "Button", Art.button_style(Color("#2c4a7e")))
-	dialog_theme.set_stylebox("hover", "Button", Art.button_style(Color("#3864a3")))
-	dialog_theme.set_stylebox("pressed", "Button", Art.button_style(Color("#2c4a7e"), true))
-	dialog_theme.set_stylebox("focus", "Button", _focus_box())
-	confirmation_dialog.theme = dialog_theme
-	confirmation_dialog.min_size = Vector2i(400, 170)
-	confirmation_dialog.cancel_button_text = "取消，继续游戏"
-	confirmation_dialog.get_label().add_theme_font_size_override("font_size", 18)
-	for button: Button in [confirmation_dialog.get_ok_button(), confirmation_dialog.get_cancel_button()]:
-		button.custom_minimum_size = Vector2(150, 44)
-		button.add_theme_font_size_override("font_size", 18)
+	add_child(confirmation_dialog)
 	confirmation_dialog.confirmed.connect(_confirm_action)
 	confirmation_dialog.canceled.connect(_cancel_confirmation)
-	add_child(confirmation_dialog)
 
 func _request_restart() -> void:
 	if exiting or input_locked or _objective_intro_open() or not confirmation_action.is_empty():
@@ -611,56 +588,55 @@ func _request_menu() -> void:
 func _show_confirmation(action: String) -> void:
 	if exiting or not confirmation_action.is_empty():
 		return
+	confirmation_return_focus = get_viewport().gui_get_focus_owner()
 	confirmation_action = action
 	confirmation_was_paused = paused
 	_cancel_drag()
 	paused = true
 	move_feedback.set_paused(true)
 	_refresh_controls()
-	if action == "restart":
-		confirmation_dialog.title = "确认重新开始"
+	confirmation_dialog.show_action(action)
+	confirmation_dialog.cancel_button_text = "继续游戏" if screen == "game" else "暂不退出"
+	if action == "quit":
+		confirmation_dialog.title = "退出游戏"
+		confirmation_dialog.dialog_text = "确定退出游戏吗？\n最高分、通关记录和设置会保留。" + ("\n本局棋盘不会保存。" if game != null else "")
+		confirmation_dialog.ok_button_text = "确定退出"
+	elif action == "restart":
+		confirmation_dialog.title = "重新开始"
 		confirmation_dialog.dialog_text = "重新开始会清空当前棋盘和本局分数。\n最高分和设置会保留。"
-		confirmation_dialog.ok_button_text = "确定重新开始"
+		confirmation_dialog.ok_button_text = "重新开始"
 	else:
 		var destination := "选关" if game_mode == "adventure" else "菜单"
-		confirmation_dialog.title = "确认返回" + destination
+		confirmation_dialog.title = "返回" + destination
 		confirmation_dialog.dialog_text = "返回%s后，本局棋盘不会保存。\n最高分、通关记录和设置会保留。" % destination
 		confirmation_dialog.ok_button_text = "确定返回" + destination
-	if MobileLayout.is_mobile():
-		var content := MobileLayout.safe_content_rect(self)
-		var unit := MobileLayout.dp(self, 1.0)
-		var popup_width := minf(content.size.x - 24.0 * unit, 420.0 * unit)
-		confirmation_dialog.min_size = Vector2i(roundi(popup_width), roundi(170.0 * unit))
-		confirmation_dialog.get_label().add_theme_font_size_override("font_size", roundi(16.0 * unit))
-		confirmation_dialog.cancel_button_text = "取消"
-		confirmation_dialog.ok_button_text = "重新开始" if action == "restart" else "确定返回"
-		for button: Button in [confirmation_dialog.get_ok_button(), confirmation_dialog.get_cancel_button()]:
-			button.custom_minimum_size = Vector2(popup_width * 0.42, MobileLayout.touch_target(self))
-			button.add_theme_font_size_override("font_size", roundi(16.0 * unit))
-		confirmation_dialog.popup_centered(Vector2i(roundi(popup_width), roundi(190.0 * unit)))
-	else:
-		confirmation_dialog.popup_centered(Vector2i(440, 190))
-	# Default keyboard focus stays on the non-destructive choice.
-	confirmation_dialog.get_cancel_button().grab_focus()
+	confirmation_dialog.popup_centered(Vector2i(448, 0))
 	queue_redraw()
 
 func _confirm_action() -> void:
 	var action := confirmation_action
 	_clear_confirmation()
+	confirmation_return_focus = null
 	if action == "restart":
 		_start_game()
 	elif action == "menu":
 		_return_to_menu()
+	elif action == "quit":
+		_request_quit()
 
 func _cancel_confirmation() -> void:
 	if confirmation_action.is_empty():
 		return
 	var restore_paused := confirmation_was_paused
+	var restore_focus := confirmation_return_focus
+	confirmation_return_focus = null
 	_clear_confirmation()
 	paused = restore_paused
 	move_feedback.set_paused(paused)
 	_refresh_controls()
 	_check_progress_milestones()
+	if is_instance_valid(restore_focus) and restore_focus.is_visible_in_tree():
+		restore_focus.grab_focus()
 	queue_redraw()
 
 func _clear_confirmation() -> void:
@@ -733,7 +709,7 @@ func _show_settings() -> void:
 	screen = "settings"
 	_play_feedback("click")
 	_refresh_controls()
-	setting_controls["sound_enabled"].grab_focus()
+	settings_controls.focus_primary()
 	_fade_controls(settings_controls)
 	queue_redraw()
 
@@ -747,15 +723,12 @@ func _request_game_settings() -> void:
 	move_feedback.set_paused(true)
 	screen = "settings"
 	_refresh_controls()
-	setting_controls["sound_enabled"].grab_focus()
+	settings_controls.focus_primary()
 	_fade_controls(settings_controls)
 	queue_redraw()
 
 func _on_settings_requested() -> void:
-	if _is_collect_mode() and screen == "game" and not paused:
-		_toggle_pause()
-	else:
-		_request_game_settings()
+	_request_game_settings()
 
 func _close_settings() -> void:
 	if settings_origin == "game" and game != null:
@@ -962,41 +935,35 @@ func _create_menu_controls() -> void:
 	menu_controls.classic_requested.connect(_start_game.bind("classic"))
 	menu_controls.adventure_requested.connect(_open_levels)
 	menu_controls.settings_requested.connect(_show_settings)
-	menu_controls.quit_requested.connect(_request_quit)
-	settings_controls = Control.new()
+	menu_controls.quit_requested.connect(_ask_quit)
+	settings_controls = SettingsPanelScript.new()
 	settings_controls.name = "SettingsControls"
-	settings_controls.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	settings_controls.z_index = 30
 	add_child(settings_controls)
-	var labels := {"sound_enabled": "音效", "music_enabled": "背景音乐", "reduced_motion": "减少动画", "screen_shake": "画面震动"}
-	for key: String in labels:
-		var toggle := CheckButton.new()
-		toggle.name = key
-		toggle.focus_mode = Control.FOCUS_ALL
-		toggle.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-		toggle.add_theme_font_size_override("font_size", 19)
-		toggle.add_theme_color_override("font_color", rules_config.text_color)
-		toggle.add_theme_color_override("font_pressed_color", rules_config.text_color)
-		toggle.add_theme_color_override("font_hover_color", rules_config.text_color)
-		toggle.add_theme_color_override("font_hover_pressed_color", rules_config.text_color)
-		toggle.add_theme_color_override("font_focus_color", rules_config.text_color)
-		toggle.add_theme_stylebox_override("normal", Art.panel_style(Color("#243d68"), 12, Color("#496ba1")))
-		toggle.add_theme_stylebox_override("pressed", Art.panel_style(Color("#2a4d7e"), 12, Color("#73e7dc")))
-		toggle.add_theme_stylebox_override("hover", Art.panel_style(Color("#2e4c7b"), 12, Color("#628bd0")))
-		toggle.add_theme_stylebox_override("hover_pressed", Art.panel_style(Color("#315c91"), 12, Color("#73e7dc")))
-		toggle.add_theme_stylebox_override("focus", _focus_box())
-		for style_name: String in ["normal", "pressed", "hover", "hover_pressed"]:
-			var style: StyleBoxFlat = toggle.get_theme_stylebox(style_name)
-			style.content_margin_left = 16.0
-			style.content_margin_right = 16.0
-		toggle.toggled.connect(_on_setting_toggled.bind(key))
-		settings_controls.add_child(toggle)
-		setting_controls[key] = toggle
-		if key == "reduced_motion":
-			toggle.tooltip_text = "关闭粒子、飞行加分和画面震动，保留清晰的结果提示"
-		elif key == "screen_shake":
-			toggle.tooltip_text = "消除时棋盘轻震；减少动画开启后不会震动"
-	_add_button(settings_controls, "PreviewSoundButton", "试听音效", rules_config.primary_color, _preview_sound)
-	_add_button(settings_controls, "BackButton", "返回", rules_config.secondary_color, _close_settings)
+	setting_controls = settings_controls.toggles
+	settings_controls.setting_changed.connect(_set_setting)
+	settings_controls.close_requested.connect(_close_settings)
+	settings_controls.preview_requested.connect(_preview_sound)
+	settings_controls.restart_requested.connect(_restart_from_settings)
+	settings_controls.menu_requested.connect(_menu_from_settings)
+	settings_controls.quit_requested.connect(_ask_quit)
+
+func _restart_from_settings() -> void:
+	if screen != "settings" or settings_origin != "game":
+		return
+	_close_settings()
+	_request_restart()
+
+func _menu_from_settings() -> void:
+	if screen != "settings" or settings_origin != "game":
+		return
+	_close_settings()
+	_request_menu()
+
+func _ask_quit() -> void:
+	if not exiting and confirmation_action.is_empty():
+		menu_controls.finish_opening()
+		_show_confirmation("quit")
 
 func _on_setting_toggled(enabled: bool, key: String) -> void:
 	_set_setting(key, enabled)
@@ -1047,17 +1014,11 @@ func _layout_controls() -> void:
 	move_feedback.size = size
 	menu_controls.position = Vector2.ZERO
 	menu_controls.size = size
-	_set_control_rect(setting_controls["sound_enabled"], _settings_sound_rect())
-	_set_control_rect(setting_controls["music_enabled"], _settings_music_rect())
-	_set_control_rect(setting_controls["reduced_motion"], _settings_motion_rect())
-	_set_control_rect(setting_controls["screen_shake"], _settings_shake_rect())
-	_set_control_rect(settings_controls.get_node("BackButton"), _settings_back_button_rect())
-	_set_control_rect(settings_controls.get_node("PreviewSoundButton"), _settings_preview_button_rect())
-	if MobileLayout.is_mobile():
-		for key: String in setting_controls:
-			setting_controls[key].add_theme_font_size_override("font_size", roundi(MobileLayout.dp(self, 16.0)))
-		for button_name in ["BackButton", "PreviewSoundButton"]:
-			settings_controls.get_node(button_name).add_theme_font_size_override("font_size", roundi(MobileLayout.dp(self, 16.0)))
+	settings_controls.position = Vector2.ZERO
+	settings_controls.size = size
+	if is_instance_valid(confirmation_dialog):
+		confirmation_dialog.position = Vector2.ZERO
+		confirmation_dialog.size = size
 	_check_progress_milestones()
 
 func _set_control_rect(control: Control, rect: Rect2) -> void:
@@ -1068,10 +1029,10 @@ func _refresh_controls() -> void:
 	if menu_controls == null:
 		return
 	menu_controls.set_profile(maxi(int(save_data.get("high_score", 0)), int(save_data.get("classic_high_score", 0))), save_status_text, _reduced_motion())
-	menu_controls.visible = screen == "menu"
+	menu_controls.visible = screen == "menu" or (screen == "settings" and settings_origin == "menu")
 	settings_controls.visible = screen == "settings"
 	level_select.visible = screen == "levels"
-	move_feedback.visible = screen in ["game", "game_over", "level_complete"]
+	move_feedback.visible = screen in ["game", "game_over", "level_complete"] or (screen == "settings" and settings_origin == "game")
 	if gameplay_ui != null:
 		if screen != "game" or exiting:
 			gameplay_ui.hide_objective_intro()
@@ -1116,16 +1077,7 @@ func _refresh_controls() -> void:
 			}
 		gameplay_ui.set_playfield(_board_rect())
 		gameplay_ui.set_mode(mode, stats)
-	var preview_button: Button = settings_controls.get_node("PreviewSoundButton")
-	preview_button.disabled = not bool(save_data.get("sound_enabled", false))
-	preview_button.tooltip_text = "播放清除音效" if not preview_button.disabled else "请先开启音效"
-	var labels := {"sound_enabled": "音效", "music_enabled": "背景音乐", "reduced_motion": "减少动画", "screen_shake": "画面震动"}
-	for key: String in setting_controls:
-		var toggle: CheckButton = setting_controls[key]
-		var enabled: bool = bool(save_data.get(key, false))
-		toggle.set_pressed_no_signal(enabled)
-		toggle.text = "%s：%s" % [labels[key], "开启" if enabled else "关闭"]
-	settings_controls.get_node("BackButton").text = "返回游戏" if settings_origin == "game" else "返回菜单"
+	settings_controls.apply_state(save_data, settings_origin == "game" and game != null, game_mode == "adventure", save_status_text)
 
 func _tray_hit(position: Vector2) -> int:
 	if game == null or input_locked or _objective_intro_open() or game.status != GameState.Status.PLAYING:
@@ -1263,48 +1215,6 @@ func _drag_anchor(position: Vector2) -> Vector2:
 	# Use the same lifted anchor for the held piece, preview and release.
 	return position - Vector2(0.0, MobileLayout.dp(self, 64.0)) if touch_drag_active else position
 
-func _settings_panel_rect() -> Rect2:
-	if MobileLayout.is_mobile():
-		var content := MobileLayout.safe_content_rect(self)
-		var panel_size := Vector2(minf(content.size.x - MobileLayout.dp(self, 24.0), MobileLayout.dp(self, 420.0)), minf(content.size.y - MobileLayout.dp(self, 16.0), MobileLayout.dp(self, 416.0)))
-		return Rect2(content.get_center() - panel_size * 0.5, panel_size)
-	var panel_size := Vector2(minf(470.0, size.x - 40.0), 530.0)
-	return Rect2((size - panel_size) * 0.5, panel_size)
-
-func _settings_sound_rect() -> Rect2:
-	if MobileLayout.is_mobile():
-		return _mobile_settings_row(0)
-	return Rect2(_settings_panel_rect().position + Vector2(26, 84), Vector2(_settings_panel_rect().size.x - 52, 52))
-
-func _settings_music_rect() -> Rect2:
-	if MobileLayout.is_mobile():
-		return _mobile_settings_row(1)
-	return Rect2(_settings_panel_rect().position + Vector2(26, 152), Vector2(_settings_panel_rect().size.x - 52, 52))
-
-func _settings_motion_rect() -> Rect2:
-	if MobileLayout.is_mobile():
-		return _mobile_settings_row(2)
-	return Rect2(_settings_panel_rect().position + Vector2(26, 220), Vector2(_settings_panel_rect().size.x - 52, 52))
-
-func _settings_shake_rect() -> Rect2:
-	if MobileLayout.is_mobile():
-		return _mobile_settings_row(3)
-	return Rect2(_settings_panel_rect().position + Vector2(26, 288), Vector2(_settings_panel_rect().size.x - 52, 52))
-
-func _settings_back_button_rect() -> Rect2:
-	if MobileLayout.is_mobile():
-		return _mobile_settings_row(5)
-	return Rect2(_settings_panel_rect().position + Vector2(26, 428), Vector2(_settings_panel_rect().size.x - 52, 54))
-
-func _settings_preview_button_rect() -> Rect2:
-	if MobileLayout.is_mobile():
-		return _mobile_settings_row(4)
-	return Rect2(_settings_panel_rect().position + Vector2(26, 360), Vector2(_settings_panel_rect().size.x - 52, 48))
-
-func _mobile_settings_row(index: int) -> Rect2:
-	var panel := _settings_panel_rect()
-	var unit := MobileLayout.dp(self, 1.0)
-	return Rect2(panel.position + Vector2(16.0, 56.0 + float(index) * 58.0) * unit, Vector2(maxf(1.0, panel.size.x - 32.0 * unit), 48.0 * unit))
 
 func _restart_button_rect() -> Rect2:
 	return gameplay_ui.get_restart_rect() if gameplay_ui != null else Rect2()
@@ -1380,12 +1290,10 @@ func _draw_background() -> void:
 	Art.draw_background(self, Rect2(Vector2.ZERO, size))
 
 func _draw_settings() -> void:
-	var panel := _settings_panel_rect()
-	draw_style_box(Art.panel_style(Color("#1c3055"), 22, Color("#6284bb")), panel)
-	var mobile := MobileLayout.is_mobile()
-	_draw_centered_text("设置", panel.position.y + (MobileLayout.dp(self, 32.0) if mobile else 50.0), roundi(MobileLayout.dp(self, 24.0)) if mobile else 30, rules_config.text_color)
-	var notice := "切换立即生效并自动保存" if save_status_text.is_empty() else save_status_text
-	_draw_centered_text(notice, panel.end.y - MobileLayout.dp(self, 8.0) if mobile else panel.position.y + 507, roundi(MobileLayout.dp(self, 12.0)) if mobile else 14, Color("#a8c1e5") if save_status_text.is_empty() else Color("#ffbd9c"))
+	# SettingsPanel owns its scrim and native controls; keep the live playfield
+	# behind it so the panel feels like part of the current game.
+	if settings_origin == "game" and game != null:
+		_draw_game()
 
 func _draw_centered_text(text: String, baseline: float, font_size: int, color: Color) -> void:
 	var width := ThemeDB.fallback_font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x

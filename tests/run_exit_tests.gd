@@ -23,6 +23,11 @@ func _run_test() -> void:
 	main.quit_requested.connect(_verify_saved_exit.bind(main))
 	var button: Button = main.get_node("MenuControls/ExitButton")
 	button.pressed.emit()
+	if main.confirmation_action != "quit" or main.exiting:
+		push_error("FAIL: exit must ask before stopping the game")
+		quit(1)
+		return
+	main.confirmation_dialog.get_ok_button().pressed.emit()
 
 func _verify_saved_exit(main: Control) -> void:
 	var loaded := SaveRepository.load_data(save_path)
