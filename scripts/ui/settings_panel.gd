@@ -14,6 +14,7 @@ const TOP_SETTINGS := ["sound_enabled", "music_enabled", "screen_shake"]
 const SETTING_NAMES := {"sound_enabled": "音效", "music_enabled": "背景音乐", "screen_shake": "画面震动", "reduced_motion": "减少动画"}
 const SETTING_ICONS := {"sound_enabled": "sound", "music_enabled": "music", "screen_shake": "shake", "reduced_motion": "motion"}
 const CHECKBUTTON_THEME_ICONS := ["checked", "unchecked", "checked_disabled", "unchecked_disabled", "checked_mirrored", "unchecked_mirrored", "checked_disabled_mirrored", "unchecked_disabled_mirrored"]
+const HINT_BREAK_FLAGS := TextServer.BREAK_MANDATORY | TextServer.BREAK_WORD_BOUND | TextServer.BREAK_ADAPTIVE
 
 var toggles: Dictionary = {}
 var _buttons: Dictionary = {}
@@ -352,7 +353,6 @@ func _layout_controls() -> void:
 	var top_height := 104.0 * _unit
 	var gap := 10.0 * _unit
 	var motion_height := maxf(62.0 * _unit, MobileLayout.touch_target(self))
-	var hint_height := (42.0 if not _save_warning.is_empty() else 26.0) * _unit
 	# Set children first, then total their real minimum sizes. Read visible rows
 	# directly: VBox's aggregate cache can still include rows hidden this frame.
 	_content.add_theme_constant_override("separation", maxi(roundi(gap), 1))
@@ -373,14 +373,22 @@ func _layout_controls() -> void:
 		Art.style_action(button, _unit, str(button.get_meta("tone", "green")))
 		_apply_focus_style(button, button.get_theme_stylebox("focus"))
 		button.queue_redraw()
-	_hint.custom_minimum_size.y = hint_height
-	_hint.add_theme_font_size_override("font_size", roundi(12.0 * _unit))
+	var hint_font_size := maxi(roundi(12.0 * _unit), 1)
+	_hint.add_theme_font_size_override("font_size", hint_font_size)
 	_hint.add_theme_color_override("font_color", Color("#d4e2ff") if _save_warning.is_empty() else Color("#ffe2a8"))
+	# Reserve the scrollbar width even before native container allocation; when
+	# short screens need scrolling, the measured warning still fits the viewport.
+	var scrollbar_width := _scroll.get_v_scroll_bar().get_combined_minimum_size().x
+	var hint_text_width := maxf(width - 52.0 * _unit - scrollbar_width, 1.0)
+	var hint_text_height := _font.get_multiline_string_size(_hint.text, HORIZONTAL_ALIGNMENT_CENTER, hint_text_width, hint_font_size, -1, HINT_BREAK_FLAGS).y
+	var hint_height := maxf(26.0 * _unit, ceilf(hint_text_height + 4.0 * _unit))
+	_hint.custom_minimum_size.y = hint_height
+	_hint.queue_redraw()
 	var content_minimum := 0.0
 	var visible_rows := 0
 	for child in _content.get_children():
 		if child is Control and child.visible:
-			content_minimum += child.get_combined_minimum_size().y
+			content_minimum += hint_height if child == _hint else child.get_combined_minimum_size().y
 			visible_rows += 1
 	content_minimum = ceilf(content_minimum + float(maxi(visible_rows - 1, 0) * _content.get_theme_constant("separation")))
 	# 16dp outer bottom + 12dp inner top/bottom + 8dp rounding/visual clearance.
