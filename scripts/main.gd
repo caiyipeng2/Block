@@ -38,6 +38,7 @@ var transition: Tween
 var exiting := false
 var confirmation_dialog: Control
 var confirmation_return_focus: Control
+var settings_return_focus: Control
 var confirmation_action := ""
 var confirmation_was_paused := false
 var gameplay_ui: Control
@@ -705,6 +706,7 @@ func _persist_data() -> void:
 	save_status_text = "" if saved else "保存失败，进度、最高分和设置仅本次生效。"
 
 func _show_settings() -> void:
+	settings_return_focus = get_viewport().gui_get_focus_owner()
 	settings_origin = "menu"
 	screen = "settings"
 	_play_feedback("click")
@@ -716,6 +718,7 @@ func _show_settings() -> void:
 func _request_game_settings() -> void:
 	if screen != "game" or _objective_intro_open() or not confirmation_action.is_empty():
 		return
+	settings_return_focus = get_viewport().gui_get_focus_owner()
 	settings_origin = "game"
 	settings_was_paused = paused
 	paused = true
@@ -731,6 +734,8 @@ func _on_settings_requested() -> void:
 	_request_game_settings()
 
 func _close_settings() -> void:
+	var restore_focus := settings_return_focus
+	settings_return_focus = null
 	if settings_origin == "game" and game != null:
 		screen = "game"
 		if not _result_feedback_pending():
@@ -745,6 +750,9 @@ func _close_settings() -> void:
 		queue_redraw()
 	else:
 		_show_menu()
+	if is_instance_valid(restore_focus) and restore_focus.is_visible_in_tree():
+		if not restore_focus is BaseButton or not restore_focus.disabled:
+			restore_focus.grab_focus()
 
 func _show_menu() -> void:
 	screen = "menu"
@@ -1037,7 +1045,12 @@ func _refresh_controls() -> void:
 		if screen != "game" or exiting:
 			gameplay_ui.hide_objective_intro()
 		var mode := "hidden"
-		if game != null and confirmation_action.is_empty() and not exiting:
+		var modal_backdrop := game != null and ((screen == "settings" and settings_origin == "game") or (screen == "game" and not confirmation_action.is_empty()))
+		if modal_backdrop and not exiting:
+			# Preserve the score and target HUD behind the dimmed modal, while
+			# disabling its actions and preventing it from taking keyboard focus.
+			mode = "playing"
+		elif game != null and confirmation_action.is_empty() and not exiting:
 			if screen == "game_over":
 				mode = "game_over"
 			elif screen == "level_complete":
@@ -1056,7 +1069,8 @@ func _refresh_controls() -> void:
 				"clear_points": game.last_clear_points,
 				"clear_lines": game.last_clear_lines,
 				"new_record": new_record,
-				"input_locked": input_locked or _objective_intro_open() or (screen == "game" and game.is_level_complete()),
+				"input_locked": modal_backdrop or input_locked or _objective_intro_open() or (screen == "game" and game.is_level_complete()),
+				"modal_backdrop": modal_backdrop,
 				"reduced_motion": _reduced_motion(),
 				"mode": game_mode,
 				"level_id": current_level,

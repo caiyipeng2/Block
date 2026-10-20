@@ -13,6 +13,7 @@ const MobileLayout := preload("res://scripts/ui/mobile_layout.gd")
 const TOP_SETTINGS := ["sound_enabled", "music_enabled", "screen_shake"]
 const SETTING_NAMES := {"sound_enabled": "音效", "music_enabled": "背景音乐", "screen_shake": "画面震动", "reduced_motion": "减少动画"}
 const SETTING_ICONS := {"sound_enabled": "sound", "music_enabled": "music", "screen_shake": "shake", "reduced_motion": "motion"}
+const CHECKBUTTON_THEME_ICONS := ["checked", "unchecked", "checked_disabled", "unchecked_disabled", "checked_mirrored", "unchecked_mirrored", "checked_disabled_mirrored", "unchecked_disabled_mirrored"]
 
 var toggles: Dictionary = {}
 var _buttons: Dictionary = {}
@@ -34,6 +35,7 @@ var _hint: Label
 var _font: SystemFont
 var _empty_icon: ImageTexture
 var _focus_signature := -1
+var _show_focus_outline := true
 
 
 func _ready() -> void:
@@ -45,6 +47,7 @@ func _ready() -> void:
 	var empty := Image.create_empty(1, 1, false, Image.FORMAT_RGBA8)
 	empty.fill(Color.TRANSPARENT)
 	_empty_icon = ImageTexture.create_from_image(empty)
+	_show_focus_outline = not MobileLayout.is_mobile()
 	_build_controls()
 	resized.connect(_layout_controls)
 	visibility_changed.connect(_on_visibility_changed)
@@ -57,6 +60,37 @@ func _process(_delta: float) -> void:
 	# BaseButton has no disabled_changed signal. A tiny visible-only state mask
 	# also covers callers changing a returned button's disabled/visible property.
 	_refresh_focus_chain()
+
+
+func _input(event: InputEvent) -> void:
+	if not MobileLayout.is_mobile():
+		return
+	# Record input modality while hidden too, so opening Settings with a physical
+	# keyboard still shows focus. Never consume these events or change focus.
+	if event is InputEventScreenTouch or event is InputEventScreenDrag:
+		_set_focus_outline_visible(false)
+	elif event is InputEventKey and event.pressed:
+		_set_focus_outline_visible(true)
+	elif event is InputEventJoypadButton and event.pressed:
+		_set_focus_outline_visible(true)
+	elif event is InputEventJoypadMotion and absf(event.axis_value) > 0.35:
+		_set_focus_outline_visible(true)
+
+
+func _set_focus_outline_visible(show_outline: bool) -> void:
+	if _show_focus_outline == show_outline:
+		return
+	_show_focus_outline = show_outline
+	for button: Button in _focus_candidates():
+		var focus: StyleBox = button.get_meta("keyboard_focus_style", null)
+		if focus != null:
+			_apply_focus_style(button, focus)
+
+
+func _apply_focus_style(button: Button, keyboard_style: StyleBox) -> void:
+	button.set_meta("keyboard_focus_style", keyboard_style)
+	button.add_theme_stylebox_override("focus", keyboard_style if _show_focus_outline else StyleBoxEmpty.new())
+	button.queue_redraw()
 
 
 func apply_state(settings: Dictionary, in_game: bool, return_to_levels: bool, save_warning: String = "") -> void:
@@ -260,7 +294,9 @@ func _new_toggle(key: String) -> CheckButton:
 	}[key]
 	toggle.focus_mode = Control.FOCUS_ALL
 	toggle.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	for icon_name in ["on", "off", "on_disabled", "off_disabled", "on_mirrored", "off_mirrored", "on_disabled_mirrored", "off_disabled_mirrored"]:
+	# CheckButton's theme uses checked/unchecked (not on/off). Override all LTR,
+	# RTL and disabled states with a transparent 1px texture, retaining semantics.
+	for icon_name: String in CHECKBUTTON_THEME_ICONS:
 		toggle.add_theme_icon_override(icon_name, _empty_icon)
 	for role in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color", "font_hover_pressed_color", "font_disabled_color"]:
 		toggle.add_theme_color_override(role, Color.TRANSPARENT)
@@ -311,27 +347,15 @@ func _layout_controls() -> void:
 	_unit = maxf(MobileLayout.dp(self, 1.0), 0.1)
 	var margin := 14.0 * _unit
 	var width := minf(480.0 * _unit, maxf(safe.size.x - margin * 2.0, 0.0))
-	var visible_actions := 5 if _in_game else 3
 	var header := 66.0 * _unit
 	var action_height := maxf(54.0 * _unit, MobileLayout.touch_target(self))
 	var top_height := 104.0 * _unit
 	var gap := 10.0 * _unit
 	var motion_height := maxf(62.0 * _unit, MobileLayout.touch_target(self))
 	var hint_height := (42.0 if not _save_warning.is_empty() else 26.0) * _unit
-	var desired_height := header + 32.0 * _unit + top_height + motion_height + hint_height + float(visible_actions) * action_height + float(visible_actions + 4) * gap
-	var height := minf(desired_height, maxf(safe.size.y - margin * 2.0, 0.0))
-	_panel_rect = Rect2(safe.get_center() - Vector2(width, height) * 0.5, Vector2(width, height))
-	_set_rect(_outer, _panel_rect)
-	_outer.add_theme_stylebox_override("panel", Art.panel_style(_unit))
-	var inner := Rect2(_panel_rect.position + Vector2(14.0 * _unit, header), Vector2(maxf(width - 28.0 * _unit, 0.0), maxf(height - header - 16.0 * _unit, 0.0)))
-	_set_rect(_inner, inner)
-	_inner.add_theme_stylebox_override("panel", Art.inner_style(_unit))
-	var close_side := maxf(44.0 * _unit, MobileLayout.touch_target(self))
-	_set_rect(_close, Rect2(_panel_rect.end.x - close_side - 9.0 * _unit, _panel_rect.position.y + 7.0 * _unit, close_side, close_side))
-	_set_rect(_title, Rect2(_panel_rect.position.x + close_side + 8.0 * _unit, _panel_rect.position.y + 6.0 * _unit, maxf(width - close_side * 2.0 - 16.0 * _unit, 0.0), close_side + 4.0 * _unit))
-	_title.add_theme_font_size_override("font_size", roundi(27.0 * _unit))
-	_style_toggle(_close)
-	_set_rect(_scroll, inner.grow(-12.0 * _unit))
+	# Set children first, then ask the native containers for their real minimum.
+	# Rounding dp, fonts, separators and invisible rows makes a hand-counted sum
+	# slightly too short on high-density Android, causing a full-length scrollbar.
 	_content.add_theme_constant_override("separation", maxi(roundi(gap), 1))
 	_top.add_theme_constant_override("separation", maxi(roundi(5.0 * _unit), 1))
 	_top.custom_minimum_size.y = top_height
@@ -348,10 +372,27 @@ func _layout_controls() -> void:
 		var button: Button = _buttons[action_name]
 		button.custom_minimum_size = Vector2(0.0, action_height)
 		Art.style_action(button, _unit, str(button.get_meta("tone", "green")))
+		_apply_focus_style(button, button.get_theme_stylebox("focus"))
 		button.queue_redraw()
 	_hint.custom_minimum_size.y = hint_height
 	_hint.add_theme_font_size_override("font_size", roundi(12.0 * _unit))
 	_hint.add_theme_color_override("font_color", Color("#d4e2ff") if _save_warning.is_empty() else Color("#ffe2a8"))
+	var content_minimum := ceilf(_content.get_combined_minimum_size().y)
+	# 16dp outer bottom + 12dp inner top/bottom + 8dp rounding/visual clearance.
+	var desired_height := header + 48.0 * _unit + content_minimum
+	var height := minf(desired_height, maxf(safe.size.y - margin * 2.0, 0.0))
+	_panel_rect = Rect2(safe.get_center() - Vector2(width, height) * 0.5, Vector2(width, height))
+	_set_rect(_outer, _panel_rect)
+	_outer.add_theme_stylebox_override("panel", Art.panel_style(_unit))
+	var inner := Rect2(_panel_rect.position + Vector2(14.0 * _unit, header), Vector2(maxf(width - 28.0 * _unit, 0.0), maxf(height - header - 16.0 * _unit, 0.0)))
+	_set_rect(_inner, inner)
+	_inner.add_theme_stylebox_override("panel", Art.inner_style(_unit))
+	var close_side := maxf(44.0 * _unit, MobileLayout.touch_target(self))
+	_set_rect(_close, Rect2(_panel_rect.end.x - close_side - 9.0 * _unit, _panel_rect.position.y + 7.0 * _unit, close_side, close_side))
+	_set_rect(_title, Rect2(_panel_rect.position.x + close_side + 8.0 * _unit, _panel_rect.position.y + 6.0 * _unit, maxf(width - close_side * 2.0 - 16.0 * _unit, 0.0), close_side + 4.0 * _unit))
+	_title.add_theme_font_size_override("font_size", roundi(27.0 * _unit))
+	_style_toggle(_close)
+	_set_rect(_scroll, inner.grow(-12.0 * _unit))
 	queue_redraw()
 
 
@@ -370,7 +411,7 @@ func _style_toggle(button: Button) -> void:
 	focus.border_color = Color("#c9fff4")
 	focus.set_corner_radius_all(maxi(roundi(9.0 * _unit), 1))
 	focus.set_border_width_all(maxi(roundi(2.0 * _unit), 1))
-	button.add_theme_stylebox_override("focus", focus)
+	_apply_focus_style(button, focus)
 	button.queue_redraw()
 
 

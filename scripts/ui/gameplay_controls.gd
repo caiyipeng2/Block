@@ -1223,7 +1223,7 @@ func _apply_state(mode_changed: bool) -> void:
 	var intro_visible := is_objective_intro_visible()
 	var input_locked := bool(_stats.get("input_locked", false)) or intro_visible
 	# A paused feedback animation must always be resumable.
-	_pause_button.disabled = intro_visible
+	_pause_button.disabled = intro_visible or bool(_stats.get("modal_backdrop", false))
 	_resume_button.disabled = false
 	_next_level_button.disabled = input_locked or not bool(_stats.get("has_next_level", false))
 	for button: Button in [_settings_button, _playing_restart_button, _playing_menu_button, _overlay_restart_button, _overlay_menu_button, _overlay_settings_button, _collect_back_button, _collect_settings_button]:
@@ -1879,7 +1879,7 @@ func _layout_mobile_overlay() -> void:
 	_card.pivot_offset = _card.size * 0.5
 
 func _grab_first_focus() -> void:
-	if not _configured or _mode == MODE_HIDDEN or _focus_mode == _mode:
+	if not _configured or _mode == MODE_HIDDEN or _focus_mode == _mode or bool(_stats.get("modal_backdrop", false)):
 		return
 	var first: Button
 	if _mode == MODE_PLAYING:

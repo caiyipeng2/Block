@@ -8,7 +8,9 @@
 
 参考蓝色休闲游戏弹窗，新增SettingsPanel、ActionConfirmation与共享CasualPanelArt。顶部白色图标开关控制音效、音乐和画面震动；纵向绿色操作、减少动画、试听和保存提示保留。齿轮直接打开设置，游戏冻结在暗色背景后；关闭恢复原暂停状态。重开、返回及退出先确认，默认焦点停在保留状态的选项，右上关闭也取消；真正退出沿用原有记录保存和音频安全停止路径。
 
-Main、SettingsPanel、ActionConfirmation、CasualPanelArt以及维护后的UI action/exit检查脚本共六份Godot4.7.2 `--check-only` 均退出0、无脚本/解析/编译/加载错误。独立静态复核检查设置保存、取消恢复、动作路由和安全区滚动，未发现阻断项。设置Tab/Shift+Tab和方向导航已限定在可见、未禁用的控件，初始聚焦顶部音效开关。未运行测试用例或桌面GUI；完整操作、声音和主观视觉仍待用户验收。新APK/AAB与三星核对结果在完成后补记。
+Main、SettingsPanel、ActionConfirmation、CasualPanelArt以及维护后的UI action/exit检查脚本共六份Godot4.7.2 `--check-only` 均退出0、无脚本/解析/编译/加载错误。独立静态复核检查设置保存、取消恢复、动作路由和安全区滚动，未发现阻断项。设置Tab/Shift+Tab和方向导航已限定在可见、未禁用的控件，初始聚焦顶部音效开关。未运行测试用例或桌面GUI；完整操作、声音和主观视觉仍待用户验收。
+
+首轮0.8.7候选APK/AAB签名和包体校验通过，三星更新及菜单/经典设置/退出确认截图发现原生CheckButton图标残留、微量高度溢出和触摸焦点框过强，已按真实checked/unchecked主题键、内容最小高度和输入方式调整。游戏设置及确认背景保留分数/目标HUD，禁止后方动作和焦点抢占；关闭设置显式恢复来源焦点。四份修整相关脚本再次check-only通过；最终包与三星结果在重新构建后补记。
 
 ## 原创包体图标（2026-10-19；0.8.6 / versionCode4）
 

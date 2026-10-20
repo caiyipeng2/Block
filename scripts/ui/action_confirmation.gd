@@ -74,6 +74,9 @@ var _resolved := true
 var _open_sequence := 0
 var _requested_size := Vector2i.ZERO
 var _layout_queued := false
+var _navigation_focus := false
+var _focus_styles: Array[StyleBox] = []
+var _touch_focus_style := StyleBoxEmpty.new()
 
 
 func _init() -> void:
@@ -228,7 +231,10 @@ func _layout() -> void:
 	for line: String in dialog_text.split("\n"):
 		estimated_lines += maxi(1, ceili(float(line.length()) * 16.0 * unit / body_width))
 	var body_height := maxf(76.0, float(estimated_lines) * 22.0) * unit
-	var natural_height := (64.0 + 16.0 + 32.0 + 104.0 + 24.0) * unit + body_height
+	# Independently rounded container margins and font minimums can exceed this
+	# estimate by a few physical pixels. Leave 12 dp breathing room so a full
+	# height scrollbar is not shown for an otherwise comfortably fitting card.
+	var natural_height := (64.0 + 16.0 + 32.0 + 104.0 + 24.0 + 12.0) * unit + body_height
 	var height := minf(available.size.y, natural_height)
 	_panel.position = available.get_center() - Vector2(width, height) * 0.5
 	_panel.size = Vector2(width, height)
@@ -259,6 +265,10 @@ func _layout() -> void:
 		button.add_theme_font_size_override("font_size", roundi(19.0 * unit))
 	PanelArt.style_action(_cancel_button, unit, "green")
 	PanelArt.style_action(_ok_button, unit, "danger")
+	_focus_styles.clear()
+	for button: Button in [_cancel_button, _ok_button, _close_button]:
+		_focus_styles.append(button.get_theme_stylebox("focus"))
+	_apply_focus_visibility()
 	queue_redraw()
 
 
@@ -269,6 +279,35 @@ func _focus_cancel(sequence: int) -> void:
 
 func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO, size), Color(0.02, 0.04, 0.12, 0.74))
+
+
+func _input(event: InputEvent) -> void:
+	if not MobileLayout.is_mobile():
+		return
+	# Keep tracking the last input even while hidden, so opening the card with a
+	# keyboard already shows its safe default. Native focus itself is retained
+	# for touch users; only its painted outline changes with the input method.
+	var navigation := _navigation_focus
+	if event is InputEventScreenTouch or event is InputEventScreenDrag or event is InputEventMouseButton:
+		navigation = false
+	elif event is InputEventKey and event.pressed:
+		navigation = true
+	elif event is InputEventJoypadButton and event.pressed:
+		navigation = true
+	elif event is InputEventJoypadMotion and absf(event.axis_value) > 0.5:
+		navigation = true
+	if navigation != _navigation_focus:
+		_navigation_focus = navigation
+		_apply_focus_visibility()
+
+
+func _apply_focus_visibility() -> void:
+	var buttons: Array[Button] = [_cancel_button, _ok_button, _close_button]
+	if _focus_styles.size() != buttons.size():
+		return
+	var show_focus := not MobileLayout.is_mobile() or _navigation_focus
+	for index in range(buttons.size()):
+		buttons[index].add_theme_stylebox_override("focus", _focus_styles[index] if show_focus else _touch_focus_style)
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
