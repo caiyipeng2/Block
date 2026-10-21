@@ -1,8 +1,9 @@
 extends Control
 
 ## A nonblocking, presentation-only queue. The owner decides milestone progress.
-const DISPLAY_DURATION := 1.48
+const DISPLAY_DURATION := 1.30
 const REDUCED_DURATION := 1.05
+const TRAVEL_MARGIN := 24.0
 const L10n := preload("res://scripts/localization/game_locale.gd")
 
 var _playfield := Rect2()
@@ -57,6 +58,7 @@ func clear() -> void:
 	visible = false
 	modulate = Color.WHITE
 	scale = Vector2.ONE
+	rotation = 0.0
 	queue_redraw()
 
 func set_paused(paused: bool) -> void:
@@ -98,10 +100,10 @@ func _layout_banner() -> void:
 	if _playfield.size.x <= 0.0 or _viewport_size.x <= 0.0:
 		return
 	var maximum_width := minf(500.0, minf(_playfield.size.x * 0.94, maxf(_viewport_size.x - 24.0, 1.0)))
-	var width := clampf(_playfield.size.x * 0.85, minf(260.0, maximum_width), maximum_width)
-	var height := minf(clampf(_playfield.size.x * 0.16, 44.0, 76.0), maxf(_playfield.size.x * 0.24, 28.0))
+	var width := clampf(_playfield.size.x * 0.76, minf(240.0, maximum_width), maximum_width)
+	var height := minf(clampf(_playfield.size.x * 0.15, 42.0, 70.0), maxf(_playfield.size.x * 0.24, 28.0))
 	size = Vector2(maxf(width, 1.0), height)
-	_base_position = Vector2(_playfield.get_center().x - width * 0.5, _playfield.position.y + maxf(5.0, height * 0.08))
+	_base_position = Vector2(_playfield.get_center().x - width * 0.5, _playfield.position.y + maxf(6.0, height * 0.10))
 	pivot_offset = size * 0.5
 	_apply_visuals()
 
@@ -110,18 +112,24 @@ func _set_progress(progress: float) -> void:
 	_apply_visuals()
 
 func _apply_visuals() -> void:
-	position = _base_position
 	if _reduced:
+		position = _base_position
+		rotation = 0.0
 		modulate = Color.WHITE
 		scale = Vector2.ONE
 	else:
-		var elapsed := _progress * DISPLAY_DURATION
-		var entering := clampf(elapsed / 0.22, 0.0, 1.0)
-		var leaving := clampf((elapsed - 1.13) / 0.35, 0.0, 1.0)
-		var pop := lerpf(0.86, 1.0, 1.0 - pow(1.0 - entering, 3.0)) + sin(entering * PI) * 0.08
-		scale = Vector2.ONE * pop
-		modulate.a = minf(entering * 2.0, 1.0) * (1.0 - leaving)
-		position.y -= smoothstep(0.0, 1.0, _progress) * minf(10.0, size.y * 0.14)
+		# 50% drifts left-to-right, 90% sweeps back right-to-left, both fully
+		# crossing the playfield like the reference banner instead of popping
+		# in place. The offscreen endpoints keep entry and exit seamless.
+		var t := clampf(_progress, 0.0, 1.0)
+		var left := _playfield.position.x - size.x - TRAVEL_MARGIN
+		var right := _playfield.end.x + TRAVEL_MARGIN
+		var from_x := left if _percent == 50 else right
+		var to_x := right if _percent == 50 else left
+		position = Vector2(lerpf(from_x, to_x, t), _base_position.y - sin(t * PI) * minf(8.0, size.y * 0.12))
+		rotation = sin(t * PI * 2.0) * 0.022 * (1.0 if _percent == 50 else -1.0)
+		modulate = Color.WHITE
+		scale = Vector2.ONE
 	queue_redraw()
 
 func _draw() -> void:

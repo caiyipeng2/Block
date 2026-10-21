@@ -6,13 +6,13 @@ signal target_arrived(kind: String, counted: bool)
 signal collections_settled
 
 const BlockArt = preload("res://scripts/ui/block_art.gd")
-const POP_DURATION := 0.12
-const SCATTER_DURATION := 0.12
-const HOLD_DURATION := 0.06
-const FLIGHT_DURATION := 0.52
-const MAX_STAGGER := 0.24
-const MAX_BATCH_VISUALS := 32
-const MAX_DRAWN_VISUALS := 96
+const POP_DURATION := 0.10
+const SCATTER_DURATION := 0.10
+const HOLD_DURATION := 0.04
+const FLIGHT_DURATION := 0.44
+const MAX_STAGGER := 0.18
+const MAX_BATCH_VISUALS := 16
+const MAX_DRAWN_VISUALS := 48
 
 var _flights: Array[Dictionary] = []
 var _paused := false
@@ -164,35 +164,33 @@ func _draw_flight(flight: Dictionary, elapsed: float) -> void:
 	var spread: Vector2 = flight["scatter"]
 	var destination: Vector2 = flight["destination"]
 	var point := origin + _board_offset
-	var side := cell_size * 0.95
+	var side := cell_size * 0.92
 	var travel := 0.0
 	var alpha := 1.0
 	if elapsed < POP_DURATION:
 		var pop := elapsed / POP_DURATION
 		var eased := 1.0 - pow(1.0 - pop, 3.0)
-		side = cell_size * lerpf(0.95, 2.65, eased)
+		side = cell_size * lerpf(0.92, 1.45, eased)
 	elif elapsed < POP_DURATION + SCATTER_DURATION:
 		var scatter := (elapsed - POP_DURATION) / SCATTER_DURATION
 		point += spread * (1.0 - pow(1.0 - scatter, 2.0))
-		side = cell_size * lerpf(2.65, 2.35, scatter)
+		side = cell_size * lerpf(1.45, 1.32, scatter)
 	else:
 		var travel_start := POP_DURATION + SCATTER_DURATION + HOLD_DURATION + float(flight["stagger"])
 		travel = clampf((elapsed - travel_start) / FLIGHT_DURATION, 0.0, 1.0)
 		var eased := travel * travel * (3.0 - 2.0 * travel)
 		point = (origin + spread + _board_offset * (1.0 - travel)).lerp(destination, eased)
-		point.y -= sin(travel * PI) * minf(cell_size * 1.4, 84.0)
-		side = cell_size * lerpf(2.35, 0.82, eased)
+		point.y -= sin(travel * PI) * minf(cell_size, 56.0)
+		side = cell_size * lerpf(1.32, 0.58, eased)
 		alpha = 1.0 - clampf((travel - 0.94) / 0.06, 0.0, 1.0)
 	var rotation := float(flight["rotation"]) * sin(travel * PI)
-	var glow_alpha := alpha * (0.18 + 0.08 * sin(elapsed * 19.0))
+	# One faint halo replaces the former double glow, so the icon reads as a
+	# small collected token rather than a large special-effect burst.
 	var tint := _target_glow(str(flight["kind"]))
-	draw_circle(point, side * 0.40, Color(tint.r, tint.g, tint.b, glow_alpha * 0.45))
-	draw_circle(point, side * 0.31, Color(tint.r, tint.g, tint.b, glow_alpha))
-	# Fading copies make a short absorption trail without extra flight objects.
-	if travel > 0.05:
-		for index in range(2, 0, -1):
-			var trail_point := point + (origin + spread - destination).normalized() * float(index) * cell_size * 0.16
-			BlockArt.draw_target_marker(self, Rect2(trail_point - Vector2.ONE * side * 0.5, Vector2.ONE * side), alpha * 0.12 / float(index), 1.5, str(flight["kind"]))
+	draw_circle(point, side * 0.48, Color(tint.r, tint.g, tint.b, alpha * 0.10))
+	if travel > 0.08:
+		var trail_point := point + (origin + spread - destination).normalized() * cell_size * 0.14
+		BlockArt.draw_target_marker(self, Rect2(trail_point - Vector2.ONE * side * 0.5, Vector2.ONE * side), alpha * 0.10, 1.5, str(flight["kind"]))
 	draw_set_transform(point, rotation)
 	BlockArt.draw_target_marker(self, Rect2(-Vector2.ONE * side * 0.5, Vector2.ONE * side), alpha, 1.8, str(flight["kind"]))
 	draw_set_transform(Vector2.ZERO)

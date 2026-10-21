@@ -70,6 +70,7 @@ static func level_setup(level_id: int, total_levels: int, config: GameRulesConfi
 	result["extra_blocks"] = int(row.get("extra_blocks", 0))
 	result["near_win_lines"] = int(row.get("near_win_lines", 0))
 	result["randomness"] = float(row.get("randomness", 50.0))
+	result["marker_rounds"] = int(row.get("marker_rounds", 10))
 	result["candidate_samples"] = 1
 	result["solution_count_cap"] = 8
 	return result
@@ -211,7 +212,6 @@ static func _collection_setup(seed: int, rules: GameRulesConfig, level_id: int, 
 	if not template_board.duplicate_board().clear_full_lines()["cells"].is_empty():
 		return _invalid_setup(seed, requested, "template_contains_full_line")
 	var targets: Dictionary = {}
-	var kinds: Array = objective["target_kinds"]
 	var positions: Array[Vector2i] = template_positions.duplicate()
 	var marker_rng := RandomNumberGenerator.new()
 	marker_rng.seed = seed ^ 0x5A17
@@ -220,8 +220,9 @@ static func _collection_setup(seed: int, rules: GameRulesConfig, level_id: int, 
 		var saved := positions[index]
 		positions[index] = positions[other]
 		positions[other] = saved
-	for index in range(requested):
-		targets[positions[index]] = kinds[index % kinds.size()]
+	var marker_kinds := _initial_marker_kinds(objective["target_counts"], requested, marker_rng)
+	for index in range(mini(requested, marker_kinds.size())):
+		targets[positions[index]] = marker_kinds[index]
 	var requested_extras := int(row.get("extra_blocks", 0))
 	var requested_near := int(row.get("near_win_lines", 0))
 	var profile := str(row.get("shape_profile", "mixed"))
@@ -263,6 +264,45 @@ static func _collection_setup(seed: int, rules: GameRulesConfig, level_id: int, 
 		"initial_diagnostics": diagnostics, "template_id": template["template_id"],
 		"template_name": template["template_name"],
 	}
+
+## Initial markers mirror the uneven quota split, so a two-target level does
+## not start with a fifty-fifty pad that contradicts its displayed totals.
+static func _initial_marker_kinds(counts: Dictionary, requested: int, rng: RandomNumberGenerator) -> Array[String]:
+	var kinds: Array[String] = []
+	var total := 0
+	for kind: String in TARGET_KINDS:
+		var amount := int(counts.get(kind, 0))
+		if amount > 0:
+			kinds.append(kind)
+			total += amount
+	var result: Array[String] = []
+	if kinds.is_empty() or requested <= 0 or total <= 0:
+		return result
+	var fractions: Array[float] = []
+	var assigned := 0
+	for kind in kinds:
+		var share := float(requested) * float(int(counts[kind])) / float(total)
+		fractions.append(share - floorf(share))
+		var whole := int(floorf(share))
+		assigned += whole
+		for count in range(whole):
+			result.append(kind)
+	var order: Array[int] = []
+	for index in range(kinds.size()):
+		order.append(index)
+	order.sort_custom(func(a: int, b: int) -> bool:
+		if is_equal_approx(fractions[a], fractions[b]):
+			return int(counts[kinds[a]]) > int(counts[kinds[b]])
+		return fractions[a] > fractions[b]
+	)
+	for index in range(mini(requested - assigned, order.size())):
+		result.append(kinds[order[index]])
+	for index in range(result.size() - 1, 0, -1):
+		var other := rng.randi_range(0, index)
+		var saved := result[index]
+		result[index] = result[other]
+		result[other] = saved
+	return result
 
 ## Fewer extras are tried in turn so a crowded layout can never replace the
 ## template's certified opening with an unplayable board.

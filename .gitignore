@@ -2,6 +2,7 @@
 .godot/
 /android/
 /work/
+/tools/candidates/
 __pycache__/
 .codegraph/
 build/

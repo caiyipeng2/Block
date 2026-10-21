@@ -1,6 +1,6 @@
 # 闯关配置表怎么改
 
-当前版本 `0.9.1`。实际读取的表是 [`config/adventure_levels.csv`](../config/adventure_levels.csv)，不是本说明里的示例。每一行控制一关，目前必须保留第 1–96 关各一行。
+当前版本 `0.9.3`。实际读取的表是 [`config/adventure_levels.csv`](../config/adventure_levels.csv)，不是本说明里的示例。每一行控制一关，目前必须保留第 1–96 关各一行。
 
 ## 最常用的修改
 
@@ -39,6 +39,9 @@
 | `extra_blocks` | 0–12 整数，默认 0 | 在模板占格之外请求追加的初始方块数；为保持开局可解，实际可能少于请求值，诊断记录 `extra_blocks` 与 `extra_blocks_downgraded` |
 | `near_win_lines` | 0–3 整数，默认 0 | 额外方块优先补到“差一格满行/列”的线数；不能大于 `extra_blocks`，分数教学关必须为 0 |
 | `randomness` | 0–100，可小数，默认 50 | 供块排序的随机抖动温度：越高越松散，越低越贴近当前难度排序；分数教学关必须为 50 |
+| `marker_rounds` | 1–24 整数，默认 10 | 收集关的标记供给时长（盘数）。每盘标记预算 = `ceil(剩余配额 / 剩余时长)`，下限 2 枚、上限为整盘格数；时长越短标记越密、关卡越短，越长则相反。分数教学关不收集标记，该列留默认值即可 |
+
+`marker_rounds` 与配额总量是两件事：配额总量（四类目标之和）决定 HUD 上“还要消多少”的数字和每盘标记密度，`marker_rounds` 决定这一关实际要摸多少盘托盘，也就是真实长度。曲线按阶段给默认值（建立期 6、放松期 7、终局放松 8、次峰 10、峰值 12、终局峰值 13），只在对齐目标通过率时才逐关覆盖。
 
 收集关的 `difficulty` 越高，当前算法越偏向较大形状、较少合法落点和较紧空间。它是供块偏好参数，**不是“唯一解百分比”**；100 也不承诺整关只有一种解法。每轮仍遵循已有的合法供块规则。前两关保留教学救援，不能靠此列取消救援机制。
 
@@ -90,12 +93,12 @@
 正式表由规则模板生成，不逐关手填魔法数：
 
 - [`docs/difficulty/adventure_curve_spec.json`](difficulty/adventure_curve_spec.json) 定义 10 关 × 9 个周期 + 6 关终局。每周期槽位 1–3 建立、4 主峰值、5–6 放松、7 建立、8 次级峰值、9–10 放松；通过率目标叠加随关号增大的正弦振幅，再换算为 `difficulty`、配额和四列杠杆。
-- [`tools/adventure_curve.py`](../tools/adventure_curve.py) 读取模板与基线 CSV，保留模板、镜像、初始标记、种子和标签，生成候选 CSV 与逐关计划 JSON。校验会检查峰值后必须紧跟放松、近胜线不大于额外方块、杠杆范围和 96 关完整性。模板支持 `level_overrides`，仅对模拟偏差超过 15 个百分点的关卡单独校准。可用键为 `quota`（绝对总配额 24–104）或 `quota_scale`（二选一）、`difficulty`（0–100，模板公式上限仍为 60）、`profile`、`randomness`、`extras`（额外初始方块 0–12）和 `near_win`（近胜线 0–3）。
+- [`tools/adventure_curve.py`](../tools/adventure_curve.py) 读取模板与基线 CSV，保留模板、种子和标签，按配额模板重算分项目标、初始标记数与标记时长，生成候选 CSV 与逐关计划 JSON。校验会检查峰值后必须紧跟放松、近胜线不大于额外方块、杠杆范围和 96 关完整性。模板支持 `level_overrides`，仅对模拟偏差超过 15 个百分点的关卡单独校准。可用键为 `quota`（绝对总配额 20–140）、`rounds`（标记供给时长 1–24，首选校准杠杆）、`difficulty`（0–100）、`profile`、`randomness`、`extras`（额外初始方块 0–12）和 `near_win`（近胜线 0–3）。
 - [`tests/simulate_adventure.gd`](../tests/simulate_adventure.gd) 是无界面蒙特卡洛复核，直接走 `ModeCatalog` / `GameState` 生产路径。参考策略 `casual` 使用三块托盘规划，并随收集进度增加疲劳失误；`greedy` 作为上界对照，`random` 可作为下界对照。
 
 收集关的 near-win 定义为剩余目标 ≤ `max(2, 20% 配额)`。无失败时 FUUU 记为 0；有失败但没有任何失败局到达 near-win 时记为 9999，视为不可接受的不公平峰值。FUUU 只在 `casual` 参考策略上判定，且只对配置了近胜密度的 `peak` / `secondary_peak` / `final_peak` 关设门槛；`build` / `relax` 关没有近胜线，24 次模拟中偶发 1 次未到 near-win 的失败属于抽样噪声，只记录不判定。`random` 是下界对照，不参与达标判断。峰值配额优先吸收偏差，其次调整难度、额外方块、形状档和随机度。项目没有步数或时间上限，且每轮托盘都带可解证书，熟练策略的通过率地板明显高于参考图，因此峰值百分比按本项目模拟校准，不照搬参考图的绝对数值。
 
-最新模拟结果与逐关偏差见 [`docs/difficulty/snapshots/2026-10-21-adventure-96-curve.json`](difficulty/snapshots/2026-10-21-adventure-96-curve.json) 和[可读摘要](difficulty/snapshots/2026-10-21-adventure-96-curve.md)。最终整表复核每关 24 次：`casual` 通过率与目标的偏差全部在 ±15pp 内，最大 14.8pp（第 90 关）；20 个峰值关最大 FUUU 4.0，无越界；`greedy` 全部 100%，`random` 平均 15.7%，仅作上下界参照。17 个单关校准值为第 8、14、24、28、34、38、40、43、46、54、58、77、78、80、88、93、95 关；第 5、45、46、66、70 关各出现 1 次未到 near-win 的失败（FUUU 记录为 9999），按上述非峰值规则不设门槛。重新生成曲线、修改杠杆或调整参考模型后，应重跑整表模拟并保留新快照，不能用单关手工体验替代整表复核。
+`0.9.1` 的首轮快照见 [`docs/difficulty/snapshots/2026-10-21-adventure-96-curve.json`](difficulty/snapshots/2026-10-21-adventure-96-curve.json) 和[可读摘要](difficulty/snapshots/2026-10-21-adventure-96-curve.md)。`0.9.3` 把显示配额与真实长度拆开后，最新整表复核见 [`docs/difficulty/snapshots/2026-10-21-adventure-quota-supply.json`](difficulty/snapshots/2026-10-21-adventure-quota-supply.json) 和[可读摘要](difficulty/snapshots/2026-10-21-adventure-quota-supply.md)：每关 24 次、`mistake=0.35`，`casual` 通过率与目标偏差全部落在 ±15pp 内，最大 14.8pp（第 90 关）、平均 7.1pp；20 个峰值关 FUUU 全部 ≤ 10，无越界。12 个非峰值关各出现 1 次未到 near-win 的失败（FUUU 记录 9999），按上述非峰值规则只记录不判定。单关校准为第 18、24、37、59、70、79、86、90、93 关，除第 24 关外都只动 `rounds`。本轮只重跑 `casual`（验收口径即 casual），`greedy` / `random` 上下界沿用首轮结论：`greedy` 全 100%、`random` 平均约 16%，仅作参照，不参与达标。重新生成曲线、修改杠杆或调整参考模型后，应重跑整表模拟并保留新快照，不能用单关手工体验替代整表复核。
 
 ## 保存和生效
 

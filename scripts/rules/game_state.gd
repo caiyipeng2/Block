@@ -69,7 +69,8 @@ func _init(initial_seed: int = 0, board_size: int = 8, config: GameRulesConfig =
 		retry_assist_strength = clampf(float(setup.get("retry_assist_strength", 0.0)), 0.0, 1.0)
 		_collection_supplier = CollectionTraySupplier.new(
 			rules_config, initial_seed, difficulty, retry_assist_strength,
-			str(setup.get("shape_profile", "mixed")), float(setup.get("randomness", 50.0))
+			str(setup.get("shape_profile", "mixed")), float(setup.get("randomness", 50.0)),
+			int(setup.get("marker_rounds", CollectionTraySupplier.TARGET_ROUNDS))
 		)
 	for entry: Dictionary in setup.get("initial_cells", []):
 		board.set_cell(int(entry["x"]), int(entry["y"]), int(entry["color"]))

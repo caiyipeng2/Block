@@ -3,6 +3,9 @@ extends RefCounted
 ## Geometry is certified independently of target decoration. Marker quotas
 ## constrain progress, never whether a legal shape may be placed.
 const MAX_ATTEMPTS := 5
+const TARGET_ROUNDS := 10
+const MIN_MARKERS_PER_TRAY := 2
+const ASSIST_MARKER_BOOST := 0.25
 var _config: GameRulesConfig
 var _pool: Array[PieceData] = []
 var _rng := RandomNumberGenerator.new()
@@ -13,8 +16,9 @@ var _profile := "mixed"
 var _configured_profile := "mixed"
 var _randomness := 50.0
 var _configured_randomness := 50.0
+var _rounds := TARGET_ROUNDS
 
-func _init(config: GameRulesConfig, seed: int = 0, difficulty: float = 0.0, assist_strength: float = 0.0, profile: String = "mixed", randomness: float = 50.0) -> void:
+func _init(config: GameRulesConfig, seed: int = 0, difficulty: float = 0.0, assist_strength: float = 0.0, profile: String = "mixed", randomness: float = 50.0, rounds: int = TARGET_ROUNDS) -> void:
 	_config = config
 	_rng.seed = seed
 	_difficulty = clampf(difficulty, 0.0, 1.0)
@@ -23,6 +27,7 @@ func _init(config: GameRulesConfig, seed: int = 0, difficulty: float = 0.0, assi
 	_configured_randomness = clampf(randomness, 0.0, 100.0)
 	_profile = _configured_profile
 	_randomness = _configured_randomness
+	_rounds = clampi(rounds, 1, 40)
 	# Retry assistance keeps the same shapes legal but steers supply toward
 	# friendlier geometry and slightly wider variety instead of changing goals.
 	if _assist_strength >= 0.6:
@@ -84,7 +89,7 @@ func build(board: BoardRules, remaining_counts: Dictionary, generator: RoundGene
 		# dead solely because the limited clear-friendly search ran out of tries.
 		chosen = generator.generate_solvable_round(board)
 		solution = generator.last_solution.duplicate(true)
-	decorate(chosen, remaining_counts)
+	var decoration := decorate(chosen, remaining_counts)
 	_round += 1
 	return {
 		"pieces": chosen, "solution": solution,
@@ -97,48 +102,58 @@ func build(board: BoardRules, remaining_counts: Dictionary, generator: RoundGene
 			"shape_profile_configured": _configured_profile, "shape_profile": _profile,
 			"randomness_configured": _configured_randomness, "randomness": _randomness,
 			"target_progress_preferred": _assist_strength > 0.0,
+			"marker_budget": int(decoration["marker_budget"]),
+			"marker_rounds_left": int(decoration["marker_rounds_left"]),
 			"attempts": attempts, "evaluated_origins": evaluated, "fallback_used": fallback,
 		},
 	}
 
-func decorate(pieces: Array[PieceData], remaining_counts: Dictionary) -> void:
+func decorate(pieces: Array[PieceData], remaining_counts: Dictionary) -> Dictionary:
+	# Markers follow a budget derived from the remaining quota and the level's own
+	# supply horizon, not a fixed density. A high-quota level therefore shows a
+	# visibly denser target load, while the horizon decides how many trays the
+	# level actually spans — that is where its real difficulty lives.
 	var active: Array[String] = []
+	var remaining_total := 0
 	for kind in remaining_counts:
-		if int(remaining_counts[kind]) > 0:
+		var amount := int(remaining_counts[kind])
+		remaining_total += amount
+		if amount > 0:
 			active.append(str(kind))
 	active.sort()
-	if active.is_empty():
-		return
+	for piece in pieces:
+		piece.targets.clear()
+	if active.is_empty() or pieces.is_empty():
+		return {"marker_budget": 0, "marker_rounds_left": 0}
+	var capacity := 0
+	for piece in pieces:
+		capacity += piece.cells.size()
+	var rounds_left := maxi(1, _rounds - _round)
+	var budget := ceili(float(remaining_total) / float(rounds_left))
 	if _assist_strength > 0.0:
-		_decorate_assisted(pieces, remaining_counts, active)
-		return
-	var offset := _round % active.size()
+		budget = ceili(float(budget) * (1.0 + ASSIST_MARKER_BOOST * _assist_strength))
+	budget = clampi(budget, MIN_MARKERS_PER_TRAY, capacity)
+	var slots: Array[Dictionary] = []
 	for piece in pieces:
-		piece.targets.clear()
-		var order := _shuffled_indices(piece.cells.size())
-		# At least one marker per piece. A whole marked long piece is allowed
-		# when only one target remains; excess does not reduce counters below 0.
-		var marker_count := maxi(1, ceili(float(piece.cells.size()) * _rng.randf_range(0.45, 0.85)))
-		for index in range(marker_count):
-			piece.targets[piece.cells[order[index]]] = active[(offset + index) % active.size()]
-		offset = (offset + marker_count) % active.size()
-
-func _decorate_assisted(pieces: Array[PieceData], remaining_counts: Dictionary, active: Array[String]) -> void:
-	# Rotate a guaranteed marker through every unfinished kind; additional
-	# markers favor the larger remaining quotas without expanding a quota list.
-	var offset := _round % active.size()
+		for cell: Vector2i in piece.cells:
+			slots.append({"piece": piece, "cell": cell})
+	for index in range(slots.size() - 1, 0, -1):
+		var other := _rng.randi_range(0, index)
+		var temporary: Dictionary = slots[index]
+		slots[index] = slots[other]
+		slots[other] = temporary
+	# The first markers rotate through every unfinished kind so none is starved;
+	# the rest follow remaining quotas so an uneven split still finishes together.
 	var weights := remaining_counts.duplicate()
-	var density_min := clampf(0.45 + 0.5 * _assist_strength, 0.45, 0.95)
-	var density_max := clampf(0.85 + 0.25 * _assist_strength, density_min, 1.0)
-	for piece in pieces:
-		piece.targets.clear()
-		var order := _shuffled_indices(piece.cells.size())
-		var marker_count := mini(piece.cells.size(), maxi(1, ceili(float(piece.cells.size()) * _rng.randf_range(density_min, density_max))))
-		for index in range(marker_count):
-			var kind := active[offset] if index == 0 else _weighted_kind(active, weights)
-			piece.targets[piece.cells[order[index]]] = kind
-			weights[kind] = maxi(1, int(weights.get(kind, 1)) - 1)
-		offset = (offset + 1) % active.size()
+	var offset := _round % active.size()
+	var placed := mini(budget, slots.size())
+	for index in range(placed):
+		var kind := active[(offset + index) % active.size()] if index < active.size() else _weighted_kind(active, weights)
+		var slot: Dictionary = slots[index]
+		var piece: PieceData = slot["piece"]
+		piece.targets[slot["cell"]] = kind
+		weights[kind] = maxi(1, int(weights.get(kind, 1)) - 1)
+	return {"marker_budget": placed, "marker_rounds_left": rounds_left}
 
 func _weighted_kind(active: Array[String], weights: Dictionary) -> String:
 	var total := 0
@@ -234,14 +249,3 @@ func _consume_simulated_targets(cleared_cells: Array, board_targets: Dictionary,
 		board_targets.erase(cell)
 		if remaining_counts.has(kind):
 			remaining_counts[kind] = maxi(0, int(remaining_counts[kind]) - 1)
-
-func _shuffled_indices(count: int) -> Array[int]:
-	var result: Array[int] = []
-	for index in range(count):
-		result.append(index)
-	for index in range(count - 1, 0, -1):
-		var other := _rng.randi_range(0, index)
-		var temporary := result[index]
-		result[index] = result[other]
-		result[other] = temporary
-	return result

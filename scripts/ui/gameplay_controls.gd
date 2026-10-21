@@ -281,11 +281,11 @@ func _draw_collect_targets() -> void:
 		if rect.size.x <= 0.0:
 			continue
 		var pulse := float(_target_pulses.get(kind, 0.0))
-		var scale_factor := 1.0 + sin(pulse * PI) * 0.16
+		var scale_factor := 1.0 + sin(pulse * PI) * 0.08
 		var marker_rect := Rect2(rect.get_center() - rect.size * scale_factor * 0.5, rect.size * scale_factor)
 		if pulse > 0.0:
-			draw_circle(rect.get_center(), rect.size.x * (0.55 + (1.0 - pulse) * 0.3), Color(0.65, 0.95, 1.0, pulse * 0.16))
-		BlockArt.draw_target_marker(self, marker_rect, 1.0, 1.0 + pulse * 0.5, kind)
+			draw_circle(rect.get_center(), rect.size.x * (0.55 + (1.0 - pulse) * 0.3), Color(0.65, 0.95, 1.0, pulse * 0.08))
+		BlockArt.draw_target_marker(self, marker_rect, 1.0, 1.0 + pulse * 0.2, kind)
 		var count_rect := Rect2(rect.get_center().x - 35.0, rect.end.y + 1.0, 70.0, 24.0)
 		if MobileLayout.is_mobile():
 			count_rect = Rect2(rect.position.x - MobileLayout.dp(self, 5.0), rect.end.y + MobileLayout.dp(self, 1.0), rect.size.x + MobileLayout.dp(self, 10.0), MobileLayout.dp(self, 22.0))

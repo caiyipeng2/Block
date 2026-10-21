@@ -2,6 +2,7 @@ extends SceneTree
 
 const ModeCatalog = preload("res://scripts/modes/mode_catalog.gd")
 const OpeningTraySupplier = preload("res://scripts/rules/opening_tray_supplier.gd")
+const CollectionTraySupplier = preload("res://scripts/rules/collection_tray_supplier.gd")
 
 ## Maintained coverage; normal delivery compiles this script without running it.
 var failures := 0
@@ -13,6 +14,7 @@ func _initialize() -> void:
 	_test_collection_progress()
 	_test_crossing_collection()
 	_test_streamed_collection()
+	_test_marker_budget()
 	_test_retry_supply()
 	_test_opening_scope_and_threshold()
 	_test_opening_clear_paths()
@@ -270,6 +272,35 @@ func _test_streamed_collection() -> void:
 	_check(float(hard_supplied["diagnostics"]["difficulty_ratio"]) == 1.0 and not bool(hard_supplied["diagnostics"]["whole_level_certified"]), "后期供块记录难度且不宣称整关唯一解")
 	for piece: PieceData in hard_supplied["pieces"]:
 		_check(piece.is_valid_for_config(supplier_rules), "后期难度权重不改变合法形状约束")
+
+func _test_marker_budget() -> void:
+	var rules: GameRulesConfig = ModeCatalog.collection_rules(GameRulesConfig.new())
+	var pieces: Array[PieceData] = []
+	for index in range(3):
+		pieces.append(PieceData.new(Vector2i.ZERO, [Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0)], "budget_line_%d" % index))
+	var supplier := CollectionTraySupplier.new(rules, 321)
+	var report: Dictionary = supplier.decorate(pieces, {"blue_diamond": 80, "gold_gem": 20})
+	var counts := _marker_counts(pieces)
+	_check(int(report["marker_budget"]) == 10 and int(counts["total"]) == 10, "高配额首盘按约十轮预算放置标记")
+	_check(int(counts.get("blue_diamond", 0)) > int(counts.get("gold_gem", 0)) and int(counts.get("gold_gem", 0)) >= 1, "标记先覆盖各未完成种类再按剩余配额加权")
+	var low: Dictionary = supplier.decorate(pieces, {"blue_diamond": 1, "gold_gem": 0})
+	counts = _marker_counts(pieces)
+	_check(int(low["marker_budget"]) == 2 and int(counts["total"]) == 2 and int(counts.get("blue_diamond", 0)) == 2, "低剩余量保持每盘至少两枚且只派未完成种类")
+	var assisted := CollectionTraySupplier.new(rules, 321, 0.0, 0.4)
+	var boosted: Dictionary = assisted.decorate(pieces, {"blue_diamond": 80, "gold_gem": 20})
+	_check(int(boosted["marker_budget"]) == 11, "重试辅助适度提高每盘标记预算")
+	var short := CollectionTraySupplier.new(rules, 321, 0.0, 0.4, "mixed", 50.0, 3)
+	var tight: Dictionary = short.decorate(pieces, {"blue_diamond": 80, "gold_gem": 20})
+	_check(int(tight["marker_rounds_left"]) == 3 and int(tight["marker_budget"]) == 12, "关卡标记时长缩短时按整盘容量封顶预算")
+
+func _marker_counts(pieces: Array[PieceData]) -> Dictionary:
+	var result: Dictionary = {"total": 0}
+	for piece in pieces:
+		for cell: Vector2i in piece.targets:
+			var kind := str(piece.targets[cell])
+			result[kind] = int(result.get(kind, 0)) + 1
+			result["total"] = int(result["total"]) + 1
+	return result
 
 func _test_retry_supply() -> void:
 	var setup := _collection_setup()

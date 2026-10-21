@@ -29,7 +29,7 @@ COLUMNS = [
     "yellow_star", "red_star", "difficulty", "template_id", "mirror",
     "initial_fill", "initial_markers", "seed", "difficulty_label", "note",
     "retry_assist_step", "retry_assist_max",
-    "shape_profile", "extra_blocks", "near_win_lines", "randomness",
+    "shape_profile", "extra_blocks", "near_win_lines", "randomness", "marker_rounds",
 ]
 PHASE_NAMES = {
     "build": "建立期",
@@ -58,6 +58,14 @@ def load_csv(path: Path) -> list[dict[str, str]]:
     return rows
 
 
+def phase_rounds(spec: dict, phase: str) -> int:
+    supply = spec.get("target_supply", {})
+    by_phase = supply.get("rounds_by_phase", {})
+    if phase in by_phase:
+        return int(by_phase[phase])
+    return int(supply.get("rounds", 10))
+
+
 def slot_definition(spec: dict, level_id: int) -> dict:
     cycle = spec["cycle"]
     if level_id >= cycle["finale_start"]:
@@ -70,11 +78,11 @@ def slot_definition(spec: dict, level_id: int) -> dict:
             "target": float(finale["target"]),
             "band_low": float(finale["band_low"]),
             "band_high": float(finale["band_high"]),
-            "quota_scale": float(finale["quota_scale"]),
             "profile": finale["profile"],
             "randomness": float(finale["randomness"]),
             "extras": int(finale.get("extras", 0)),
             "near_win": int(finale.get("near_win", 0)),
+            "rounds": int(finale.get("rounds", phase_rounds(spec, finale["phase"]))),
             "cycle_t": 1.0,
         }
     index = level_id - 1
@@ -93,11 +101,11 @@ def slot_definition(spec: dict, level_id: int) -> dict:
         "target": target,
         "band_low": float(definition["band_low"]),
         "band_high": float(definition["band_high"]),
-        "quota_scale": float(definition["quota_scale"]),
         "profile": definition["profile"],
         "randomness": float(definition["randomness"]),
         "extras": extras,
         "near_win": int(definition.get("near_win", 0)),
+        "rounds": int(definition.get("rounds", phase_rounds(spec, definition["phase"]))),
         "cycle_t": cycle_t,
     }
 
@@ -117,20 +125,59 @@ def curve_pass_rate(spec: dict, level_id: int, definition: dict) -> float:
     return clamp(target, definition["band_low"], definition["band_high"])
 
 
-def distribute_quota(quota: int, kinds: list[str]) -> dict[str, int]:
+def distribute_quota(quota: int, kinds: list[str], weights: list[float]) -> dict[str, int]:
     result = {kind: 0 for kind in TARGET_COLUMNS}
     if not kinds:
         kinds = TARGET_COLUMNS
-    base, remainder = divmod(quota, len(kinds))
+        weights = [1.0] * len(kinds)
+    if len(weights) != len(kinds):
+        weights = [1.0] * len(kinds)
+    weight_total = sum(max(0.0, float(weight)) for weight in weights)
+    if weight_total <= 0.0:
+        weights = [1.0] * len(kinds)
+        weight_total = float(len(kinds))
+    raw = [float(quota) * max(0.0, float(weight)) / weight_total for weight in weights]
+    amounts = [max(1, int(math.floor(value))) for value in raw]
+    while sum(amounts) > quota:
+        largest = max(range(len(amounts)), key=lambda index: amounts[index])
+        if amounts[largest] <= 1:
+            break
+        amounts[largest] -= 1
+    order = sorted(range(len(raw)), key=lambda index: (raw[index] - math.floor(raw[index]), raw[index]), reverse=True)
+    remainder = quota - sum(amounts)
+    for offset in range(max(0, remainder)):
+        amounts[order[offset % len(order)]] += 1
     for index, kind in enumerate(kinds):
-        result[kind] = base + (1 if index < remainder else 0)
+        result[kind] = amounts[index]
     return result
+
+
+def quota_pattern(spec: dict, level_id: int) -> float:
+    pattern = spec["quota"]["display_pattern"]
+    if not pattern:
+        return 1.0
+    return float(pattern[(level_id - 3) % len(pattern)])
+
+
+def kind_definition(spec: dict, level_id: int) -> dict:
+    patterns = spec["target_kinds"]["patterns"]
+    if not patterns:
+        return {"kinds": TARGET_COLUMNS[:3], "weights": [0.5, 0.3, 0.2]}
+    return patterns[(level_id - 3) % len(patterns)]
+
+
+def initial_marker_count(spec: dict, quota: int) -> int:
+    quota_spec = spec["quota"]
+    ratio = float(quota_spec.get("initial_marker_ratio", 0.075))
+    minimum = int(quota_spec.get("initial_marker_min", 2))
+    maximum = int(quota_spec.get("initial_marker_max", 11))
+    return int(clamp(round(float(quota) * ratio), minimum, maximum))
 
 
 def apply_level_override(spec: dict, level_id: int, definition: dict) -> dict:
     override = spec.get("level_overrides", {}).get(str(level_id), {})
     applied: dict = {}
-    for key in ("quota", "quota_scale", "difficulty", "profile", "randomness", "extras", "near_win"):
+    for key in ("quota", "difficulty", "profile", "randomness", "extras", "near_win", "rounds"):
         if key in override:
             definition[key] = override[key]
             applied[key] = override[key]
@@ -151,6 +198,7 @@ def build_rows(spec: dict, base_rows: list[dict[str, str]]) -> tuple[list[dict],
             definition["phase"] = "tutorial"
             definition["extras"] = 0
             definition["near_win"] = 0
+            definition["rounds"] = phase_rounds(spec, "tutorial")
             override = {}
         pass_rate = curve_pass_rate(spec, level_id, definition)
         difficulty = clamp(
@@ -168,22 +216,29 @@ def build_rows(spec: dict, base_rows: list[dict[str, str]]) -> tuple[list[dict],
         row["extra_blocks"] = str(definition["extras"]) if objective == "collect" else "0"
         row["near_win_lines"] = str(definition["near_win"]) if objective == "collect" else "0"
         row["randomness"] = f"{definition['randomness']:.0f}" if objective == "collect" else "50"
+        row["marker_rounds"] = str(definition["rounds"]) if objective == "collect" else str(phase_rounds(spec, "tutorial"))
         if objective == "collect":
             t = (level_id - 3) / 93.0
             base_quota = lerp(float(quota_spec["base_start"]), float(quota_spec["base_end"]), t)
-            quota = round(base_quota * definition["quota_scale"])
+            quota = round(base_quota * quota_pattern(spec, level_id))
             quota = int(clamp(quota, float(quota_spec["minimum"]), float(quota_spec["maximum"])))
             if "quota" in override:
                 quota = int(override["quota"])
-            kinds = [kind for kind in TARGET_COLUMNS if int(source[kind]) > 0]
-            counts = distribute_quota(quota, kinds)
+            kinds_spec = kind_definition(spec, level_id)
+            kinds = [kind for kind in kinds_spec["kinds"] if kind in TARGET_COLUMNS]
+            weights = [float(weight) for weight in kinds_spec["weights"]]
+            counts = distribute_quota(quota, kinds, weights)
             for kind in TARGET_COLUMNS:
                 row[kind] = str(counts[kind])
             row["target_score"] = "0"
             row["initial_fill"] = "0"
+            row["initial_markers"] = str(initial_marker_count(spec, quota))
+            kind_totals = "、".join(
+                f"{kind} {counts[kind]}" for kind in TARGET_COLUMNS if counts[kind] > 0
+            )
             row["note"] = (
                 f"曲线{PHASE_NAMES.get(definition['phase'], definition['phase'])}；"
-                f"参考通过率目标 {pass_rate:.0f}%；配额 {quota}"
+                f"参考通过率目标 {pass_rate:.0f}%；配额 {quota}（{kind_totals}）"
             )
         else:
             row["note"] = source["note"]
@@ -199,11 +254,13 @@ def build_rows(spec: dict, base_rows: list[dict[str, str]]) -> tuple[list[dict],
             "band_high": definition["band_high"],
             "difficulty": round(difficulty, 2),
             "quota_total": sum(int(row[kind]) for kind in TARGET_COLUMNS),
-            "quota_scale": definition["quota_scale"],
+            "quota_counts": {kind: int(row[kind]) for kind in TARGET_COLUMNS if int(row[kind]) > 0},
+            "initial_markers": int(row["initial_markers"]),
             "shape_profile": row["shape_profile"],
             "extra_blocks": int(row["extra_blocks"]),
             "near_win_lines": int(row["near_win_lines"]),
             "randomness": float(row["randomness"]),
+            "marker_rounds": int(row["marker_rounds"]),
             "overrides": override,
         })
     return rows, plan
@@ -213,7 +270,7 @@ def validate(rows: list[dict], plan: list[dict], spec: dict) -> list[str]:
     errors: list[str] = []
     if len(rows) != 96:
         errors.append(f"expected 96 rows, found {len(rows)}")
-    allowed_overrides = {"quota", "quota_scale", "difficulty", "profile", "randomness", "extras", "near_win"}
+    allowed_overrides = {"quota", "difficulty", "profile", "randomness", "extras", "near_win", "rounds"}
     for raw_level, override in spec.get("level_overrides", {}).items():
         if not isinstance(override, dict):
             errors.append(f"level override {raw_level}: expected an object")
@@ -228,12 +285,12 @@ def validate(rows: list[dict], plan: list[dict], spec: dict) -> list[str]:
         unknown = sorted(set(override) - allowed_overrides)
         if unknown:
             errors.append(f"level override {raw_level}: unknown keys {', '.join(unknown)}")
-        if "quota_scale" in override and not 0.5 <= float(override["quota_scale"]) <= 2.5:
-            errors.append(f"level override {raw_level}: quota_scale must be within 0.5-2.5")
-        if "quota" in override and not 24 <= int(override["quota"]) <= 104:
-            errors.append(f"level override {raw_level}: quota must be within 24-104")
-        if "quota" in override and "quota_scale" in override:
-            errors.append(f"level override {raw_level}: use either quota or quota_scale, not both")
+        quota_spec = spec["quota"]
+        if "quota" in override and not int(quota_spec["minimum"]) <= int(override["quota"]) <= int(quota_spec["maximum"]):
+            errors.append(
+                f"level override {raw_level}: quota must be within "
+                f"{int(quota_spec['minimum'])}-{int(quota_spec['maximum'])}"
+            )
         if "difficulty" in override and not 0 <= float(override["difficulty"]) <= 100:
             errors.append(f"level override {raw_level}: difficulty must be within 0-100")
         if "profile" in override and override["profile"] not in {"friendly", "mixed", "pressure"}:
@@ -244,6 +301,8 @@ def validate(rows: list[dict], plan: list[dict], spec: dict) -> list[str]:
             errors.append(f"level override {raw_level}: extras must be within 0-12")
         if "near_win" in override and not 0 <= int(override["near_win"]) <= 3:
             errors.append(f"level override {raw_level}: near_win must be within 0-3")
+        if "rounds" in override and not 1 <= int(override["rounds"]) <= 24:
+            errors.append(f"level override {raw_level}: rounds must be within 1-24")
     for row in rows:
         level_id = int(row["level_id"])
         if row["objective_type"] == "score":
@@ -261,6 +320,8 @@ def validate(rows: list[dict], plan: list[dict], spec: dict) -> list[str]:
         randomness = float(row["randomness"])
         if not 0 <= randomness <= 100:
             errors.append(f"level {level_id}: randomness out of range")
+        if not 1 <= int(row["marker_rounds"]) <= 24:
+            errors.append(f"level {level_id}: marker_rounds out of range")
         if sum(int(row[kind]) for kind in TARGET_COLUMNS) <= 0:
             errors.append(f"level {level_id}: empty collection quota")
     peaks = [item["level_id"] for item in plan if item["phase"] in {"peak", "final_peak", "secondary_peak"}]
@@ -274,6 +335,22 @@ def validate(rows: list[dict], plan: list[dict], spec: dict) -> list[str]:
         target = item["pass_rate_target"]
         if not item["band_low"] <= target <= item["band_high"]:
             errors.append(f"level {item['level_id']}: target outside its band")
+    collect = [item for item in plan if item["objective_type"] == "collect"]
+    quotas = [int(item["quota_total"]) for item in collect]
+    if quotas:
+        low, high = min(quotas), max(quotas)
+        if low > 32 or high < 120 or high < low * 3:
+            errors.append(f"quota display range is not wide enough: {low}-{high}")
+        kind_counts = {len(item["quota_counts"]) for item in collect}
+        for required in (2, 3, 4):
+            if required not in kind_counts:
+                errors.append(f"quota distribution never uses {required} target kinds")
+        marker_range = (min(int(item["initial_markers"]) for item in collect), max(int(item["initial_markers"]) for item in collect))
+        if marker_range[0] < 1 or marker_range[1] > 12:
+            errors.append(f"initial marker range is invalid: {marker_range[0]}-{marker_range[1]}")
+        for item in collect:
+            if sum(int(value) for value in item["quota_counts"].values()) != int(item["quota_total"]):
+                errors.append(f"level {item['level_id']}: quota counts do not sum to total")
     return errors
 
 
@@ -306,6 +383,8 @@ def main() -> None:
     parser.add_argument("--plan", type=Path, default=DEFAULT_PLAN)
     parser.add_argument("--check-only", action="store_true")
     args = parser.parse_args()
+    for name in ("base", "spec", "out", "plan"):
+        setattr(args, name, getattr(args, name).resolve())
 
     spec = json.loads(args.spec.read_text(encoding="utf-8"))
     base_rows = load_csv(args.base)
@@ -319,13 +398,14 @@ def main() -> None:
         write_csv(args.out, rows)
         write_plan(args.plan, spec, args.base, args.out, plan)
     print(f"curve ok: {len(rows)} rows, peaks={sum(1 for item in plan if 'peak' in item['phase'])}")
-    print("id phase       target band     diff quota profile  extras near rand")
+    print("id phase       target band     diff quota marks kinds profile  extras near rand trays")
     for item in plan:
         print(
             f"{item['level_id']:3d} {item['phase']:12s} {item['pass_rate_target']:6.1f} "
             f"{item['band_low']:2.0f}-{item['band_high']:2.0f} {item['difficulty']:5.1f} "
-            f"{item['quota_total']:5d} {item['shape_profile']:8s} {item['extra_blocks']:6d} "
-            f"{item['near_win_lines']:4d} {item['randomness']:4.0f}"
+            f"{item['quota_total']:5d} {item['initial_markers']:5d} {len(item['quota_counts']):5d} "
+            f"{item['shape_profile']:8s} {item['extra_blocks']:6d} "
+            f"{item['near_win_lines']:4d} {item['randomness']:4.0f} {item['marker_rounds']:5d}"
         )
 
 

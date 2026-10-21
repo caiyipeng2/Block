@@ -18,7 +18,7 @@ const GOLD := Color("#ffdc57")
 const OUTLINE := Color("#182a71")
 const FLASH_DURATION := 0.06
 const SWEEP_DURATION := 0.10
-const ACCENT_DURATION := 0.62
+const ACCENT_DURATION := 0.52
 const SCORE_FLIGHT_DURATION := 0.58
 const FINAL_LIFT_DURATION := 0.20
 const FINAL_HOLD_DURATION := 0.07
@@ -590,7 +590,8 @@ func _end_accents() -> void:
 func _spawn_particles() -> void:
 	var random := RandomNumberGenerator.new()
 	random.seed = Time.get_ticks_usec()
-	var budget := 144
+	var budget := 96
+	var cell_index := 0
 	for key in _clear_cells:
 		var cell: Vector2i = key
 		var base_color := _color_for_id(_resolved_cell_color_id(cell))
@@ -598,19 +599,20 @@ func _spawn_particles() -> void:
 		# The existing clear tween eases quadratically. Its inverse keeps each
 		# cell's fragments on the same travelling break wave, within accent time.
 		var delay := sqrt(_clear_wave_offset(cell) * 0.66 + 0.34 * 0.12) * _disperse_duration
-		for i in range(3):
+		for i in range(2):
 			if _particles.size() >= budget:
 				return
-			var velocity := Vector2(random.randf_range(-1.0, 1.0), random.randf_range(-1.5, -0.2)) * _cell_size * random.randf_range(1.4, 2.6)
+			var velocity := Vector2(random.randf_range(-1.0, 1.0), random.randf_range(-1.5, -0.2)) * _cell_size * random.randf_range(1.1, 2.0)
 			_particles.append({
 				"origin": _cell_center(cell) + Vector2(random.randf_range(-0.2, 0.2), random.randf_range(-0.2, 0.2)) * _cell_size,
 				"velocity": velocity,
-				"size": random.randf_range(0.045, 0.085) * _cell_size,
-				"color": color.lightened(0.16 if i == 2 else 0.04),
-				"star": i == 2,
+				"size": random.randf_range(0.035, 0.065) * _cell_size,
+				"color": color.lightened(0.16 if i == 1 else 0.04),
+				"star": i == 1 and cell_index % 2 == 0,
 				"delay": delay,
 				"rotation": random.randf_range(0.0, TAU)
 			})
+		cell_index += 1
 
 func _draw() -> void:
 	if _overlay_visible:

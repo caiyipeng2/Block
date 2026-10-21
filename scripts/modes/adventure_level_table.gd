@@ -12,12 +12,13 @@ const COLUMNS := [
 	"yellow_star", "red_star", "difficulty", "template_id", "mirror",
 	"initial_fill", "initial_markers", "seed", "difficulty_label", "note",
 	"retry_assist_step", "retry_assist_max",
-	"shape_profile", "extra_blocks", "near_win_lines", "randomness",
+	"shape_profile", "extra_blocks", "near_win_lines", "randomness", "marker_rounds",
 ]
 const SHAPE_PROFILES := ["friendly", "mixed", "pressure"]
 const OPTIONAL_DEFAULTS := {
 	"retry_assist_step": "20", "retry_assist_max": "60",
 	"shape_profile": "mixed", "extra_blocks": "0", "near_win_lines": "0", "randomness": "50",
+	"marker_rounds": "10",
 }
 const OPTIONAL_NUMBER_COLUMNS := ["retry_assist_step", "retry_assist_max", "randomness"]
 const TARGET_COLUMNS := ["blue_diamond", "gold_gem", "yellow_star", "red_star"]
@@ -185,6 +186,7 @@ static func _validate_row(values: Dictionary, issues: PackedStringArray, source:
 		_issue(issues, source, line, "shape_profile", "仅支持 friendly、mixed 或 pressure")
 	row["extra_blocks"] = _integer(str(values.get("extra_blocks", OPTIONAL_DEFAULTS["extra_blocks"])), 0, 12, "extra_blocks", issues, source, line)
 	row["near_win_lines"] = _integer(str(values.get("near_win_lines", OPTIONAL_DEFAULTS["near_win_lines"])), 0, 3, "near_win_lines", issues, source, line)
+	row["marker_rounds"] = _integer(str(values.get("marker_rounds", OPTIONAL_DEFAULTS["marker_rounds"])), 1, 24, "marker_rounds", issues, source, line)
 	row["mirror"] = _integer(values["mirror"], 0, 1, "mirror", issues, source, line)
 	row["initial_fill"] = _integer(values["initial_fill"], 0, 63, "initial_fill", issues, source, line)
 	row["initial_markers"] = _integer(values["initial_markers"], 0, 64, "initial_markers", issues, source, line)

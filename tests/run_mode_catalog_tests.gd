@@ -76,6 +76,34 @@ func _run_tests() -> void:
 			_test_retry_setup(level, row, base, expanded)
 	for tutorial_level in [1, 2]:
 		_assert_true(is_zero_approx(ModeCatalog.retry_assistance(tutorial_level, 99)), "前两关继续独立教学保底，不叠加重试辅助")
+	var quota_min := 9999
+	var quota_max := 0
+	var marker_min := 9999
+	var marker_max := 0
+	var observed_kind_counts: Dictionary = {}
+	var observed_rounds: Dictionary = {}
+	var rounds_min := 9999
+	var rounds_max := 0
+	for level_id in range(3, LevelTable.LEVEL_COUNT + 1):
+		var row: Dictionary = ModeCatalog.level_config(level_id)
+		var quota := 0
+		var kinds := 0
+		for kind: String in LevelTable.TARGET_COLUMNS:
+			var amount := int(row[kind])
+			quota += amount
+			kinds += int(amount > 0)
+		observed_kind_counts[kinds] = true
+		observed_rounds[int(row["marker_rounds"])] = true
+		rounds_min = mini(rounds_min, int(row["marker_rounds"]))
+		rounds_max = maxi(rounds_max, int(row["marker_rounds"]))
+		quota_min = mini(quota_min, quota)
+		quota_max = maxi(quota_max, quota)
+		marker_min = mini(marker_min, int(row["initial_markers"]))
+		marker_max = maxi(marker_max, int(row["initial_markers"]))
+	_assert_true(quota_min <= 32 and quota_max >= 120 and quota_max >= quota_min * 3, "各关显示目标总量拉开明显差异")
+	_assert_true(observed_kind_counts.has(2) and observed_kind_counts.has(3) and observed_kind_counts.has(4), "目标种类在二至四种之间轮换")
+	_assert_true(marker_min >= 1 and marker_max <= 12, "初始标记数量随总量缩放且范围受控")
+	_assert_true(observed_rounds.size() >= 5 and rounds_min <= 6 and rounds_max >= 12, "标记供给时长按关卡分相调节，与显示总量解耦")
 	var classic: Dictionary = ModeCatalog.classic_setup(17, base)
 	_validate_setup(classic, base)
 	_assert_true(classic["initial_cells"].size() >= 16 and classic["initial_cells"].size() <= 24, "经典模式原始开局范围保持")
