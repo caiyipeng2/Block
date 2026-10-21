@@ -52,8 +52,25 @@ func _run_tests() -> void:
 			_assert_true(is_equal_approx(float(level["initial_diagnostics"]["difficulty_ratio"]), float(row["difficulty"]) / 100.0), "表内难度传入首托盘供块诊断")
 			_assert_true(level["target_cells"].size() == int(row["initial_markers"]) and level["initial_diagnostics"]["initial_markers"] == int(row["initial_markers"]), "初始物理标记数精确读取 CSV，不与总配额混同")
 			var template: Dictionary = CollectionTemplates.create(level_id, base.board_size, base.palette.size(), str(row["template_id"]), bool(row["mirror"]))
-			_assert_true(level["template_id"] == row["template_id"] and level["initial_cells"] == template["initial_cells"], "模板与镜像由表指定，不按关号自动选取")
-			_assert_true(level["initial_diagnostics"]["certification_scope"] == "current_tray" and not level["initial_diagnostics"]["whole_level_certified"], "只声明真实首托盘证书，不宣称整关必过")
+			var template_cells: Array = template["initial_cells"]
+			var diagnostics: Dictionary = level["initial_diagnostics"]
+			var requested_extras := int(row["extra_blocks"])
+			var applied_extras := int(diagnostics.get("extra_blocks", 0))
+			_assert_true(level["template_id"] == row["template_id"], "模板由表指定，不按关号自动选取")
+			_assert_true(level["initial_cells"].slice(0, template_cells.size()) == template_cells, "模板占格原样保留，额外方块只追加在后")
+			_assert_true(int(diagnostics.get("requested_extra_blocks", 0)) == requested_extras and applied_extras <= requested_extras, "额外方块请求读取 CSV 且实际不超出请求")
+			_assert_true(level["initial_cells"].size() == template_cells.size() + applied_extras, "初始占格等于模板格加实际额外方块")
+			if not bool(diagnostics.get("extra_blocks_downgraded", false)):
+				_assert_true(applied_extras == requested_extras, "可认证布局保留全部请求的额外方块")
+				_assert_true(int(diagnostics.get("near_win_lines", 0)) >= int(row["near_win_lines"]), "近胜线达到配置下限")
+			_assert_true(str(level["shape_profile"]) == str(row["shape_profile"]) and is_equal_approx(float(level["randomness"]), float(row["randomness"])), "形状档位与随机度精确读取 CSV")
+			_assert_true(str(diagnostics.get("shape_profile_configured", "")) == str(row["shape_profile"]), "首托盘诊断记录配置的形状档位")
+			var template_cells_set: Dictionary = {}
+			for entry: Dictionary in template_cells:
+				template_cells_set[Vector2i(entry["x"], entry["y"])] = true
+			for cell: Vector2i in level["target_cells"]:
+				_assert_true(template_cells_set.has(cell), "目标标记仍只附着模板格，不落在额外方块上")
+			_assert_true(diagnostics["certification_scope"] == "current_tray" and not diagnostics["whole_level_certified"], "只声明真实首托盘证书，不宣称整关必过")
 			_validate_setup(level, expanded)
 		if level_id == 3:
 			_test_retry_setup(level, row, base, expanded)
@@ -93,10 +110,30 @@ func _test_table_parser() -> void:
 	_assert_true(parsed["errors"].is_empty() and parsed["levels"].size() == LevelTable.LEVEL_COUNT, "完整配置包含 1–96 关且无解析错误")
 	if not parsed["errors"].is_empty():
 		return
-	var legacy: Dictionary = LevelTable.parse_text(_csv_with_changes(source, {}, ["retry_assist_step", "retry_assist_max"]), "旧版十五列配置")
+	var legacy: Dictionary = LevelTable.parse_text(_csv_with_changes(source, {}, ["retry_assist_step", "retry_assist_max", "shape_profile", "extra_blocks", "near_win_lines", "randomness"]), "旧版十五列配置")
 	_assert_true(legacy["errors"].is_empty() and legacy["levels"].size() == LevelTable.LEVEL_COUNT, "旧十五列配置无需新增列也可继续读取")
 	if legacy["errors"].is_empty():
-		_assert_true(is_equal_approx(float(legacy["levels"][3]["retry_assist_step"]), 20.0) and is_equal_approx(float(legacy["levels"][3]["retry_assist_max"]), 60.0), "缺少重试可选列采用每次20与上限60的兼容默认值")
+		var legacy_row: Dictionary = legacy["levels"][3]
+		_assert_true(is_equal_approx(float(legacy_row["retry_assist_step"]), 20.0) and is_equal_approx(float(legacy_row["retry_assist_max"]), 60.0), "缺少重试可选列采用每次20与上限60的兼容默认值")
+		_assert_true(str(legacy_row["shape_profile"]) == "mixed" and int(legacy_row["extra_blocks"]) == 0 and int(legacy_row["near_win_lines"]) == 0 and is_equal_approx(float(legacy_row["randomness"]), 50.0), "缺少曲线杠杆列采用中性默认值")
+	var legacy_curve: Dictionary = LevelTable.parse_text(_csv_with_changes(source, {}, ["shape_profile", "extra_blocks", "near_win_lines", "randomness"]), "旧版十七列配置")
+	_assert_true(legacy_curve["errors"].is_empty() and str(legacy_curve["levels"][3]["shape_profile"]) == "mixed" and is_equal_approx(float(legacy_curve["levels"][3]["randomness"]), 50.0), "旧十七列配置无需曲线杠杆列也可继续读取")
+	var custom_levers: Dictionary = LevelTable.parse_text(_csv_with_changes(source, {3: {"shape_profile": "pressure", "extra_blocks": 6, "near_win_lines": 2, "randomness": 12.5}}), "自定义曲线杠杆配置")
+	_assert_true(custom_levers["errors"].is_empty(), "曲线杠杆允许压力档、额外方块、近胜线和小数随机度")
+	if custom_levers["errors"].is_empty():
+		var lever_row: Dictionary = custom_levers["levels"][3]
+		_assert_true(str(lever_row["shape_profile"]) == "pressure" and int(lever_row["extra_blocks"]) == 6 and int(lever_row["near_win_lines"]) == 2 and is_equal_approx(float(lever_row["randomness"]), 12.5), "曲线杠杆列精确读取且不去除小数")
+	for column in ["extra_blocks", "near_win_lines"]:
+		for invalid in [-1, 13 if column == "extra_blocks" else 4, 1.5, "not-a-number"]:
+			_assert_table_rejected(_csv_with_changes(source, {3: {column: invalid}}), column, "越界或非数值曲线杠杆拒绝整表：" + column)
+	for invalid in [-0.1, 100.1, "not-a-number"]:
+		_assert_table_rejected(_csv_with_changes(source, {3: {"randomness": invalid}}), "randomness", "越界或非数值随机度拒绝整表")
+	_assert_table_rejected(_csv_with_changes(source, {3: {"shape_profile": "wild"}}), "shape_profile", "未知形状档位拒绝整表")
+	_assert_table_rejected(_csv_with_changes(source, {3: {"extra_blocks": 1, "near_win_lines": 2}}), "near_win_lines", "近胜线不能多于额外初始方块")
+	for column in ["extra_blocks", "near_win_lines"]:
+		_assert_table_rejected(_csv_with_changes(source, {1: {column: 1}}), column, "分数教学关不能使用曲线杠杆：" + column)
+	_assert_table_rejected(_csv_with_changes(source, {1: {"shape_profile": "friendly"}}), "shape_profile", "分数教学关形状档位须为 mixed")
+	_assert_table_rejected(_csv_with_changes(source, {1: {"randomness": 60}}), "randomness", "分数教学关随机度须为 50")
 	var custom_assist: Dictionary = LevelTable.parse_text(_csv_with_changes(source, {3: {"retry_assist_step": 0, "retry_assist_max": 0}, 4: {"retry_assist_step": 12.5, "retry_assist_max": 100}}), "自定义重试辅助配置")
 	_assert_true(custom_assist["errors"].is_empty(), "重试配置允许零值关闭、小数步长及百分百上限")
 	if custom_assist["errors"].is_empty():

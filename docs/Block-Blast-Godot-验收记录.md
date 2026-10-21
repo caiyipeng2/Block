@@ -1,8 +1,18 @@
 # Block Blast Godot MVP 验收记录
 
-首次验证：2026-10-10；最近更新：2026-10-20
+首次验证：2026-10-10；最近更新：2026-10-21
 引擎：Godot 4.7.2 stable  
 平台目标：Windows 桌面，鼠标输入
+
+## 96 关数值曲线重构（2026-10-21；0.9.1）
+
+按用户确认的 10 关 × 9 周期 + 6 关终局方案重做 96 关配置。新增 `shape_profile`、`extra_blocks`、`near_win_lines`、`randomness` 四列并接入收集供块、开局追加方块与近胜线；旧 15/17 列配置使用中性默认。规则模板与生成器见 `docs/difficulty/adventure_curve_spec.json`、`tools/adventure_curve.py`，模拟器见 `tests/simulate_adventure.gd`。
+
+最终配置 `config/adventure_levels.csv` 为 96 行 × 21 列，MD5 `da0b16df6db1f8c79c6709396a9a6099`，含 17 个单关校准值。整表无界面模拟每关 24 次、固定关卡种子，`casual` 参考策略（mistake=0.35、fatigue base/slope/power=0.05/3.0/2.0）通过率与目标偏差全部在 ±15pp 内，最大 14.83pp（第 90 关）；20 个峰值关最大 FUUU 4.0，无越界；`greedy` 全部 100%，`random` 平均 15.7%。第 5、45、46、66、70 关各有 1 次失败未到 near-win，FUUU 记为 9999，按非峰值规则只保留诊断、不设门槛。逐关结果、配置/模板哈希与调参清单见 `docs/difficulty/snapshots/2026-10-21-adventure-96-curve.json` 和同名 `.md`。
+
+轻量校验：`tests/run_mode_catalog_tests.gd` 输出 `MODE CATALOG TESTS PASSED`；`adventure_level_table.gd`、`mode_catalog.gd`、`collection_tray_supplier.gd`、`game_state.gd`、`run_mode_catalog_tests.gd`、`simulate_adventure.gd` 六份 `--check-only` 退出 0、无解析/编译错误。`tests/run_ui_action_tests.gd` 在普通动画设置下 557 项中 552 项通过，5 项为既有的等待式时序断言（通关后立即下一关 4 项、界面淡入 0.998 vs 1.0），本轮未修改 UI，不视为曲线回归；减少动画路径的断言通过。
+
+本轮未执行桌面 GUI、完整游戏流程、APK/AAB 导出或真机安装。模拟通过率是本项目参考模型的相对代理，不代表实机玩家统计；新曲线的手感、目标 HUD、初始占用和重试辅助仍待用户按 F5 验收。版本元数据为 `0.9.1`。
 
 ## 界面自然焦点外框移除（2026-10-21；0.9.0）
 

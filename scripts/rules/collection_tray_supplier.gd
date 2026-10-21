@@ -9,12 +9,27 @@ var _rng := RandomNumberGenerator.new()
 var _round := 0
 var _difficulty := 0.0
 var _assist_strength := 0.0
+var _profile := "mixed"
+var _configured_profile := "mixed"
+var _randomness := 50.0
+var _configured_randomness := 50.0
 
-func _init(config: GameRulesConfig, seed: int = 0, difficulty: float = 0.0, assist_strength: float = 0.0) -> void:
+func _init(config: GameRulesConfig, seed: int = 0, difficulty: float = 0.0, assist_strength: float = 0.0, profile: String = "mixed", randomness: float = 50.0) -> void:
 	_config = config
 	_rng.seed = seed
 	_difficulty = clampf(difficulty, 0.0, 1.0)
 	_assist_strength = clampf(assist_strength, 0.0, 1.0)
+	_configured_profile = profile if profile in ["friendly", "mixed", "pressure"] else "mixed"
+	_configured_randomness = clampf(randomness, 0.0, 100.0)
+	_profile = _configured_profile
+	_randomness = _configured_randomness
+	# Retry assistance keeps the same shapes legal but steers supply toward
+	# friendlier geometry and slightly wider variety instead of changing goals.
+	if _assist_strength >= 0.6:
+		_profile = "friendly"
+	elif _assist_strength > 0.0 and _profile == "pressure":
+		_profile = "mixed"
+	_randomness = clampf(_randomness + 15.0 * _assist_strength, 0.0, 100.0)
 	for definition in config.shape_pool:
 		var piece: PieceData = null
 		if definition is ShapeDefinition:
@@ -46,7 +61,12 @@ func build(board: BoardRules, remaining_counts: Dictionary, generator: RoundGene
 				break
 			# The first pass takes the best clear. Subsequent finite passes try
 			# nearby alternatives if a greedy first move trapped a later piece.
-			var selected: Dictionary = candidates[0 if attempt == 0 else _rng.randi_range(0, mini(5, candidates.size() - 1))]
+			var top_window := 1
+			if attempt == 0:
+				top_window = 1 + floori(maxf(0.0, _randomness - 50.0) / 50.0 * 3.0)
+			else:
+				top_window = clampi(roundi(6.0 * _randomness / 50.0), 1, 8)
+			var selected: Dictionary = candidates[_rng.randi_range(0, mini(top_window, candidates.size()) - 1)]
 			var piece: PieceData = selected["piece"]
 			var origin: Vector2i = selected["origin"]
 			chosen.append(piece.duplicate_piece())
@@ -74,6 +94,8 @@ func build(board: BoardRules, remaining_counts: Dictionary, generator: RoundGene
 			"certification_scope": "current_tray", "whole_level_certified": false,
 			"difficulty_ratio": _difficulty, "clear_friendly": not fallback,
 			"effective_difficulty": _difficulty, "retry_assist_strength": _assist_strength,
+			"shape_profile_configured": _configured_profile, "shape_profile": _profile,
+			"randomness_configured": _configured_randomness, "randomness": _randomness,
 			"target_progress_preferred": _assist_strength > 0.0,
 			"attempts": attempts, "evaluated_origins": evaluated, "fallback_used": fallback,
 		},
@@ -137,6 +159,8 @@ func _ranked_placements(board: BoardRules, used: Dictionary, board_targets: Dict
 		var cell_weight := lerpf(12.0, 65.0, _difficulty)
 		var pressure_weight := lerpf(0.25, 2.0, _difficulty)
 		var occupied_weight := lerpf(12.0, 3.0, _difficulty)
+		var profile_bonus := _profile_bonus(piece)
+		var jitter := 90.0 * _randomness / 50.0
 		for origin in legal_origins:
 			var next := board.duplicate_board()
 			next.place(piece, origin, 0)
@@ -153,7 +177,7 @@ func _ranked_placements(board: BoardRules, used: Dictionary, board_targets: Dict
 				pressure += row * row + column * column
 			# Broad shape variety matters: a pure "most empty cells" score would
 			# continually choose dominoes and never expose the expanded puzzle set.
-			var rank := float(cleared["cells"].size()) * 100000.0 - float(occupied) * occupied_weight + float(pressure) * pressure_weight + float(piece.cell_count()) * cell_weight + float(legal_origins.size()) * freedom_weight + (0.0 if used.has(piece.shape_id) else 180.0) + _rng.randf() * 90.0
+			var rank := float(cleared["cells"].size()) * 100000.0 - float(occupied) * occupied_weight + float(pressure) * pressure_weight + float(piece.cell_count()) * cell_weight + float(legal_origins.size()) * freedom_weight + (0.0 if used.has(piece.shape_id) else 180.0) + profile_bonus + _rng.randf() * jitter
 			if _assist_strength > 0.0:
 				var target_progress := _needed_target_count(cleared["cells"], board_targets, remaining_counts)
 				# This objective-aware bonus remains useful even when the configured
@@ -162,6 +186,30 @@ func _ranked_placements(board: BoardRules, used: Dictionary, board_targets: Dict
 			result.append({"piece": piece, "origin": origin, "rank": rank})
 	result.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["rank"] > b["rank"])
 	return result
+
+func _profile_bonus(piece: PieceData) -> float:
+	if _profile == "mixed" or piece.cells.is_empty():
+		return 0.0
+	var minimum := piece.cells[0]
+	var maximum := piece.cells[0]
+	for cell: Vector2i in piece.cells:
+		minimum.x = mini(minimum.x, cell.x)
+		minimum.y = mini(minimum.y, cell.y)
+		maximum.x = maxi(maximum.x, cell.x)
+		maximum.y = maxi(maximum.y, cell.y)
+	var width := maximum.x - minimum.x + 1
+	var height := maximum.y - minimum.y + 1
+	var compactness := float(piece.cells.size()) / float(maxi(1, width * height))
+	var cells := piece.cell_count()
+	if _profile == "friendly":
+		var bonus := float(4 - mini(cells, 4)) * 9000.0 + compactness * 7000.0
+		if cells >= 5:
+			bonus -= 14000.0
+		return bonus
+	var bonus := float(maxi(0, cells - 3)) * 9000.0 + (1.0 - compactness) * 7000.0
+	if cells <= 3:
+		bonus -= 5000.0
+	return bonus
 
 func _needed_target_count(cleared_cells: Array, board_targets: Dictionary, remaining_counts: Dictionary) -> int:
 	var matched: Dictionary = {}

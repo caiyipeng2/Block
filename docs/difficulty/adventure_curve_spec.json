@@ -1,0 +1,246 @@
+{
+  "version": 1,
+  "name": "adventure-96-adapted-three-stage-sawtooth",
+  "description": "96 关三段式锯齿曲线。项目关卡无时间/步数上限，且每轮托盘都带可解证书，因此熟练策略的通过率地板较高；P 为 casual 参考策略（托盘规划+疲劳失误）的目标通过率，按本项目调低峰值幅度，仍保留建立-阻塞-放松的锯齿与逐周期增强的正弦叠加。",
+  "reference_agent": "casual",
+  "cycle": {
+    "length": 10,
+    "count": 9,
+    "finale_start": 91,
+    "finale_length": 6
+  },
+  "sine": {
+    "period": 10,
+    "amplitude_start": 2.0,
+    "amplitude_end": 5.0
+  },
+  "slot_targets": [
+    {
+      "slot": 1,
+      "phase": "build",
+      "start": 95,
+      "end": 92,
+      "band_low": 88,
+      "band_high": 98,
+      "quota_scale": 1.0,
+      "profile": "friendly",
+      "randomness": 72
+    },
+    {
+      "slot": 2,
+      "phase": "build",
+      "start": 94,
+      "end": 91,
+      "band_low": 87,
+      "band_high": 97,
+      "quota_scale": 1.0,
+      "profile": "friendly",
+      "randomness": 70
+    },
+    {
+      "slot": 3,
+      "phase": "build",
+      "start": 93,
+      "end": 90,
+      "band_low": 86,
+      "band_high": 96,
+      "quota_scale": 1.0,
+      "profile": "friendly",
+      "randomness": 70
+    },
+    {
+      "slot": 4,
+      "phase": "peak",
+      "start": 70,
+      "end": 66,
+      "band_low": 58,
+      "band_high": 78,
+      "quota_scale": 1.55,
+      "profile": "pressure",
+      "randomness": 30,
+      "extras_start": 8,
+      "extras_end": 12,
+      "near_win": 2
+    },
+    {
+      "slot": 5,
+      "phase": "relax",
+      "start": 92,
+      "end": 88,
+      "band_low": 85,
+      "band_high": 96,
+      "quota_scale": 1.0,
+      "profile": "friendly",
+      "randomness": 70
+    },
+    {
+      "slot": 6,
+      "phase": "relax",
+      "start": 91,
+      "end": 87,
+      "band_low": 84,
+      "band_high": 95,
+      "quota_scale": 1.0,
+      "profile": "friendly",
+      "randomness": 68
+    },
+    {
+      "slot": 7,
+      "phase": "build",
+      "start": 88,
+      "end": 84,
+      "band_low": 80,
+      "band_high": 93,
+      "quota_scale": 1.02,
+      "profile": "mixed",
+      "randomness": 60
+    },
+    {
+      "slot": 8,
+      "phase": "secondary_peak",
+      "start": 76,
+      "end": 72,
+      "band_low": 64,
+      "band_high": 82,
+      "quota_scale": 1.32,
+      "profile": "pressure",
+      "randomness": 36,
+      "extras_start": 4,
+      "extras_end": 8,
+      "near_win": 1
+    },
+    {
+      "slot": 9,
+      "phase": "relax",
+      "start": 93,
+      "end": 89,
+      "band_low": 86,
+      "band_high": 97,
+      "quota_scale": 1.0,
+      "profile": "friendly",
+      "randomness": 72
+    },
+    {
+      "slot": 10,
+      "phase": "relax",
+      "start": 92,
+      "end": 88,
+      "band_low": 85,
+      "band_high": 96,
+      "quota_scale": 1.0,
+      "profile": "friendly",
+      "randomness": 70
+    }
+  ],
+  "finale_targets": [
+    {
+      "level_offset": 0,
+      "phase": "build",
+      "target": 92,
+      "band_low": 87,
+      "band_high": 97,
+      "quota_scale": 1.0,
+      "profile": "friendly",
+      "randomness": 70
+    },
+    {
+      "level_offset": 1,
+      "phase": "build",
+      "target": 89,
+      "band_low": 84,
+      "band_high": 95,
+      "quota_scale": 1.05,
+      "profile": "mixed",
+      "randomness": 62
+    },
+    {
+      "level_offset": 2,
+      "phase": "final_peak",
+      "target": 68,
+      "band_low": 56,
+      "band_high": 78,
+      "quota_scale": 1.55,
+      "profile": "pressure",
+      "randomness": 28,
+      "extras": 12,
+      "near_win": 3
+    },
+    {
+      "level_offset": 3,
+      "phase": "relax",
+      "target": 88,
+      "band_low": 83,
+      "band_high": 95,
+      "quota_scale": 1.0,
+      "profile": "friendly",
+      "randomness": 70
+    },
+    {
+      "level_offset": 4,
+      "phase": "secondary_peak",
+      "target": 72,
+      "band_low": 62,
+      "band_high": 82,
+      "quota_scale": 1.35,
+      "profile": "pressure",
+      "randomness": 36,
+      "extras": 8,
+      "near_win": 2
+    },
+    {
+      "level_offset": 5,
+      "phase": "finale_relax",
+      "target": 90,
+      "band_low": 85,
+      "band_high": 97,
+      "quota_scale": 1.0,
+      "profile": "friendly",
+      "randomness": 72
+    }
+  ],
+  "quota": {
+    "base_start": 34,
+    "base_end": 62,
+    "minimum": 24,
+    "maximum": 104
+  },
+  "difficulty": {
+    "pass_to_difficulty_factor": 0.9,
+    "minimum": 0,
+    "maximum": 60
+  },
+  "target_distribution": "even_preserve_kind_count",
+  "preserve": [
+    "template_id",
+    "mirror",
+    "initial_markers",
+    "seed",
+    "difficulty_label"
+  ],
+  "notes": {
+    "formula": "P(n)=clamp(slot_target(n)+A(n)*sin(2*pi*(n-1)/10), slot_band); D(n)=clamp((100-P(n))*factor,0,60)",
+    "peak_rule": "slot 4 and slot 8 are the only peaks in each cycle; both are followed by relax slots",
+    "validation": "Monte Carlo reference pass rate; per-level deviation >15pp is tuned by quota first, then difficulty, extras, profile and randomness",
+    "override_policy": "level_overrides calibrate board-seed outliers only; template_id, mirror, initial_markers, seed and difficulty_label stay unchanged"
+  },
+  "reference_model": "tray planner with fatigue slips; near-win = remaining <= max(2, 20% quota)",
+  "level_overrides": {
+    "8": {"quota": 95, "difficulty": 80, "extras": 12, "near_win": 3, "randomness": 5, "profile": "pressure"},
+    "14": {"quota": 104, "difficulty": 80, "extras": 12, "near_win": 2, "randomness": 10, "profile": "pressure"},
+    "24": {"quota": 104, "difficulty": 100, "extras": 12, "near_win": 3, "randomness": 0, "profile": "pressure"},
+    "28": {"quota": 75, "difficulty": 60, "extras": 8, "near_win": 2, "randomness": 15, "profile": "pressure"},
+    "34": {"quota": 80, "difficulty": 60, "extras": 10, "near_win": 2, "randomness": 15, "profile": "pressure"},
+    "38": {"quota": 104, "difficulty": 100, "extras": 12, "near_win": 3, "randomness": 5, "profile": "pressure"},
+    "40": {"quota": 65, "difficulty": 50, "extras": 8, "near_win": 2, "randomness": 40, "profile": "pressure"},
+    "43": {"quota": 52, "difficulty": 25, "extras": 2, "near_win": 0, "randomness": 55, "profile": "mixed"},
+    "46": {"quota": 70, "difficulty": 40, "extras": 4, "near_win": 1, "randomness": 55, "profile": "mixed"},
+    "54": {"quota": 104, "difficulty": 100, "extras": 12, "near_win": 3, "randomness": 0, "profile": "pressure"},
+    "58": {"quota": 95, "difficulty": 80, "extras": 12, "near_win": 2, "randomness": 10, "profile": "pressure"},
+    "77": {"quota": 70, "difficulty": 50, "extras": 8, "near_win": 1, "randomness": 40, "profile": "mixed"},
+    "80": {"quota": 77, "difficulty": 55, "extras": 8, "near_win": 2, "randomness": 40, "profile": "pressure"},
+    "78": {"quota": 104, "difficulty": 100, "extras": 12, "near_win": 3, "randomness": 0, "profile": "pressure"},
+    "88": {"quota": 104, "difficulty": 100, "extras": 12, "near_win": 3, "randomness": 0, "profile": "pressure"},
+    "93": {"quota": 90, "difficulty": 15, "extras": 8, "near_win": 1, "randomness": 40, "profile": "pressure"},
+    "95": {"quota": 97, "difficulty": 70, "extras": 12, "near_win": 2, "randomness": 10, "profile": "pressure"}
+  }
+}

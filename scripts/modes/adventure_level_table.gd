@@ -12,8 +12,14 @@ const COLUMNS := [
 	"yellow_star", "red_star", "difficulty", "template_id", "mirror",
 	"initial_fill", "initial_markers", "seed", "difficulty_label", "note",
 	"retry_assist_step", "retry_assist_max",
+	"shape_profile", "extra_blocks", "near_win_lines", "randomness",
 ]
-const OPTIONAL_DEFAULTS := {"retry_assist_step": "20", "retry_assist_max": "60"}
+const SHAPE_PROFILES := ["friendly", "mixed", "pressure"]
+const OPTIONAL_DEFAULTS := {
+	"retry_assist_step": "20", "retry_assist_max": "60",
+	"shape_profile": "mixed", "extra_blocks": "0", "near_win_lines": "0", "randomness": "50",
+}
+const OPTIONAL_NUMBER_COLUMNS := ["retry_assist_step", "retry_assist_max", "randomness"]
 const TARGET_COLUMNS := ["blue_diamond", "gold_gem", "yellow_star", "red_star"]
 const TEMPLATE_CAPACITIES := {"wings": 24, "heart": 22, "ring": 20, "steps": 20, "butterfly": 22}
 const MAX_VISIBLE_ERRORS := 12
@@ -172,8 +178,13 @@ static func _validate_row(values: Dictionary, issues: PackedStringArray, source:
 	for column in TARGET_COLUMNS:
 		row[column] = _integer(values[column], 0, 999, column, issues, source, line)
 	row["difficulty"] = _number(values["difficulty"], 0.0, 100.0, "difficulty", issues, source, line)
-	for column: String in OPTIONAL_DEFAULTS:
+	for column: String in OPTIONAL_NUMBER_COLUMNS:
 		row[column] = _number(str(values.get(column, OPTIONAL_DEFAULTS[column])), 0.0, 100.0, column, issues, source, line)
+	row["shape_profile"] = str(values.get("shape_profile", OPTIONAL_DEFAULTS["shape_profile"])).strip_edges()
+	if not SHAPE_PROFILES.has(row["shape_profile"]):
+		_issue(issues, source, line, "shape_profile", "仅支持 friendly、mixed 或 pressure")
+	row["extra_blocks"] = _integer(str(values.get("extra_blocks", OPTIONAL_DEFAULTS["extra_blocks"])), 0, 12, "extra_blocks", issues, source, line)
+	row["near_win_lines"] = _integer(str(values.get("near_win_lines", OPTIONAL_DEFAULTS["near_win_lines"])), 0, 3, "near_win_lines", issues, source, line)
 	row["mirror"] = _integer(values["mirror"], 0, 1, "mirror", issues, source, line)
 	row["initial_fill"] = _integer(values["initial_fill"], 0, 63, "initial_fill", issues, source, line)
 	row["initial_markers"] = _integer(values["initial_markers"], 0, 64, "initial_markers", issues, source, line)
@@ -207,6 +218,12 @@ static func _validate_score_row(row: Dictionary, issues: PackedStringArray, sour
 		_issue(issues, source, line, "template_id", "分数关须使用 random")
 	_require_zero(row, "mirror", issues, source, line, "分数关镜像须为 0")
 	_require_zero(row, "initial_markers", issues, source, line, "分数关初始标记须为 0")
+	_require_zero(row, "extra_blocks", issues, source, line, "分数教学关不使用额外初始方块，须为 0")
+	_require_zero(row, "near_win_lines", issues, source, line, "分数教学关不使用近胜线，须为 0")
+	if row["shape_profile"] != "mixed":
+		_issue(issues, source, line, "shape_profile", "分数教学关使用独立教学供块，须为 mixed")
+	if row["randomness"] != null and not is_equal_approx(float(row["randomness"]), 50.0):
+		_issue(issues, source, line, "randomness", "分数教学关使用独立教学供块，随机度须为 50")
 	if row["initial_fill"] != null and int(row["initial_fill"]) < 1:
 		_issue(issues, source, line, "initial_fill", "分数关初始占格数须为 1–63")
 
@@ -227,6 +244,8 @@ static func _validate_collect_row(row: Dictionary, issues: PackedStringArray, so
 		_issue(issues, source, line, "template_id", "收集关仅支持 wings、heart、ring、steps、butterfly")
 	elif row["initial_markers"] != null and int(row["initial_markers"]) > int(TEMPLATE_CAPACITIES[template_id]):
 		_issue(issues, source, line, "initial_markers", "%s 模板最多有 %d 个占格，初始标记不能超过该值", [template_id, TEMPLATE_CAPACITIES[template_id]])
+	if row["near_win_lines"] != null and row["extra_blocks"] != null and int(row["near_win_lines"]) > int(row["extra_blocks"]):
+		_issue(issues, source, line, "near_win_lines", "近胜线需要额外初始方块支撑，不能大于 extra_blocks")
 
 static func _require_zero(row: Dictionary, column: String, issues: PackedStringArray, source: String, line: int, reason: String) -> void:
 	if row[column] != null and int(row[column]) != 0:

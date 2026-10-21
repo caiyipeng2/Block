@@ -66,6 +66,10 @@ static func level_setup(level_id: int, total_levels: int, config: GameRulesConfi
 	result["retry_failures"] = failures
 	result["retry_assist_strength"] = assistance
 	result["config_valid"] = true
+	result["shape_profile"] = str(row.get("shape_profile", "mixed"))
+	result["extra_blocks"] = int(row.get("extra_blocks", 0))
+	result["near_win_lines"] = int(row.get("near_win_lines", 0))
+	result["randomness"] = float(row.get("randomness", 50.0))
 	result["candidate_samples"] = 1
 	result["solution_count_cap"] = 8
 	return result
@@ -198,16 +202,17 @@ static func _collection_setup(seed: int, rules: GameRulesConfig, level_id: int, 
 		return _invalid_setup(seed, requested, str(template["error"]))
 	if requested > template["initial_cells"].size():
 		return _invalid_setup(seed, requested, "initial_markers_exceed_actual_template_cells")
-	var board := BoardRules.new(rules.board_size)
+	var template_positions: Array[Vector2i] = []
 	for entry: Dictionary in template["initial_cells"]:
-		board.set_cell(entry["x"], entry["y"], entry["color"])
-	if not board.duplicate_board().clear_full_lines()["cells"].is_empty():
+		template_positions.append(Vector2i(entry["x"], entry["y"]))
+	var template_board := BoardRules.new(rules.board_size)
+	for entry: Dictionary in template["initial_cells"]:
+		template_board.set_cell(entry["x"], entry["y"], entry["color"])
+	if not template_board.duplicate_board().clear_full_lines()["cells"].is_empty():
 		return _invalid_setup(seed, requested, "template_contains_full_line")
 	var targets: Dictionary = {}
 	var kinds: Array = objective["target_kinds"]
-	var positions: Array[Vector2i] = []
-	for entry: Dictionary in template["initial_cells"]:
-		positions.append(Vector2i(entry["x"], entry["y"]))
+	var positions: Array[Vector2i] = template_positions.duplicate()
 	var marker_rng := RandomNumberGenerator.new()
 	marker_rng.seed = seed ^ 0x5A17
 	for index in range(positions.size() - 1, 0, -1):
@@ -217,23 +222,171 @@ static func _collection_setup(seed: int, rules: GameRulesConfig, level_id: int, 
 		positions[other] = saved
 	for index in range(requested):
 		targets[positions[index]] = kinds[index % kinds.size()]
-	var generator := RoundGenerator.new(seed, rules)
-	var supplier := CollectionTraySupplier.new(rules, seed, difficulty, assistance)
-	var supplied := supplier.build(board, objective["target_counts"], generator, targets)
+	var requested_extras := int(row.get("extra_blocks", 0))
+	var requested_near := int(row.get("near_win_lines", 0))
+	var profile := str(row.get("shape_profile", "mixed"))
+	var randomness := float(row.get("randomness", 50.0))
+	var extra_plan := {"cells": [], "extra_applied": 0, "near_win_applied": 0}
+	var supplied: Dictionary = {}
+	var downgraded := false
+	for attempt_extras in _extra_attempts(requested_extras):
+		extra_plan = _place_extra_blocks(template_positions, rules.board_size, rules.palette.size(), seed, attempt_extras, requested_near)
+		var board := _collection_board(template["initial_cells"], extra_plan["cells"], rules.board_size)
+		var generator := RoundGenerator.new(seed, rules)
+		var supplier := CollectionTraySupplier.new(rules, seed, difficulty, assistance, profile, randomness)
+		supplied = supplier.build(board, objective["target_counts"], generator, targets)
+		downgraded = attempt_extras != requested_extras
+		if bool(supplied["diagnostics"].get("solution_certified", false)) and supplied["pieces"].size() == rules.tray_count:
+			break
+	var initial_cells: Array[Dictionary] = template["initial_cells"].duplicate(true)
+	for entry: Dictionary in extra_plan["cells"]:
+		initial_cells.append(entry)
 	var diagnostics: Dictionary = supplied["diagnostics"]
 	diagnostics["seed"] = seed
-	diagnostics["requested_occupied"] = template["initial_cells"].size()
-	diagnostics["initial_occupied"] = template["initial_cells"].size()
+	diagnostics["requested_occupied"] = template["initial_cells"].size() + requested_extras
+	diagnostics["initial_occupied"] = initial_cells.size()
 	diagnostics["requested_initial_markers"] = requested
 	diagnostics["initial_markers"] = targets.size()
 	diagnostics["template_id"] = template["template_id"]
 	diagnostics["template_name"] = template["template_name"]
+	diagnostics["requested_extra_blocks"] = requested_extras
+	diagnostics["extra_blocks"] = int(extra_plan["extra_applied"])
+	diagnostics["requested_near_win_lines"] = requested_near
+	diagnostics["near_win_lines"] = int(extra_plan["near_win_applied"])
+	diagnostics["extra_blocks_downgraded"] = downgraded
+	diagnostics["shape_profile_configured"] = str(row.get("shape_profile", "mixed"))
+	diagnostics["shape_profile"] = profile
+	diagnostics["randomness_configured"] = randomness
 	return {
-		"initial_cells": template["initial_cells"], "initial_pieces": supplied["pieces"],
+		"initial_cells": initial_cells, "initial_pieces": supplied["pieces"],
 		"initial_solution": supplied["solution"], "target_cells": targets,
 		"initial_diagnostics": diagnostics, "template_id": template["template_id"],
 		"template_name": template["template_name"],
 	}
+
+## Fewer extras are tried in turn so a crowded layout can never replace the
+## template's certified opening with an unplayable board.
+static func _extra_attempts(requested: int) -> Array[int]:
+	var attempts: Array[int] = [maxi(0, requested)]
+	var candidate := maxi(0, requested) >> 1
+	while candidate > 0:
+		if not attempts.has(candidate):
+			attempts.append(candidate)
+		candidate = candidate >> 1
+	if not attempts.has(0):
+		attempts.append(0)
+	return attempts
+
+static func _collection_board(template_cells: Array, extra_cells: Array, board_size: int) -> BoardRules:
+	var board := BoardRules.new(board_size)
+	for entry: Dictionary in template_cells:
+		board.set_cell(entry["x"], entry["y"], entry["color"])
+	for entry: Dictionary in extra_cells:
+		board.set_cell(entry["x"], entry["y"], entry["color"])
+	return board
+
+## Extra blocks enrich the opening without ever completing a line. When
+## near_win_target is positive, lines with one hole are built first so later
+## supply pressure starts near a clear instead of from an even board.
+static func _place_extra_blocks(template_cells: Array[Vector2i], board_size: int, palette_count: int, seed: int, requested: int, near_win_target: int) -> Dictionary:
+	var template_occupied: Dictionary = {}
+	for cell in template_cells:
+		template_occupied[cell] = true
+	var occupied := template_occupied.duplicate()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed ^ 0x2F6B
+	var extras: Array[Dictionary] = []
+	var near_achieved := mini(near_win_target, _count_near_lines(template_occupied, board_size))
+	if requested > 0 and near_win_target > near_achieved:
+		var lines: Array[Dictionary] = []
+		for coordinate in range(board_size):
+			var row_count := _line_count(occupied, true, coordinate, board_size)
+			var column_count := _line_count(occupied, false, coordinate, board_size)
+			if row_count < board_size:
+				lines.append({"row": true, "index": coordinate, "count": row_count, "tie": rng.randf()})
+			if column_count < board_size:
+				lines.append({"row": false, "index": coordinate, "count": column_count, "tie": rng.randf()})
+		lines.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+			if int(a["count"]) != int(b["count"]):
+				return int(a["count"]) > int(b["count"])
+			return float(a["tie"]) < float(b["tie"])
+		)
+		for line: Dictionary in lines:
+			if near_achieved >= near_win_target or extras.size() >= requested:
+				break
+			var is_row: bool = line["row"]
+			var index: int = line["index"]
+			if _line_count(occupied, is_row, index, board_size) >= board_size - 1:
+				near_achieved += 1
+				continue
+			var holes: Array[Vector2i] = []
+			for offset in range(board_size):
+				var cell := Vector2i(offset, index) if is_row else Vector2i(index, offset)
+				if not occupied.has(cell):
+					holes.append(cell)
+			for hole_index in range(holes.size() - 1, 0, -1):
+				var other := rng.randi_range(0, hole_index)
+				var saved := holes[hole_index]
+				holes[hole_index] = holes[other]
+				holes[other] = saved
+			for hole in holes:
+				if extras.size() >= requested:
+					break
+				if _line_count(occupied, is_row, index, board_size) >= board_size - 1:
+					break
+				if _completes_line(occupied, hole, board_size):
+					continue
+				occupied[hole] = true
+				extras.append({"x": hole.x, "y": hole.y, "color": _extra_color(hole, palette_count)})
+			if _line_count(occupied, is_row, index, board_size) == board_size - 1:
+				near_achieved += 1
+	var candidates: Array[Vector2i] = []
+	for y in range(board_size):
+		for x in range(board_size):
+			var cell := Vector2i(x, y)
+			if not occupied.has(cell):
+				candidates.append(cell)
+	for index in range(candidates.size() - 1, 0, -1):
+		var other := rng.randi_range(0, index)
+		var saved := candidates[index]
+		candidates[index] = candidates[other]
+		candidates[other] = saved
+	for cell in candidates:
+		if extras.size() >= requested:
+			break
+		if _completes_line(occupied, cell, board_size):
+			continue
+		occupied[cell] = true
+		extras.append({"x": cell.x, "y": cell.y, "color": _extra_color(cell, palette_count)})
+	return {
+		"cells": extras, "extra_applied": extras.size(),
+		"near_win_applied": _count_near_lines(occupied, board_size),
+	}
+
+static func _extra_color(cell: Vector2i, palette_count: int) -> int:
+	return (floori(float(cell.x) / 2.0) + floori(float(cell.y) / 2.0)) % maxi(1, palette_count)
+
+static func _line_count(occupied: Dictionary, is_row: bool, index: int, board_size: int) -> int:
+	var count := 0
+	for offset in range(board_size):
+		var cell := Vector2i(offset, index) if is_row else Vector2i(index, offset)
+		if occupied.has(cell):
+			count += 1
+	return count
+
+static func _completes_line(occupied: Dictionary, cell: Vector2i, board_size: int) -> bool:
+	var row_count := _line_count(occupied, true, cell.y, board_size)
+	var column_count := _line_count(occupied, false, cell.x, board_size)
+	return row_count + 1 >= board_size or column_count + 1 >= board_size
+
+static func _count_near_lines(occupied: Dictionary, board_size: int) -> int:
+	var count := 0
+	for coordinate in range(board_size):
+		if _line_count(occupied, true, coordinate, board_size) == board_size - 1:
+			count += 1
+		if _line_count(occupied, false, coordinate, board_size) == board_size - 1:
+			count += 1
+	return count
 
 static func _board_scale(config: GameRulesConfig) -> float:
 	return float(maxi(1, config.board_size) * maxi(1, config.board_size)) / 64.0
