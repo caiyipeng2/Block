@@ -2,6 +2,7 @@ extends Control
 
 ## Short contact effect for the last committed piece. This layer owns no game
 ## state and does not keep input locked after the board animation completes.
+const L10n := preload("res://scripts/localization/game_locale.gd")
 const PINK := Color("#f374ff")
 const GOLD := Color("#ffe66b")
 const AQUA := Color("#8bfff1")
@@ -30,7 +31,7 @@ func play(center: Vector2, board_rect: Rect2, cell_size: float) -> void:
 	_active = true
 	_label = Label.new()
 	_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_label.text = "Final Block!"
+	_label.text = L10n.t("Final Block!")
 	_label.add_theme_font_size_override("font_size", clampi(int(board_rect.size.x * 0.105), 24, 62))
 	_label.add_theme_color_override("font_color", GOLD)
 	_label.add_theme_color_override("font_outline_color", Color("#b531d5"))

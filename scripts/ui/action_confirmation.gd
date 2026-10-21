@@ -7,6 +7,7 @@ signal canceled
 
 const PanelArt := preload("res://scripts/ui/casual_panel_art.gd")
 const MobileLayout := preload("res://scripts/ui/mobile_layout.gd")
+const L10n := preload("res://scripts/localization/game_locale.gd")
 
 class ActionIcon:
 	extends Control
@@ -93,6 +94,12 @@ func _ready() -> void:
 	_layout()
 
 
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_TRANSLATION_CHANGED and is_instance_valid(_close_button):
+		_close_button.tooltip_text = L10n.t("取消，继续游戏")
+		_schedule_layout()
+
+
 func _ensure_built() -> void:
 	if _panel != null:
 		return
@@ -105,14 +112,14 @@ func _ensure_built() -> void:
 	_panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(_panel)
 	_title_label = Label.new()
-	_title_label.text = title
+	_title_label.text = L10n.t(title)
 	_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_title_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_panel.add_child(_title_label)
 	_close_button = CloseButton.new()
 	_close_button.name = "Close"
-	_close_button.tooltip_text = "取消，继续游戏"
+	_close_button.tooltip_text = L10n.t("取消，继续游戏")
 	_close_button.pressed.connect(_cancel)
 	_panel.add_child(_close_button)
 	_scroll = ScrollContainer.new()
@@ -136,7 +143,7 @@ func _ensure_built() -> void:
 	_action_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_body_row.add_child(_action_icon)
 	_body_label = Label.new()
-	_body_label.text = dialog_text
+	_body_label.text = L10n.t(dialog_text)
 	_body_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_body_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_body_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -144,12 +151,12 @@ func _ensure_built() -> void:
 	_body_row.add_child(_body_label)
 	_cancel_button = Button.new()
 	_cancel_button.name = "Continue"
-	_cancel_button.text = cancel_button_text
+	_cancel_button.text = L10n.t(cancel_button_text)
 	_cancel_button.pressed.connect(_cancel)
 	_content.add_child(_cancel_button)
 	_ok_button = Button.new()
 	_ok_button.name = "Confirm"
-	_ok_button.text = ok_button_text
+	_ok_button.text = L10n.t(ok_button_text)
 	_ok_button.pressed.connect(_confirm)
 	_content.add_child(_ok_button)
 	for button: Button in [_cancel_button, _ok_button, _close_button]:
@@ -241,7 +248,7 @@ func _layout() -> void:
 	_panel.add_theme_stylebox_override("panel", PanelArt.panel_style(unit))
 	_title_label.position = Vector2(54.0, 10.0) * unit
 	_title_label.size = Vector2(maxf(1.0, width - 108.0 * unit), 44.0 * unit)
-	_title_label.add_theme_font_size_override("font_size", roundi(24.0 * unit))
+	_title_label.add_theme_font_size_override("font_size", L10n.fitted_size(_title_label.get_theme_font("font"), _title_label.text, _title_label.size.x, roundi(24.0 * unit), roundi(14.0 * unit)))
 	_close_button.position = Vector2(width - 54.0 * unit, 8.0 * unit)
 	_close_button.size = Vector2.ONE * 48.0 * unit
 	PanelArt.style_action(_close_button, unit, "secondary")
@@ -265,6 +272,8 @@ func _layout() -> void:
 		button.add_theme_font_size_override("font_size", roundi(19.0 * unit))
 	PanelArt.style_action(_cancel_button, unit, "green")
 	PanelArt.style_action(_ok_button, unit, "danger")
+	for button: Button in [_cancel_button, _ok_button]:
+		L10n.fit_button(button, roundi(19.0 * unit), roundi(12.0 * unit))
 	_focus_styles.clear()
 	for button: Button in [_cancel_button, _ok_button, _close_button]:
 		_focus_styles.append(button.get_theme_stylebox("focus"))

@@ -1,6 +1,8 @@
 # Block
 
-Godot 4.7 的方块消除游戏：拖动方块、填满行或列并消除，无时间限制。当前源码为 `0.8.9`，提供自由、经典和闯关三种模式，采用蓝色背景、凹槽棋盘和立体斜面方块，支持Windows与Android。
+Godot 4.7 的方块消除游戏：拖动方块、填满行或列并消除，无时间限制。当前源码为 `0.9.0`，提供自由、经典和闯关三种模式，采用蓝色背景、凹槽棋盘和立体斜面方块，支持Windows与Android。
+
+`0.9.0` 新增设置中的语言切换：中文、English、Français，立即生效并自动保存。菜单、选关、三模式HUD、目标介绍、暂停/结算/确认框、连击及进度漂字共用[翻译词典](assets/localization/messages.json)。扩展和验证方式见[多语言说明](docs/Block-Blast-Godot-多语言.md)。
 
 项目仓库：[caiyipeng2/Block](https://github.com/caiyipeng2/Block)。本地交付、提交和推送状态以本次交付记录为准。
 

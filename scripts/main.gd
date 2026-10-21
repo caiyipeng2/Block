@@ -13,6 +13,7 @@ const MainMenuScript := preload("res://scripts/ui/main_menu.gd")
 const MobileLayout := preload("res://scripts/ui/mobile_layout.gd")
 const SettingsPanelScript := preload("res://scripts/ui/settings_panel.gd")
 const ActionConfirmationScript := preload("res://scripts/ui/action_confirmation.gd")
+const L10n := preload("res://scripts/localization/game_locale.gd")
 
 signal quit_requested
 
@@ -77,6 +78,7 @@ var level_config_dialog: AcceptDialog
 func _ready() -> void:
 	set_process_input(true)
 	save_data = SaveRepository.load_data(save_path)
+	L10n.set_language(str(save_data.get("language", "zh_CN")))
 	feedback_audio = FeedbackAudioScript.new()
 	feedback_audio.name = "FeedbackAudio"
 	add_child(feedback_audio)
@@ -139,6 +141,10 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 func _notification(what: int) -> void:
+	if what == NOTIFICATION_TRANSLATION_CHANGED and is_node_ready() and is_instance_valid(settings_controls):
+		_refresh_confirmation_texts()
+		_refresh_controls()
+		queue_redraw()
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST and OS.has_feature("android"):
 		# Android's system back uses the same pause/menu path as desktop Esc.
 		var back_event := InputEventKey.new()
@@ -367,7 +373,7 @@ func _start_game(mode: String = "", level_id: int = 0) -> void:
 		var failures := SaveRepository.level_failure_count(save_data, next_level)
 		setup = ModeCatalog.level_setup(next_level, ModeCatalog.MAX_LEVELS, rules_config, failures)
 		if not bool(setup.get("config_valid", false)) or bool(setup.get("initial_setup_invalid", false)):
-			_show_level_config_error("第 %d 关初始配置无法用于当前棋盘：%s" % [next_level, str(setup.get("initial_diagnostics", {}).get("reason", "配置错误"))])
+			_show_level_config_error(L10n.t("第 %d 关初始配置无法用于当前棋盘：%s") % [next_level, L10n.t(str(setup.get("initial_diagnostics", {}).get("reason", "配置错误")))])
 			return
 		seed = int(setup["level_seed"])
 	else:
@@ -406,7 +412,7 @@ func _start_game(mode: String = "", level_id: int = 0) -> void:
 		gameplay_ui.show_objective_intro(_collection_intro_stats(), _reduced_motion())
 		_refresh_controls()
 	else:
-		var notice := ModeCatalog.objective_description(current_level) if game_mode == "adventure" else "拖动方块，填满一行或一列"
+		var notice := str(level_objective.get("description", "")) if game_mode == "adventure" else "拖动方块，填满一行或一列"
 		gameplay_ui.show_notice(notice, "info", _reduced_motion())
 	queue_redraw()
 
@@ -508,7 +514,7 @@ func _reload_adventure_config() -> bool:
 	for index in range(mini(3, errors.size())):
 		visible_errors.append(errors[index])
 	if errors.size() > 3:
-		visible_errors.append("另有错误，请查看 Godot 输出。")
+		visible_errors.append(L10n.t("另有错误，请查看 Godot 输出。"))
 	push_error("\n".join(errors))
 	_show_level_config_error("\n".join(visible_errors))
 	return false
@@ -517,12 +523,12 @@ func _show_level_config_error(details: String) -> void:
 	if not is_instance_valid(level_config_dialog):
 		level_config_dialog = AcceptDialog.new()
 		level_config_dialog.name = "LevelConfigError"
-		level_config_dialog.title = "关卡配置错误"
 		level_config_dialog.dialog_autowrap = true
-		level_config_dialog.ok_button_text = "知道了"
 		level_config_dialog.theme = confirmation_dialog.theme
 		add_child(level_config_dialog)
-	level_config_dialog.dialog_text = "闯关配置未生效：\n\n%s\n\n请修正 config/adventure_levels.csv 后重新进入选关页。" % details
+	level_config_dialog.title = L10n.t("关卡配置错误")
+	level_config_dialog.ok_button_text = L10n.t("知道了")
+	level_config_dialog.dialog_text = L10n.t("闯关配置未生效：\n\n%s\n\n请修正 config/adventure_levels.csv 后重新进入选关页。") % details
 	_refresh_controls()
 	var width := mini(720, maxi(260, int(size.x) - 48))
 	level_config_dialog.min_size = Vector2i(width, 200)
@@ -592,22 +598,26 @@ func _show_confirmation(action: String) -> void:
 	move_feedback.set_paused(true)
 	_refresh_controls()
 	confirmation_dialog.show_action(action)
-	confirmation_dialog.cancel_button_text = "继续游戏" if screen == "game" else "暂不退出"
-	if action == "quit":
-		confirmation_dialog.title = "退出游戏"
-		confirmation_dialog.dialog_text = "确定退出游戏吗？\n最高分、通关记录和设置会保留。" + ("\n本局棋盘不会保存。" if game != null else "")
-		confirmation_dialog.ok_button_text = "确定退出"
-	elif action == "restart":
-		confirmation_dialog.title = "重新开始"
-		confirmation_dialog.dialog_text = "重新开始会清空当前棋盘和本局分数。\n最高分和设置会保留。"
-		confirmation_dialog.ok_button_text = "重新开始"
-	else:
-		var destination := "选关" if game_mode == "adventure" else "菜单"
-		confirmation_dialog.title = "返回" + destination
-		confirmation_dialog.dialog_text = "返回%s后，本局棋盘不会保存。\n最高分、通关记录和设置会保留。" % destination
-		confirmation_dialog.ok_button_text = "确定返回" + destination
+	_refresh_confirmation_texts()
 	confirmation_dialog.popup_centered(Vector2i(448, 0))
 	queue_redraw()
+
+func _refresh_confirmation_texts() -> void:
+	if confirmation_action.is_empty():
+		return
+	confirmation_dialog.cancel_button_text = L10n.t("继续游戏" if screen == "game" else "暂不退出")
+	if confirmation_action == "quit":
+		confirmation_dialog.title = L10n.t("退出游戏")
+		confirmation_dialog.dialog_text = L10n.t("确定退出游戏吗？\n最高分、通关记录和设置会保留。") + (L10n.t("\n本局棋盘不会保存。") if game != null else "")
+		confirmation_dialog.ok_button_text = L10n.t("确定退出")
+	elif confirmation_action == "restart":
+		confirmation_dialog.title = L10n.t("重新开始")
+		confirmation_dialog.dialog_text = L10n.t("重新开始会清空当前棋盘和本局分数。\n最高分和设置会保留。")
+		confirmation_dialog.ok_button_text = L10n.t("重新开始")
+	else:
+		confirmation_dialog.title = L10n.t("返回选关" if game_mode == "adventure" else "返回菜单")
+		confirmation_dialog.dialog_text = L10n.t("返回选关后，本局棋盘不会保存。\n最高分、通关记录和设置会保留。" if game_mode == "adventure" else "返回菜单后，本局棋盘不会保存。\n最高分、通关记录和设置会保留。")
+		confirmation_dialog.ok_button_text = L10n.t("确定返回选关" if game_mode == "adventure" else "确定返回菜单")
 
 func _confirm_action() -> void:
 	var action := confirmation_action
@@ -699,6 +709,15 @@ func _set_setting(key: String, value: bool) -> void:
 func _persist_data() -> void:
 	var saved := SaveRepository.save_data(save_data, save_path)
 	save_status_text = "" if saved else "保存失败，进度、最高分和设置仅本次生效。"
+
+func _set_language(language: String) -> void:
+	if language not in L10n.SUPPORTED_CODES:
+		return
+	save_data["language"] = language
+	L10n.set_language(language)
+	_persist_data()
+	_refresh_controls()
+	queue_redraw()
 
 func _show_settings() -> void:
 	settings_return_focus = get_viewport().gui_get_focus_owner()
@@ -945,6 +964,7 @@ func _create_menu_controls() -> void:
 	add_child(settings_controls)
 	setting_controls = settings_controls.toggles
 	settings_controls.setting_changed.connect(_set_setting)
+	settings_controls.language_changed.connect(_set_language)
 	settings_controls.close_requested.connect(_close_settings)
 	settings_controls.preview_requested.connect(_preview_sound)
 	settings_controls.restart_requested.connect(_restart_from_settings)
@@ -1318,7 +1338,7 @@ func _draw_game() -> void:
 	var hint_y := minf(_tray_slot_rect(0).end.y + 22.0, size.y - 8.0)
 	if MobileLayout.is_mobile():
 		hint_y = minf(_tray_slot_rect(0).end.y + MobileLayout.dp(self, 20.0), MobileLayout.safe_content_rect(self).end.y - MobileLayout.dp(self, 8.0))
-	_draw_centered_text("选择一块，拖到棋盘" if dragging_index < 0 else "松开放置", hint_y, roundi(MobileLayout.dp(self, 14.0)) if MobileLayout.is_mobile() else 14, Color("#b3cbed"))
+	_draw_centered_text(L10n.t("选择一块，拖到棋盘" if dragging_index < 0 else "松开放置"), hint_y, roundi(MobileLayout.dp(self, 14.0)) if MobileLayout.is_mobile() else 14, Color("#b3cbed"))
 
 func _draw_board() -> void:
 	var rect := _board_rect()

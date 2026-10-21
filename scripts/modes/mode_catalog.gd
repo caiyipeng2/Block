@@ -1,5 +1,6 @@
 extends RefCounted
 
+const L10n := preload("res://scripts/localization/game_locale.gd")
 const CollectionTemplates = preload("res://scripts/modes/collection_templates.gd")
 const CollectionTraySupplier = preload("res://scripts/rules/collection_tray_supplier.gd")
 const LevelTable = preload("res://scripts/modes/adventure_level_table.gd")
@@ -14,11 +15,11 @@ const TARGET_NAMES := {"blue_diamond": "蓝色宝石", "gold_gem": "金色宝石
 static func display_name(mode: String) -> String:
 	match mode:
 		CLASSIC:
-			return "经典模式"
+			return L10n.t("经典模式")
 		ADVENTURE:
-			return "闯关模式"
+			return L10n.t("闯关模式")
 		_:
-			return "自由模式"
+			return L10n.t("自由模式")
 
 static func classic_setup(seed: int, config: GameRulesConfig) -> Dictionary:
 	var rules: GameRulesConfig = config if config != null else GameRulesConfig.new()
@@ -171,7 +172,20 @@ static func objective_config(level_id: int, total_levels: int = MAX_LEVELS) -> D
 	}
 
 static func objective_description(level_id: int, total_levels: int = MAX_LEVELS) -> String:
-	return str(objective_config(level_id, total_levels)["description"])
+	# Keep objective_config's source data stable across language switches. Build
+	# this player-facing sentence from translated templates and target names.
+	var objective := objective_config(level_id, total_levels)
+	if not bool(objective["config_valid"]):
+		return L10n.t("关卡配置不可用")
+	if objective["objective_type"] == "score":
+		return L10n.t("目标 %d 分") % int(objective["target_score"])
+	var descriptions := PackedStringArray()
+	var counts: Dictionary = objective["target_counts"]
+	for kind: String in TARGET_KINDS:
+		var amount := int(counts.get(kind, 0))
+		if amount > 0:
+			descriptions.append(L10n.t("%s %d 个") % [L10n.t(TARGET_NAMES[kind]), amount])
+	return " · ".join(descriptions)
 
 static func collection_difficulty(level_id: int, total_levels: int = MAX_LEVELS) -> float:
 	var row := level_config(clampi(level_id, 1, clampi(total_levels, 1, MAX_LEVELS)))

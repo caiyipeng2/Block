@@ -28,6 +28,7 @@ PRESETS = {"apk": "Android APK", "aab": "Android AAB"}
 ERROR_MARKERS = ("SCRIPT ERROR:", "ERROR:", "Parse Error:", "Compile Error:")
 SOURCE_ROOTS = ("assets", "config", "scenes", "scripts", "addons")
 SOURCE_FILES = ("project.godot", "export_presets.cfg", "icon.svg", "icon.svg.import")
+RUNTIME_DATA = ("config/adventure_levels.csv", "assets/localization/messages.json")
 EXCLUDED_NAMES = {
     ".git", ".godot", ".codegraph", ".agents", ".codex", "work", "build",
     "dist", "docs", "tools", "tests", "packaging", "__pycache__",
@@ -157,8 +158,9 @@ def preflight(args: argparse.Namespace) -> tuple[Path, str, str, Path, str, str,
     options = config[section + ".options"]
     if json.loads(options["package/unique_name"]) != PACKAGE:
         raise ValueError(f"Android package must be {PACKAGE}.")
-    if "config/adventure_levels.csv" not in json.loads(config[section]["include_filter"]):
-        raise ValueError("Export include_filter must preserve config/adventure_levels.csv.")
+    included = {item.strip() for item in json.loads(config[section]["include_filter"]).split(",")}
+    if not set(RUNTIME_DATA).issubset(included):
+        raise ValueError("Export include_filter must preserve the level CSV and localization catalog.")
     use_gradle = options.get("gradle_build/use_gradle_build") == "true"
     if use_gradle != (args.format == "aab") or options.get("gradle_build/export_format") != str(int(args.format == "aab")):
         raise ValueError("APK must use native APK export; AAB must use Gradle AAB export.")
@@ -198,9 +200,9 @@ def copy_project(destination: Path, private_files: set[Path]) -> None:
     text = re.sub(r'(?m)^_mcp_game_helper=.*\n?', "", text)
     text = set_section_values(text, "editor_plugins", {"enabled": "PackedStringArray()"})
     project_path.write_text(text, encoding="utf-8")
-    source_csv = PROJECT_ROOT / "config/adventure_levels.csv"
-    if digest(source_csv) != digest(destination / "config/adventure_levels.csv"):
-        raise ValueError("Staged level CSV differs from the original.")
+    for resource in RUNTIME_DATA:
+        if digest(PROJECT_ROOT / resource) != digest(destination / resource):
+            raise ValueError(f"Staged runtime data differs from the original: {resource}")
 
 
 def isolated_engine(engine: Path, work: Path, sdk: Path, java: Path) -> Path:
@@ -288,6 +290,10 @@ def build(args: argparse.Namespace, engine: Path, engine_version: str, version: 
     with zipfile.ZipFile(private_output) as archive:
         if archive.testzip() is not None:
             raise ValueError("Android output failed ZIP CRC verification.")
+        for resource in RUNTIME_DATA:
+            entries = [name for name in archive.namelist() if name.endswith("/" + resource)]
+            if len(entries) != 1 or archive.read(entries[0]) != (PROJECT_ROOT / resource).read_bytes():
+                raise ValueError(f"Exported runtime data is missing or differs: {resource}")
     # A failed export stays private, so dist never advertises a partial package.
     # Both paths are on the same project volume; publish by atomic rename only
     # after CRC validation, and recheck for a concurrently created destination.
@@ -310,6 +316,7 @@ def build(args: argparse.Namespace, engine: Path, engine_version: str, version: 
             "created_utc": datetime.now(timezone.utc).isoformat(),
             "file": output.name, "bytes": output.stat().st_size, "sha256": digest(output),
             "level_config_sha256": digest(stage / "config/adventure_levels.csv"),
+            "localization_sha256": digest(stage / "assets/localization/messages.json"),
             "zip_crc": "passed", "signature_verification": "pending_separate_check",
             "runtime_acceptance": "pending_user", "google_play_acceptance": "not_performed"}
     info_path = work / args.format / "build-info.json"

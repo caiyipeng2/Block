@@ -3,6 +3,7 @@ extends Control
 ## A nonblocking, presentation-only queue. The owner decides milestone progress.
 const DISPLAY_DURATION := 1.48
 const REDUCED_DURATION := 1.05
+const L10n := preload("res://scripts/localization/game_locale.gd")
 
 var _playfield := Rect2()
 var _viewport_size := Vector2.ZERO
@@ -26,6 +27,10 @@ func _ready() -> void:
 
 func _exit_tree() -> void:
 	clear()
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_TRANSLATION_CHANGED and is_node_ready():
+		queue_redraw()
 
 func set_playfield(rect: Rect2, viewport_size: Vector2) -> void:
 	_playfield = rect
@@ -176,7 +181,7 @@ func _draw_smiling_block() -> void:
 func _draw_message() -> void:
 	if _font == null:
 		return
-	var message := "%d%% Done" % _percent
+	var message := L10n.t("%d%% Done") % _percent
 	var left := size.y * 1.10
 	var right := size.x - size.y * 0.42
 	var available := maxf(right - left, 1.0)

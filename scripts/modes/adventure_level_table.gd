@@ -1,5 +1,7 @@
 extends RefCounted
 
+const L10n := preload("res://scripts/localization/game_locale.gd")
+
 ## All adventure difficulty and quota values come from this table. A malformed
 ## table is rejected as a whole; callers must surface errors instead of silently
 ## substituting a level-number formula.
@@ -27,12 +29,12 @@ static func reload_table() -> PackedStringArray:
 	_errors = PackedStringArray()
 	var file := FileAccess.open(PATH, FileAccess.READ)
 	if file == null:
-		_errors.append("%s：无法读取关卡配置（文件错误码 %d）" % [PATH, FileAccess.get_open_error()])
+		_errors.append(L10n.t("%s：无法读取关卡配置（文件错误码 %d）") % [PATH, FileAccess.get_open_error()])
 		return _errors.duplicate()
 	var bytes := file.get_buffer(file.get_length())
 	file.close()
 	if not _is_utf8(bytes):
-		_errors.append("%s：文件不是 UTF-8 编码。请在 Excel/WPS 中另存为 CSV UTF-8（逗号分隔），不要选择普通 CSV/ANSI。" % PATH)
+		_errors.append(L10n.t("%s：文件不是 UTF-8 编码。请在 Excel/WPS 中另存为 CSV UTF-8（逗号分隔），不要选择普通 CSV/ANSI。") % PATH)
 		return _errors.duplicate()
 	var parsed := parse_text(bytes.get_string_from_utf8(), PATH)
 	_levels = parsed["levels"]
@@ -86,8 +88,8 @@ static func _is_utf8(bytes: PackedByteArray) -> bool:
 		index += width
 	return true
 
-## Pure parser: this method never opens a file, mutates the cache, or modifies
-## game rules. UTF-8 BOM, CRLF, quoted commas, and escaped quotes are supported.
+## Parse supplied CSV without opening the level file, mutating the cache, or
+## modifying game rules. UTF-8 BOM, CRLF, quoted commas, and escaped quotes work.
 ## Embedded newlines in a quoted field are intentionally not supported.
 static func parse_text(text: String, source_label: String = "内存配置") -> Dictionary:
 	var issues := PackedStringArray()
@@ -120,7 +122,7 @@ static func parse_text(text: String, source_label: String = "内存配置") -> D
 			continue
 		data_rows += 1
 		if fields.size() != headers.size():
-			_issue(issues, source_label, line_number, "CSV", "字段数为 %d，应为 %d；请检查逗号和双引号" % [fields.size(), headers.size()])
+			_issue(issues, source_label, line_number, "CSV", "字段数为 %d，应为 %d；请检查逗号和双引号", [fields.size(), headers.size()])
 			continue
 		var values: Dictionary = {}
 		for column_index in range(headers.size()):
@@ -130,7 +132,7 @@ static func parse_text(text: String, source_label: String = "内存配置") -> D
 		var level_id: Variant = row.get("level_id")
 		if level_id != null:
 			if seen_ids.has(level_id):
-				_issue(issues, source_label, line_number, "level_id", "关卡 %d 重复，首次出现于 CSV 行 %d" % [level_id, seen_ids[level_id]])
+				_issue(issues, source_label, line_number, "level_id", "关卡 %d 重复，首次出现于 CSV 行 %d", [level_id, seen_ids[level_id]])
 			else:
 				seen_ids[level_id] = line_number
 		if issues.size() == issue_count and level_id != null:
@@ -139,13 +141,13 @@ static func parse_text(text: String, source_label: String = "内存配置") -> D
 		_issue(issues, source_label, 1, "表头", "配置文件为空，需要表头和 96 个关卡")
 	else:
 		if data_rows != LEVEL_COUNT:
-			_issue(issues, source_label, header_line, "level_id", "需要 %d 行关卡配置，实际为 %d 行" % [LEVEL_COUNT, data_rows])
+			_issue(issues, source_label, header_line, "level_id", "需要 %d 行关卡配置，实际为 %d 行", [LEVEL_COUNT, data_rows])
 		var missing := PackedStringArray()
 		for level_id in range(1, LEVEL_COUNT + 1):
 			if not seen_ids.has(level_id):
 				missing.append(str(level_id))
 		if not missing.is_empty():
-			_issue(issues, source_label, header_line, "level_id", "缺少关卡：%s" % ", ".join(missing))
+			_issue(issues, source_label, header_line, "level_id", "缺少关卡：%s", [", ".join(missing)])
 	return {
 		"levels": levels if issues.is_empty() else {},
 		"errors": _bounded_errors(issues, source_label),
@@ -224,7 +226,7 @@ static func _validate_collect_row(row: Dictionary, issues: PackedStringArray, so
 	if not TEMPLATE_CAPACITIES.has(template_id):
 		_issue(issues, source, line, "template_id", "收集关仅支持 wings、heart、ring、steps、butterfly")
 	elif row["initial_markers"] != null and int(row["initial_markers"]) > int(TEMPLATE_CAPACITIES[template_id]):
-		_issue(issues, source, line, "initial_markers", "%s 模板最多有 %d 个占格，初始标记不能超过该值" % [template_id, TEMPLATE_CAPACITIES[template_id]])
+		_issue(issues, source, line, "initial_markers", "%s 模板最多有 %d 个占格，初始标记不能超过该值", [template_id, TEMPLATE_CAPACITIES[template_id]])
 
 static func _require_zero(row: Dictionary, column: String, issues: PackedStringArray, source: String, line: int, reason: String) -> void:
 	if row[column] != null and int(row[column]) != 0:
@@ -236,22 +238,22 @@ static func _integer(raw: String, minimum: int, maximum: int, column: String, is
 	# cannot overflow a 64-bit integer and wrap into an apparently valid value.
 	var digits := text.trim_prefix("+").trim_prefix("-").lstrip("0")
 	if text.is_empty() or not text.is_valid_int() or digits.length() > 10:
-		_issue(issues, source, line, column, "须填写 %d–%d 的整数，不能留空或使用小数" % [minimum, maximum])
+		_issue(issues, source, line, column, "须填写 %d–%d 的整数，不能留空或使用小数", [minimum, maximum])
 		return null
 	var value := text.to_int()
 	if value < minimum or value > maximum:
-		_issue(issues, source, line, column, "数值 %s 超出范围 %d–%d" % [text, minimum, maximum])
+		_issue(issues, source, line, column, "数值 %s 超出范围 %d–%d", [text, minimum, maximum])
 		return null
 	return value
 
 static func _number(raw: String, minimum: float, maximum: float, column: String, issues: PackedStringArray, source: String, line: int) -> Variant:
 	var text := raw.strip_edges()
 	if text.is_empty() or not text.is_valid_float():
-		_issue(issues, source, line, column, "须填写 %s–%s 的有限数字" % [minimum, maximum])
+		_issue(issues, source, line, column, "须填写 %s–%s 的有限数字", [minimum, maximum])
 		return null
 	var value := text.to_float()
 	if not is_finite(value) or value < minimum or value > maximum:
-		_issue(issues, source, line, column, "数值 %s 超出有限范围 %s–%s" % [text, minimum, maximum])
+		_issue(issues, source, line, column, "数值 %s 超出有限范围 %s–%s", [text, minimum, maximum])
 		return null
 	return value
 
@@ -298,13 +300,19 @@ static func _parse_csv_record(record: String) -> Dictionary:
 	fields.append(field)
 	return {"fields": fields, "error": ""}
 
-static func _issue(issues: PackedStringArray, source: String, line: int, column: String, reason: String) -> void:
-	issues.append("%s，CSV 行 %d，列「%s」：%s" % [source, line, column, reason])
+static func _issue(issues: PackedStringArray, source: String, line: int, column: String, reason: String, arguments: Array = []) -> void:
+	var message := L10n.t(reason)
+	if not arguments.is_empty():
+		message = message % arguments
+	var source_name := L10n.t("内存配置") if source == "内存配置" else source
+	var column_name := L10n.t("表头") if column == "表头" else column
+	issues.append(L10n.t("%s，CSV 行 %d，列「%s」：%s") % [source_name, line, column_name, message])
 
 static func _bounded_errors(issues: PackedStringArray, source: String) -> PackedStringArray:
 	var result := PackedStringArray()
 	for index in range(mini(issues.size(), MAX_VISIBLE_ERRORS)):
 		result.append(issues[index])
 	if issues.size() > MAX_VISIBLE_ERRORS:
-		result.append("%s：另有 %d 项配置错误未列出，请修正后重新读取" % [source, issues.size() - MAX_VISIBLE_ERRORS])
+		var source_name := L10n.t("内存配置") if source == "内存配置" else source
+		result.append(L10n.t("%s：另有 %d 项配置错误未列出，请修正后重新读取") % [source_name, issues.size() - MAX_VISIBLE_ERRORS])
 	return result

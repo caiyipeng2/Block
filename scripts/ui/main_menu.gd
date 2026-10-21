@@ -13,6 +13,7 @@ const ModeButton := preload("res://scripts/ui/menu_mode_button.gd")
 const MenuLogo := preload("res://scripts/ui/menu_logo.gd")
 const IconButton := preload("res://scripts/ui/art_icon_button.gd")
 const MobileLayout := preload("res://scripts/ui/mobile_layout.gd")
+const L10n := preload("res://scripts/localization/game_locale.gd")
 const OPENING_DURATION := 3.60
 const OPENING_PHASE_DURATION := 2.20
 const RETURN_DURATION := 0.30
@@ -43,6 +44,8 @@ var _content_rect := Rect2()
 var _epoch := 0
 var _skip_key_release := 0
 var _skip_mouse_release := false
+var _high_score := 0
+var _save_warning := ""
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -52,9 +55,17 @@ func _ready() -> void:
 	font.font_weight = 800
 	_font = font
 	_build_controls()
+	_refresh_text()
 	resized.connect(_on_resized)
 	visibility_changed.connect(_on_visibility_changed)
 	_layout_controls()
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_TRANSLATION_CHANGED and is_node_ready():
+		# Text refresh never calls present() or resets the finite introduction.
+		_refresh_text()
+		_fit_text()
+		queue_redraw()
 
 func _exit_tree() -> void:
 	_stop_animation()
@@ -62,10 +73,28 @@ func _exit_tree() -> void:
 func set_profile(high_score: int, save_warning: String, reduced_motion: bool) -> void:
 	if not is_instance_valid(_best):
 		return
-	_best.text = "最高分  %d" % maxi(high_score, 0)
-	_warning.text = save_warning
-	_warning.tooltip_text = save_warning
+	_high_score = maxi(high_score, 0)
+	_save_warning = save_warning
+	_refresh_text()
+	_fit_text()
 	set_reduced_motion(reduced_motion)
+
+func _refresh_text() -> void:
+	if not is_instance_valid(_best):
+		return
+	_best.text = L10n.t("最高分  %d") % _high_score
+	_warning.text = L10n.t(_save_warning)
+	_warning.tooltip_text = _warning.text
+	get_node("SettingsButton").tooltip_text = "" if MobileLayout.is_mobile() else L10n.t("游戏设置")
+	get_node("ExitButton").text = L10n.t("退出游戏")
+	_skip.text = L10n.t("轻触屏幕跳过" if MobileLayout.is_mobile() else "点击或按 Enter 跳过")
+
+func _fit_text() -> void:
+	var unit := MobileLayout.dp(self, 1.0) if MobileLayout.is_mobile() else 1.0
+	for entry: Array in [[_best, 17], [_warning, 12], [_skip, 13]]:
+		var label: Label = entry[0]
+		label.add_theme_font_size_override("font_size", L10n.fitted_size(label.get_theme_font("font"), label.text, label.size.x - 4.0, roundi(float(entry[1]) * unit), maxi(9, roundi(9.0 * unit))))
+	L10n.fit_button(get_node("ExitButton"), roundi((18.0 if MobileLayout.is_mobile() else 16.0) * unit), maxi(10, roundi(10.0 * unit)))
 
 func set_reduced_motion(enabled: bool) -> void:
 	var changed := enabled != _reduced_motion
@@ -199,7 +228,7 @@ func _build_controls() -> void:
 	settings.name = "SettingsButton"
 	settings.set("icon_kind", "gear")
 	settings.set("fill_color", Color("#21599f"))
-	settings.tooltip_text = "游戏设置"
+	settings.tooltip_text = L10n.t("游戏设置")
 	settings.pressed.connect(func() -> void: settings_requested.emit())
 	add_child(settings)
 	var focus := Art.panel_style(Color.TRANSPARENT, 12, Color("#b8ffff"))
@@ -208,7 +237,7 @@ func _build_controls() -> void:
 	settings.add_theme_stylebox_override("focus", focus)
 	var exit_button := Button.new()
 	exit_button.name = "ExitButton"
-	exit_button.text = "退出游戏"
+	exit_button.text = L10n.t("退出游戏")
 	exit_button.focus_mode = Control.FOCUS_ALL
 	exit_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	exit_button.add_theme_font_size_override("font_size", 16)
@@ -224,7 +253,7 @@ func _build_controls() -> void:
 	_warning.name = "SaveWarning"
 	add_child(_warning)
 	_skip = _label(13, Color("#d3e6ff"))
-	_skip.text = "点击或按 Enter 跳过"
+	_skip.text = L10n.t("点击或按 Enter 跳过")
 	_skip.name = "OpeningSkip"
 	add_child(_skip)
 
@@ -244,6 +273,7 @@ func _layout_controls() -> void:
 	_content_rect = MobileLayout.safe_content_rect(self)
 	if MobileLayout.is_mobile():
 		_layout_mobile_controls()
+		_fit_text()
 		return
 	var scale_factor := clampf(size.y / 720.0, 0.62, 1.0)
 	var logo_width := minf(minf(400.0, maxf(size.x - 56.0, 120.0)), size.y * 0.55)
@@ -284,6 +314,7 @@ func _layout_controls() -> void:
 	_warning.size = Vector2(maxf(size.x - 24.0, 0.0), 20.0)
 	_skip.position = Vector2(16.0, size.y - 47.0)
 	_skip.size = Vector2(maxf(size.x - 32.0, 0.0), 24.0)
+	_fit_text()
 
 func _layout_mobile_controls() -> void:
 	var area := _content_rect
@@ -333,7 +364,7 @@ func _layout_mobile_controls() -> void:
 	_skip.position = Vector2(area.position.x + padding, area.end.y - 28.0 * unit)
 	_skip.size = Vector2(maxf(area.size.x - padding * 2.0, 0.0), 24.0 * unit)
 	_skip.add_theme_font_size_override("font_size", roundi(13.0 * unit))
-	_skip.text = "轻触屏幕跳过"
+	_skip.text = L10n.t("轻触屏幕跳过")
 
 func _settle_controls() -> void:
 	_logo.position = _logo_destination

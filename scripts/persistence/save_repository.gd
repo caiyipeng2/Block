@@ -1,6 +1,7 @@
 class_name SaveRepository
 extends RefCounted
 
+const L10n := preload("res://scripts/localization/game_locale.gd")
 const SAVE_PATH := "user://savegame.json"
 const SAVE_VERSION := 1
 const MAX_LEVEL_ID := 10000
@@ -17,6 +18,7 @@ static func defaults() -> Dictionary:
 		"music_enabled": true,
 		"reduced_motion": false,
 		"screen_shake": true,
+		"language": "zh_CN",
 	}
 
 static func load_data(path: String = SAVE_PATH) -> Dictionary:
@@ -138,6 +140,9 @@ static func _normalized_data(data: Dictionary) -> Dictionary:
 		var value: Variant = data.get(key)
 		if value is bool:
 			payload[key] = value
+	var language: Variant = data.get("language")
+	if language is String and language in L10n.SUPPORTED_CODES:
+		payload["language"] = language
 	return payload
 
 static func _nonnegative_integer(value: Variant) -> Variant:

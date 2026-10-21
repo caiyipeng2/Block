@@ -3,6 +3,8 @@ extends Button
 ## The approved artwork owns the face; Button owns focus and activation.
 ## Keep the original image intact and clip its blue surroundings at draw time.
 const BUTTON_ART: Texture2D = preload("res://assets/ui/menu/approved_mode_buttons.png")
+const L10n := preload("res://scripts/localization/game_locale.gd")
+const LOCALIZED_FACE := preload("res://scripts/ui/menu_mode_button.gdshader")
 const FACE_REGIONS := {
 	"adventure": Rect2(210.0, 246.0, 877.0, 213.0),
 	"classic": Rect2(210.0, 532.0, 877.0, 213.0),
@@ -18,16 +20,18 @@ const CORNER_STEPS := 12
 @export var title_text: String = "闯关模式":
 	set(value):
 		title_text = value
-		text = value
-		queue_redraw()
+		if is_node_ready():
+			_refresh_localized_title()
 # Retained for the menu's presentation API; the selected artwork has one line.
 @export var subtitle_text: String = ""
 @export var face_color: Color = Color("#ffb525")
+var _localized_title: Label
 
 var entrance_preview := false:
 	set(value):
 		entrance_preview = value
-		queue_redraw()
+		if is_node_ready():
+			_refresh_localized_title()
 
 
 func _ready() -> void:
@@ -37,10 +41,50 @@ func _ready() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	# The semantic text remains available to the native Button even though its
 	# visible lettering, icon and material are baked together in the approved art.
-	text = title_text
 	_apply_native_theme()
+	_localized_title = Label.new()
+	_localized_title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_localized_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_localized_title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_localized_title.clip_text = true
+	_localized_title.use_parent_material = false
+	var latin_font := SystemFont.new()
+	latin_font.font_names = PackedStringArray(["Arial", "Segoe UI", "sans-serif"])
+	latin_font.font_weight = 900
+	latin_font.font_italic = true
+	_localized_title.add_theme_font_override("font", latin_font)
+	_localized_title.add_theme_color_override("font_color", Color.WHITE)
+	_localized_title.add_theme_color_override("font_shadow_color", Color(0.18, 0.08, 0.10, 0.35))
+	_localized_title.add_theme_constant_override("shadow_offset_y", 2)
+	add_child(_localized_title)
 	for redraw_signal in [mouse_entered, mouse_exited, focus_entered, focus_exited, button_down, button_up, resized]:
-		redraw_signal.connect(queue_redraw)
+		redraw_signal.connect(_refresh_localized_title)
+	_refresh_localized_title()
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_TRANSLATION_CHANGED and is_node_ready():
+		_refresh_localized_title()
+
+
+func _refresh_localized_title() -> void:
+	text = L10n.t(title_text)
+	if not is_instance_valid(_localized_title):
+		return
+	var translated := L10n.language() != "zh_CN"
+	_localized_title.visible = translated
+	if translated:
+		if material == null:
+			var face_material := ShaderMaterial.new()
+			face_material.shader = LOCALIZED_FACE
+			material = face_material
+		_localized_title.text = text
+		_localized_title.position = Vector2(size.x * 0.355, size.y * 0.04)
+		_localized_title.size = Vector2(size.x * 0.535, size.y * 0.90)
+		var font := _localized_title.get_theme_font("font")
+		_localized_title.add_theme_font_size_override("font_size", L10n.fitted_size(font, text, _localized_title.size.x - 6.0, maxi(12, roundi(size.y * 0.49)), 10))
+	else:
+		material = null
 	queue_redraw()
 
 
@@ -62,6 +106,9 @@ func _draw() -> void:
 	var pressed_now := is_pressed() and not disabled
 	var hovered_now := is_hovered() and not disabled
 	var opacity := 0.61 if disabled and not entrance_preview else 1.0
+	if is_instance_valid(_localized_title) and _localized_title.visible:
+		_localized_title.position.y = size.y * 0.04 + (2.0 * scale_factor if pressed_now else 0.0)
+		_localized_title.modulate.a = opacity
 	_draw_shadow(face, radius, scale_factor, opacity, pressed_now)
 	if pressed_now:
 		# Translate the whole artwork without squeezing its icons or lettering.

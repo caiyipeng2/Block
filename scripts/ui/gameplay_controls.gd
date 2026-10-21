@@ -16,6 +16,7 @@ const BlockArt := preload("res://scripts/ui/block_art.gd")
 const ArtIconButton := preload("res://scripts/ui/art_icon_button.gd")
 const ProgressBanner := preload("res://scripts/ui/progress_banner.gd")
 const MobileLayout := preload("res://scripts/ui/mobile_layout.gd")
+const L10n := preload("res://scripts/localization/game_locale.gd")
 const MODE_HIDDEN := "hidden"
 const MODE_PLAYING := "playing"
 const MODE_PAUSED := "paused"
@@ -91,6 +92,7 @@ var _display_score := 0.0
 var _target_score := -1
 var _notice: PanelContainer
 var _notice_label: Label
+var _notice_source := ""
 var _notice_tween: Tween
 var _overlay_tween: Tween
 var _objective_rects: Dictionary = {}
@@ -141,6 +143,19 @@ func _notification(what: int) -> void:
 		_target_pulses.clear()
 		_stop_victory_animation()
 		_layout_controls()
+	elif what == NOTIFICATION_TRANSLATION_CHANGED and _configured:
+		_refresh_localized_texts()
+
+func _refresh_localized_texts() -> void:
+	# Changing the language must not restart feedback or reset animated counts.
+	_update_texts(false, false)
+	_refresh_intro_texts()
+	if not _notice_source.is_empty():
+		_notice_label.text = _localized_notice(_notice_source)
+	_layout_controls()
+	_intro_targets.queue_redraw()
+	_overlay_objective_badge.queue_redraw()
+	queue_redraw()
 
 func _process(delta: float) -> void:
 	if _victory_ambient_running:
@@ -247,14 +262,17 @@ func set_progress_banner_paused(paused: bool) -> void:
 	if is_instance_valid(_progress_banner):
 		_progress_banner.set_paused(paused or _mode != MODE_PLAYING or is_objective_intro_visible())
 
-func _target_summary(source: Dictionary, remaining: bool = false) -> String:
+func _target_summary(source: Dictionary, remaining: bool = false, totals_only: bool = false) -> String:
 	var parts := PackedStringArray()
 	for kind: String in _active_target_kinds(source):
-		if remaining:
+		var target_name := L10n.t(BlockArt.target_name(kind))
+		if totals_only:
+			parts.append(L10n.t("%s %d 个") % [target_name, _target_count(source, "target_counts", kind)])
+		elif remaining:
 			var left := _target_count(source, "remaining_counts", kind)
-			parts.append("%s %d" % [BlockArt.target_name(kind), left])
+			parts.append("%s %d" % [target_name, left])
 		else:
-			parts.append("%s %d/%d" % [BlockArt.target_name(kind), _target_count(source, "collected_counts", kind), _target_count(source, "target_counts", kind)])
+			parts.append("%s %d/%d" % [target_name, _target_count(source, "collected_counts", kind), _target_count(source, "target_counts", kind)])
 	return "  ·  ".join(parts)
 
 func _draw_collect_targets() -> void:
@@ -484,14 +502,7 @@ func show_objective_intro(stats: Dictionary, reduced_motion: bool = false) -> vo
 	hide_objective_intro()
 	clear_notice()
 	_intro_stats = stats.duplicate(true)
-	_intro_title.text = "收集目标"
-	var level_id := maxi(1, int(_intro_stats.get("level_id", 1)))
-	var difficulty := str(_intro_stats.get("difficulty_label", _intro_stats.get("stage_name", "")))
-	_intro_subtitle.text = "第 %d 关" % level_id
-	if not difficulty.is_empty():
-		_intro_subtitle.text += "  ·  " + difficulty
-	var description := str(_intro_stats.get("difficulty_description", ""))
-	_intro_description.text = description if not description.is_empty() else "清除带标记的方块，收集全部目标"
+	_refresh_intro_texts()
 	_intro_root.visible = true
 	_set_intro_action_lock(true)
 	_intro_scroll.scroll_vertical = 0
@@ -521,16 +532,30 @@ func show_objective_intro(stats: Dictionary, reduced_motion: bool = false) -> vo
 	_intro_tween.tween_method(_set_entry_progress, 0.0, 1.0, 0.70).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
 	_intro_tween.tween_callback(_complete_intro_sequence)
 
+func _refresh_intro_texts() -> void:
+	_intro_title.text = L10n.t("收集目标")
+	var level_id := maxi(1, int(_intro_stats.get("level_id", 1)))
+	var difficulty := str(_intro_stats.get("difficulty_label", _intro_stats.get("stage_name", "")))
+	_intro_subtitle.text = L10n.t("第 %d 关") % level_id
+	if not difficulty.is_empty():
+		_intro_subtitle.text += "  ·  " + L10n.t(difficulty)
+	# The caller's description is already formatted in the source language.
+	# Rebuild quotas from their numbers so an open introduction can change locale.
+	_intro_description.text = _target_summary(_intro_stats, false, true) if not _intro_stats.is_empty() else L10n.t("清除带标记的方块，收集全部目标")
+	_intro_start_button.text = L10n.t("开始挑战")
+	_intro_start_button.tooltip_text = _intro_start_button.text
+	_intro_skip_hint.text = L10n.t("点击屏幕跳过" if MobileLayout.is_mobile() else "点击或按任意确认键跳过")
+
 func hide_objective_intro() -> void:
 	_intro_epoch += 1
 	_stop_intro_animation()
 	if is_instance_valid(_intro_root):
 		_intro_root.visible = false
-	if is_instance_valid(_intro_start_button):
+	if is_instance_valid(_intro_start_button) and _intro_start_button.is_inside_tree():
 		_intro_start_button.release_focus()
 	_intro_stats.clear()
 	_set_intro_action_lock(false)
-	if is_instance_valid(_intro_root):
+	if is_instance_valid(_intro_root) and _intro_root.is_inside_tree():
 		_intro_root.release_focus()
 
 func is_objective_intro_visible() -> bool:
@@ -622,7 +647,8 @@ func header_height() -> float:
 		var touch := MobileLayout.touch_target(self)
 		if _is_collect_objective():
 			return content.position.y + maxf(clampf(content.size.y * 0.15, 200.0, 260.0), touch * 2.4)
-		return content.position.y + maxf(clampf(content.size.y * 0.20, 240.0, 330.0), touch * 2.8)
+		var text_height := MobileLayout.dp(self, 174.0 if _is_adventure() else 160.0)
+		return content.position.y + maxf(clampf(content.size.y * 0.20, 240.0, 330.0), maxf(touch * 2.8, text_height))
 	if _is_collect_objective():
 		return clampf(size.y * 0.15, 132.0 if size.y > size.x else 116.0, 180.0)
 	var height := clampf(size.y * 0.18, 148.0, 210.0)
@@ -651,7 +677,8 @@ func show_notice(message: String, kind: String = "info", reduced_motion: bool = 
 	if not _configured or _mode != MODE_PLAYING or message.is_empty():
 		return
 	clear_notice()
-	_notice_label.text = message
+	_notice_source = message
+	_notice_label.text = _localized_notice(message)
 	var accent := GOLD if kind in ["success", "record"] else AQUA
 	if kind in ["error", "invalid"]:
 		accent = Color("#ffb677")
@@ -674,7 +701,14 @@ func show_notice(message: String, kind: String = "info", reduced_motion: bool = 
 		_notice_tween.tween_property(_notice, "modulate:a", 0.0, 0.24)
 	_notice_tween.tween_callback(clear_notice)
 
+func _localized_notice(source: String) -> String:
+	var goal := int(_stats.get("target_score", 0))
+	if _is_adventure() and not _is_collect_objective() and source == "目标 %d 分" % goal:
+		return L10n.t("目标 %d 分") % goal
+	return L10n.t(source)
+
 func clear_notice() -> void:
+	_notice_source = ""
 	if is_instance_valid(_notice_tween):
 		_notice_tween.kill()
 	_notice_tween = null
@@ -697,6 +731,8 @@ func _build_controls() -> void:
 	_detail_label = _new_label("MoveDetail", 14)
 	_detail_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_detail_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_detail_label.max_lines_visible = 2
 	_playing_root.add_child(_detail_label)
 	_mode_label = _new_label("Mode", 14)
 	_mode_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -779,6 +815,8 @@ func _build_controls() -> void:
 	_overlay_box.add_child(_overlay_objective_badge)
 	_overlay_title = _new_label("Title", 24)
 	_overlay_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_overlay_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_overlay_title.max_lines_visible = 2
 	_overlay_box.add_child(_overlay_title)
 	_overlay_score = _new_label("Score", 68)
 	_overlay_score.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -804,19 +842,19 @@ func _build_controls() -> void:
 	_overlay_buttons.add_theme_constant_override("separation", 10)
 	_overlay_box.add_child(_overlay_buttons)
 	_next_level_button = _new_button("NextLevelButton", "下一关")
-	_next_level_button.tooltip_text = "开始下一关"
+	_next_level_button.tooltip_text = L10n.t("开始下一关")
 	_next_level_button.pressed.connect(_on_next_level_pressed)
 	_overlay_buttons.add_child(_next_level_button)
 	_resume_button = _new_button("ResumeButton", "继续游戏")
-	_resume_button.tooltip_text = "继续游戏"
+	_resume_button.tooltip_text = L10n.t("继续游戏")
 	_resume_button.pressed.connect(_on_resume_pressed)
 	_overlay_buttons.add_child(_resume_button)
 	_overlay_restart_button = _new_button("OverlayRestartButton", "重新开始")
-	_overlay_restart_button.tooltip_text = "重新开始"
+	_overlay_restart_button.tooltip_text = L10n.t("重新开始")
 	_overlay_restart_button.pressed.connect(_on_restart_pressed)
 	_overlay_buttons.add_child(_overlay_restart_button)
 	_overlay_menu_button = _new_button("OverlayMenuButton", "返回菜单")
-	_overlay_menu_button.tooltip_text = "返回菜单"
+	_overlay_menu_button.tooltip_text = L10n.t("返回菜单")
 	_overlay_menu_button.pressed.connect(_on_menu_pressed)
 	_overlay_buttons.add_child(_overlay_menu_button)
 	_overlay_secondary_buttons = HBoxContainer.new()
@@ -877,7 +915,7 @@ func _build_objective_intro() -> void:
 	_intro_card = Control.new()
 	_intro_card.name = "Ribbon"
 	_intro_card.mouse_filter = Control.MOUSE_FILTER_STOP
-	_intro_card.custom_minimum_size = Vector2(0.0, 260.0)
+	_intro_card.custom_minimum_size = Vector2(0.0, 284.0)
 	_intro_card.gui_input.connect(_on_intro_gui_input)
 	_intro_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_intro_card.draw.connect(_draw_intro_ribbon)
@@ -906,7 +944,7 @@ func _build_objective_intro() -> void:
 	_intro_start_button.pressed.connect(accept_objective_intro)
 	_intro_card.add_child(_intro_start_button)
 	_intro_skip_hint = _new_label("SkipHint", 12)
-	_intro_skip_hint.text = "点击或按任意确认键跳过"
+	_intro_skip_hint.text = L10n.t("点击或按任意确认键跳过")
 	_intro_skip_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_intro_skip_hint.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_intro_card.add_child(_intro_skip_hint)
@@ -924,6 +962,8 @@ func _on_intro_gui_input(event: InputEvent) -> void:
 
 func _on_card_resized() -> void:
 	_card.pivot_offset = _card.size * 0.5
+	for button: Button in [_resume_button, _next_level_button, _overlay_restart_button, _overlay_menu_button, _overlay_settings_button]:
+		_fit_action_button(button)
 
 func _draw_intro_ribbon() -> void:
 	var width := _intro_card.size.x
@@ -960,7 +1000,7 @@ func _draw_intro_targets() -> void:
 		var icon_rect := Rect2(center_x - icon_side * 0.5, 0.0, icon_side, icon_side)
 		BlockArt.draw_target_marker(_intro_targets, icon_rect, 1.0, 1.0, kind)
 		_draw_centered_text(_intro_targets, str(_target_count(_intro_stats, "target_counts", kind)), Rect2(center_x - slot_width * 0.5 + 4.0, icon_side + 2.0, slot_width - 8.0, count_height), count_font, Color.WHITE)
-		_draw_centered_text(_intro_targets, BlockArt.target_name(kind), Rect2(center_x - slot_width * 0.5 + 4.0, icon_side + count_height + 4.0, slot_width - 8.0, name_height), name_font, Color("#d9ebff"))
+		_draw_centered_text(_intro_targets, L10n.t(BlockArt.target_name(kind)), Rect2(center_x - slot_width * 0.5 + 4.0, icon_side + count_height + 4.0, slot_width - 8.0, name_height), name_font, Color("#d9ebff"))
 
 func _draw_intro_effects() -> void:
 	if not is_objective_intro_visible():
@@ -1021,7 +1061,7 @@ func _layout_objective_intro() -> void:
 		_intro_effects.queue_redraw()
 		return
 	var width := minf(680.0, maxf(size.x - 24.0, 1.0))
-	var viewport_height := minf(260.0, maxf(size.y - 24.0, 1.0))
+	var viewport_height := minf(284.0, maxf(size.y - 24.0, 1.0))
 	_intro_scroll.size = Vector2(width, viewport_height)
 	_intro_scroll.position = Vector2((size.x - width) * 0.5, maxf(12.0, (size.y - viewport_height) * 0.5))
 	# ScrollContainer owns the content width; its viewport stays within the window.
@@ -1042,20 +1082,23 @@ func _layout_objective_intro_content() -> void:
 	var inner_width := maxf(width - 64.0, 1.0)
 	_intro_title.position = Vector2(32.0, 6.0)
 	_intro_title.size = Vector2(inner_width, 36.0)
-	_intro_title.add_theme_font_size_override("font_size", 24 if width < 360.0 else 28)
+	_fit_label(_intro_title, inner_width, 24 if width < 360.0 else 28, 18)
 	_intro_subtitle.position = Vector2(32.0, 42.0)
 	_intro_subtitle.size = Vector2(inner_width, 28.0)
-	_intro_subtitle.add_theme_font_size_override("font_size", 14 if width < 360.0 else 16)
+	_fit_label(_intro_subtitle, inner_width, 14 if width < 360.0 else 16, 11)
 	_intro_targets.position = Vector2(32.0, 86.0)
 	_intro_targets.size = Vector2(inner_width, 112.0)
 	_intro_description.position = Vector2(32.0, 204.0)
-	_intro_description.size = Vector2(inner_width, 32.0)
-	_intro_description.add_theme_font_size_override("font_size", 12 if width < 360.0 else 14)
+	_intro_description.size = Vector2(inner_width, 48.0)
+	_fit_label(_intro_description, inner_width, 12 if width < 360.0 else 14, 10, 2, _intro_description.size.y)
 	var button_width := minf(320.0, inner_width)
 	_intro_start_button.position = Vector2((width - button_width) * 0.5, 320.0)
 	_intro_start_button.size = Vector2(button_width, 52.0)
-	_intro_skip_hint.position = Vector2(32.0, 238.0)
+	_intro_skip_hint.position = Vector2(32.0, 258.0)
 	_intro_skip_hint.size = Vector2(inner_width, 18.0)
+	_intro_skip_hint.text = L10n.t("点击或按任意确认键跳过")
+	_fit_label(_intro_skip_hint, inner_width, 12, 10)
+	_fit_action_button(_intro_start_button)
 	_intro_card.queue_redraw()
 	_intro_targets.queue_redraw()
 
@@ -1066,22 +1109,23 @@ func _layout_mobile_intro_content() -> void:
 	_intro_card.pivot_offset = _intro_card.size * 0.5
 	_intro_title.position = Vector2(padding, MobileLayout.dp(self, 8.0))
 	_intro_title.size = Vector2(inner_width, MobileLayout.dp(self, 40.0))
-	_intro_title.add_theme_font_size_override("font_size", int(MobileLayout.dp(self, 24.0)))
+	_fit_label(_intro_title, inner_width, int(MobileLayout.dp(self, 24.0)), int(MobileLayout.dp(self, 16.0)))
 	_intro_subtitle.position = Vector2(padding, MobileLayout.dp(self, 48.0))
 	_intro_subtitle.size = Vector2(inner_width, MobileLayout.dp(self, 26.0))
-	_intro_subtitle.add_theme_font_size_override("font_size", int(MobileLayout.dp(self, 15.0)))
+	_fit_label(_intro_subtitle, inner_width, int(MobileLayout.dp(self, 15.0)), int(MobileLayout.dp(self, 11.0)))
 	_intro_targets.position = Vector2(padding, MobileLayout.dp(self, 92.0))
 	_intro_targets.size = Vector2(inner_width, MobileLayout.dp(self, 138.0))
 	_intro_description.position = Vector2(padding, MobileLayout.dp(self, 232.0))
 	_intro_description.size = Vector2(inner_width, MobileLayout.dp(self, 46.0))
-	_intro_description.add_theme_font_size_override("font_size", int(MobileLayout.dp(self, 14.0)))
+	_fit_label(_intro_description, inner_width, int(MobileLayout.dp(self, 14.0)), int(MobileLayout.dp(self, 10.0)), 2, _intro_description.size.y)
 	_intro_start_button.custom_minimum_size.y = MobileLayout.touch_target(self)
 	_intro_start_button.size = Vector2(inner_width, MobileLayout.touch_target(self))
 	_intro_start_button.position = Vector2(padding, _intro_description.position.y)
 	_intro_skip_hint.position = Vector2(padding, MobileLayout.dp(self, 280.0))
 	_intro_skip_hint.size = Vector2(inner_width, MobileLayout.dp(self, 20.0))
-	_intro_skip_hint.add_theme_font_size_override("font_size", int(MobileLayout.dp(self, 12.0)))
-	_intro_skip_hint.text = "点击屏幕跳过"
+	_intro_skip_hint.text = L10n.t("点击屏幕跳过")
+	_fit_label(_intro_skip_hint, inner_width, int(MobileLayout.dp(self, 12.0)), int(MobileLayout.dp(self, 10.0)))
+	_fit_action_button(_intro_start_button)
 	_intro_card.queue_redraw()
 	_intro_targets.queue_redraw()
 
@@ -1099,7 +1143,7 @@ func _new_icon_button(node_name: String, kind: String, hint: String) -> Button:
 	button.icon_kind = kind
 	button.icon_color = _text
 	button.fill_color = Color("#264576")
-	button.tooltip_text = hint
+	button.tooltip_text = L10n.t(hint)
 	button.focus_mode = Control.FOCUS_ALL
 	button.custom_minimum_size = Vector2(48.0, 48.0)
 	button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
@@ -1108,13 +1152,47 @@ func _new_icon_button(node_name: String, kind: String, hint: String) -> Button:
 func _new_button(node_name: String, label: String) -> Button:
 	var button := Button.new()
 	button.name = node_name
-	button.text = label
+	button.text = L10n.t(label)
+	button.clip_text = true
+	button.resized.connect(_fit_action_button.bind(button))
 	button.focus_mode = Control.FOCUS_ALL
 	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	button.custom_minimum_size = Vector2(44.0, MIN_BUTTON_HEIGHT)
 	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	button.add_theme_font_size_override("font_size", 17)
 	return button
+
+func _fit_action_button(button: Button) -> void:
+	if not is_instance_valid(button):
+		return
+	var maximum := int(MobileLayout.dp(self, 14.0)) if MobileLayout.is_mobile() else (15 if button.get_parent() == _overlay_secondary_buttons and _mode == MODE_LEVEL_COMPLETE else 17)
+	var minimum := int(MobileLayout.dp(self, 10.0)) if MobileLayout.is_mobile() else 11
+	L10n.fit_button(button, maximum, minimum)
+
+func _fit_label(label: Label, width: float, maximum: int, minimum: int, lines: int = 1, available_height: float = -1.0) -> void:
+	var font := label.get_theme_font("font")
+	var fitted := maximum
+	if lines <= 1:
+		fitted = L10n.fitted_size(font, label.text, width, maximum, minimum)
+	else:
+		while fitted > minimum:
+			var line_spacing := float(label.get_theme_constant("line_spacing"))
+			var maximum_height := font.get_height(fitted) * float(lines) + line_spacing * float(lines - 1) + 2.0
+			if available_height > 0.0:
+				maximum_height = minf(maximum_height, available_height)
+			if _multiline_label_height(label, width, fitted) <= maximum_height:
+				break
+			fitted -= 1
+	label.add_theme_font_size_override("font_size", fitted)
+	label.tooltip_text = label.text
+
+func _multiline_label_height(label: Label, width: float, font_size: int = -1) -> float:
+	var font := label.get_theme_font("font")
+	var measured_size := label.get_theme_font_size("font_size") if font_size < 0 else font_size
+	var flags := TextServer.BREAK_MANDATORY | TextServer.BREAK_WORD_BOUND | TextServer.BREAK_ADAPTIVE
+	var text_height := font.get_multiline_string_size(label.text, HORIZONTAL_ALIGNMENT_LEFT, maxf(width, 1.0), measured_size, -1, flags).y
+	var line_count := maxi(1, ceili(text_height / maxf(font.get_height(measured_size), 1.0)))
+	return ceilf(text_height + float(label.get_theme_constant("line_spacing") * (line_count - 1)) + 2.0)
 
 func _apply_theme() -> void:
 	if not is_instance_valid(_title_label):
@@ -1301,7 +1379,7 @@ func _configure_overlay_actions() -> void:
 		_overlay_box.move_child(_overlay_objective_badge, 0)
 		_overlay_box.move_child(_overlay_title, 1)
 
-func _update_texts(mode_changed: bool) -> void:
+func _update_texts(mode_changed: bool, update_score: bool = true) -> void:
 	var score := int(_stats.get("score", 0))
 	var high_score := int(_stats.get("high_score", 0))
 	var combo := int(_stats.get("combo", 0))
@@ -1318,39 +1396,48 @@ func _update_texts(mode_changed: bool) -> void:
 	var target_total := maxi(1, int(_stats.get("target_total", 1)))
 	var remaining := maxi(0, int(_stats.get("target_remaining", target_total - collected)))
 	var gameplay_mode := str(_stats.get("mode", "free"))
-	_mode_label.text = "第 %d 关" % level_id if adventure else ("经典模式" if gameplay_mode == "classic" else "自由模式")
-	_goal_label.text = "收集全部目标  ·  剩余 %d" % remaining if collect else "第 %d 关 · 目标 %d 分" % [level_id, goal]
+	_mode_label.text = L10n.t("第 %d 关") % level_id if adventure else L10n.t("经典模式" if gameplay_mode == "classic" else "自由模式")
+	_goal_label.text = L10n.t("收集全部目标  ·  剩余 %d") % remaining if collect else L10n.t("第 %d 关 · 目标 %d 分") % [level_id, goal]
 	_goal_score_label.text = str(goal)
 	_title_label.text = str(high_score)
-	_title_label.tooltip_text = "最高分：%d" % high_score
-	_detail_label.text = "放置 +%d  ·  消除 +%d  ·  %d 线" % [placement_points, clear_points, clear_lines]
+	_title_label.tooltip_text = L10n.t("最高分：%d") % high_score
+	_detail_label.text = L10n.t("放置 +%d  ·  消除 +%d  ·  %d 线") % [placement_points, clear_points, clear_lines]
 	if combo > 0:
-		_detail_label.text += "  ·  连击 ×%d" % combo
+		_detail_label.text += L10n.t("  ·  连击 ×%d") % combo
 	if collect:
-		_detail_label.text = "总分 %d  ·  " % score + _detail_label.text
-	_overlay_title.text = ("Well Done!" if collect else "目标完成") if _mode == MODE_LEVEL_COMPLETE else ("已暂停" if _mode == MODE_PAUSED else ("第 %d 关未通过" % level_id if adventure else "游戏结束"))
+		_detail_label.text = L10n.t("总分 %d  ·  %s") % [score, _detail_label.text]
+	_overlay_title.text = L10n.t("Well Done!" if collect else "目标完成") if _mode == MODE_LEVEL_COMPLETE else (L10n.t("已暂停") if _mode == MODE_PAUSED else (L10n.t("第 %d 关未通过") % level_id if adventure else L10n.t("游戏结束")))
 	_overlay_score.text = "%d / %d" % [collected, target_total] if collect and _mode == MODE_LEVEL_COMPLETE else str(score)
 	if collect:
-		_overlay_best.text = "第 %d 关  ·  总分 %d" % [level_id, score] if _mode == MODE_LEVEL_COMPLETE else "剩余  " + _target_summary(_stats, true)
+		_overlay_best.text = L10n.t("第 %d 关  ·  总分 %d") % [level_id, score] if _mode == MODE_LEVEL_COMPLETE else L10n.t("剩余  %s") % _target_summary(_stats, true)
 	else:
-		_overlay_best.text = "第 %d 关  ·  目标 %d 分" % [level_id, goal] if adventure else "最高分  %d" % high_score
+		_overlay_best.text = L10n.t("第 %d 关  ·  目标 %d 分") % [level_id, goal] if adventure else L10n.t("最高分  %d") % high_score
 	if _mode == MODE_PAUSED:
-		_overlay_stats.text = "当前连击 ×%d   ·   已消除 %d 行/列\n最近放置 +%d   消除 +%d   ·   %d 线" % [combo, total_cleared, placement_points, clear_points, clear_lines]
+		_overlay_stats.text = L10n.t("当前连击 ×%d   ·   已消除 %d 行/列\n最近放置 +%d   消除 +%d   ·   %d 线") % [combo, total_cleared, placement_points, clear_points, clear_lines]
 	else:
-		_overlay_stats.text = "消除 %d 行/列   ·   完成 %d 回合\n最近放置 +%d   消除 +%d   ·   %d 线" % [total_cleared, round_index + 1, placement_points, clear_points, clear_lines]
+		_overlay_stats.text = L10n.t("消除 %d 行/列   ·   完成 %d 回合\n最近放置 +%d   消除 +%d   ·   %d 线") % [total_cleared, round_index + 1, placement_points, clear_points, clear_lines]
 	if collect and _mode == MODE_LEVEL_COMPLETE:
-		_overlay_stats.text = "全部目标已完成\n消除 %d 行/列  ·  完成 %d 回合" % [total_cleared, round_index + 1]
+		_overlay_stats.text = L10n.t("全部目标已完成\n消除 %d 行/列  ·  完成 %d 回合") % [total_cleared, round_index + 1]
 	if _mode == MODE_LEVEL_COMPLETE:
 		if bool(_stats.get("save_failed", false)):
-			_new_record_label.text = "进度保存失败，本次运行已解锁"
+			_new_record_label.text = L10n.t("进度保存失败，本次运行已解锁")
 		else:
-			_new_record_label.text = "下一关已解锁" if bool(_stats.get("has_next_level", false)) else "恭喜完成全部 %d 关！" % int(_stats.get("total_levels", level_id))
+			_new_record_label.text = L10n.t("下一关已解锁") if bool(_stats.get("has_next_level", false)) else L10n.t("恭喜完成全部 %d 关！") % int(_stats.get("total_levels", level_id))
 	elif adventure:
-		_new_record_label.text = "再挑战一次"
+		_new_record_label.text = L10n.t("再挑战一次")
 	else:
-		_new_record_label.text = "新纪录！" if bool(_stats.get("new_record", false)) else "再来一局"
-	_playing_menu_button.tooltip_text = "返回选关" if adventure else "返回菜单"
-	_refresh_score(score, mode_changed)
+		_new_record_label.text = L10n.t("新纪录！" if bool(_stats.get("new_record", false)) else "再来一局")
+	_settings_button.tooltip_text = L10n.t("设置")
+	_pause_button.tooltip_text = L10n.t("暂停（Esc）")
+	_playing_restart_button.tooltip_text = L10n.t("重新开始（R）")
+	_playing_menu_button.tooltip_text = L10n.t("返回选关" if adventure else "返回菜单")
+	_collect_back_button.tooltip_text = L10n.t("返回选关")
+	_collect_settings_button.tooltip_text = L10n.t("暂停与设置")
+	_resume_button.tooltip_text = L10n.t("继续游戏")
+	_overlay_settings_button.text = L10n.t("设置")
+	_overlay_settings_button.tooltip_text = _overlay_settings_button.text
+	if update_score:
+		_refresh_score(score, mode_changed)
 
 func _refresh_score(score: int, mode_changed: bool) -> void:
 	var reduced_motion := bool(_stats.get("reduced_motion", false))
@@ -1633,10 +1720,11 @@ func _layout_controls() -> void:
 				_objective_rects[kinds[index]] = Rect2(center_x - target_side * 0.5, band_y, target_side, target_side)
 	var detail_y := field.position.y - 52.0
 	_detail_label.position = Vector2(stage_left, detail_y)
-	_detail_label.size = Vector2(stage_width, 24.0)
+	_detail_label.size = Vector2(stage_width, 40.0)
 	_detail_label.add_theme_font_size_override("font_size", 12 if narrow else (clampi(int(stage_width * 0.018), 14, 22) if portrait else 14))
 	if _is_collect_objective():
 		_layout_collect_hud(stage_left, stage_width)
+	_fit_hud_labels()
 	_layout_overlay()
 	_layout_notice()
 	_layout_objective_intro()
@@ -1677,14 +1765,14 @@ func _layout_mobile_controls() -> void:
 	_mode_label.add_theme_font_size_override("font_size", int(MobileLayout.dp(self, 16.0)))
 	_mode_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var score_y := _mode_label.position.y + _mode_label.size.y + MobileLayout.dp(self, 2.0)
-	var detail_y := header_height() - MobileLayout.dp(self, 22.0)
+	var detail_y := header_height() - MobileLayout.dp(self, 34.0)
 	var score_height := minf(MobileLayout.dp(self, 64.0), maxf(detail_y - score_y - MobileLayout.dp(self, 4.0), MobileLayout.dp(self, 38.0)))
 	_stats_label.add_theme_font_size_override("font_size", int(minf(MobileLayout.dp(self, 52.0), score_height * 0.78)))
 	_stats_label.position = Vector2(stage_left, score_y)
 	_stats_label.size = Vector2(stage_width, score_height)
 	_stats_label.pivot_offset = _stats_label.size * 0.5
 	_detail_label.position = Vector2(stage_left, detail_y)
-	_detail_label.size = Vector2(stage_width, MobileLayout.dp(self, 20.0))
+	_detail_label.size = Vector2(stage_width, MobileLayout.dp(self, 32.0))
 	_detail_label.add_theme_font_size_override("font_size", int(MobileLayout.dp(self, 12.0)))
 	if _is_adventure() and not _is_collect_objective():
 		# Score levels retain the integrated gauge below the navigation row.
@@ -1692,7 +1780,7 @@ func _layout_mobile_controls() -> void:
 		_mode_label.size = Vector2(maxf(stage_width - icons_width - gap, 1.0), touch)
 		_mode_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 		var badge_side := MobileLayout.dp(self, 54.0)
-		var band_y := maxf(top + touch + MobileLayout.dp(self, 12.0), header_height() - badge_side - MobileLayout.dp(self, 40.0))
+		var band_y := maxf(top + touch + MobileLayout.dp(self, 12.0), header_height() - badge_side - MobileLayout.dp(self, 56.0))
 		_current_badge = Rect2(stage_left, band_y, badge_side, badge_side)
 		_goal_badge = Rect2(stage_left + stage_width - badge_side, band_y, badge_side, badge_side)
 		var track_height := badge_side * 0.76
@@ -1700,8 +1788,8 @@ func _layout_mobile_controls() -> void:
 		_goal_label.position = Vector2(stage_left, band_y + badge_side + MobileLayout.dp(self, 2.0))
 		_goal_label.size = Vector2(stage_width, MobileLayout.dp(self, 18.0))
 		_goal_label.add_theme_font_size_override("font_size", int(MobileLayout.dp(self, 14.0)))
-		_detail_label.position.y = header_height() - MobileLayout.dp(self, 16.0)
-		_detail_label.size.y = MobileLayout.dp(self, 14.0)
+		_detail_label.position.y = header_height() - MobileLayout.dp(self, 30.0)
+		_detail_label.size.y = MobileLayout.dp(self, 28.0)
 	if _is_collect_objective():
 		_collect_navigation.position = Vector2.ZERO
 		_collect_navigation.size = _playing_root.size
@@ -1717,11 +1805,18 @@ func _layout_mobile_controls() -> void:
 		for index in range(kinds.size()):
 			var center_x := stage_left + stage_width * 0.5 + (float(index) - float(kinds.size() - 1) * 0.5) * spacing
 			_objective_rects[kinds[index]] = Rect2(center_x - target_side * 0.5, target_y, target_side, target_side)
+	_fit_hud_labels()
 	_layout_overlay()
 	_layout_notice()
 	_layout_objective_intro()
 	_progress_banner.set_playfield(field, size)
 	queue_redraw()
+
+func _fit_hud_labels() -> void:
+	var minimum := int(MobileLayout.dp(self, 10.0)) if MobileLayout.is_mobile() else 10
+	_fit_label(_mode_label, _mode_label.size.x, _mode_label.get_theme_font_size("font_size"), minimum)
+	_fit_label(_goal_label, _goal_label.size.x, _goal_label.get_theme_font_size("font_size"), minimum)
+	_fit_label(_detail_label, _detail_label.size.x, _detail_label.get_theme_font_size("font_size"), minimum, 2)
 
 func _layout_collect_hud(stage_left: float, stage_width: float) -> void:
 	_collect_navigation.position = Vector2.ZERO
@@ -1764,15 +1859,19 @@ func _layout_notice() -> void:
 	if MobileLayout.is_mobile():
 		var content := MobileLayout.safe_content_rect(self)
 		var mobile_width := minf(field.size.x, content.size.x * 0.92)
-		_notice_label.add_theme_font_size_override("font_size", int(MobileLayout.dp(self, 14.0)))
 		_notice_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		_notice_label.max_lines_visible = 2
-		_notice_label.custom_minimum_size.y = MobileLayout.dp(self, 24.0)
-		_notice.size = Vector2(maxf(mobile_width, 1.0), MobileLayout.dp(self, 36.0))
+		_fit_label(_notice_label, maxf(mobile_width - 24.0, 1.0), int(MobileLayout.dp(self, 14.0)), int(MobileLayout.dp(self, 10.0)), 2)
+		_notice_label.custom_minimum_size.y = MobileLayout.dp(self, 34.0)
+		_notice.size = Vector2(maxf(mobile_width, 1.0), MobileLayout.dp(self, 46.0))
 		_notice.position = Vector2(field.get_center().x - mobile_width * 0.5, minf(field.end.y + MobileLayout.dp(self, 4.0), content.end.y - _notice.size.y))
 		return
 	var width := minf(field.size.x, 460.0)
-	_notice.size = Vector2(maxf(width, 1.0), 40.0)
+	_notice_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_notice_label.max_lines_visible = 2
+	_fit_label(_notice_label, maxf(width - 24.0, 1.0), 15, 11, 2)
+	_notice_label.custom_minimum_size.y = 36.0
+	_notice.size = Vector2(maxf(width, 1.0), 52.0)
 	_notice.position = Vector2(field.get_center().x - width * 0.5, field.end.y + 28.0)
 
 func _layout_overlay() -> void:
@@ -1781,7 +1880,7 @@ func _layout_overlay() -> void:
 		return
 	var collect_victory := _is_collect_objective() and _mode == MODE_LEVEL_COMPLETE
 	_overlay_objective_badge.custom_minimum_size = Vector2(minf(VICTORY_HERO_SIZE.x, maxf(size.x - 80.0, 96.0)) if collect_victory else (192.0 if _is_collect_objective() else 56.0), VICTORY_HERO_SIZE.y if collect_victory else 56.0)
-	_overlay_title.custom_minimum_size = Vector2(0.0, 64.0 if collect_victory else 32.0)
+	_overlay_title.custom_minimum_size = Vector2(0.0, 64.0 if collect_victory else 56.0)
 	if collect_victory:
 		_overlay_title.add_theme_font_size_override("font_size", 32 if size.x < 420.0 else 46)
 	_overlay_title.pivot_offset = _overlay_title.size * 0.5
@@ -1789,26 +1888,41 @@ func _layout_overlay() -> void:
 	_overlay_best.custom_minimum_size = Vector2(0.0, 20.0 if collect_victory else 28.0)
 	_overlay_best.add_theme_font_size_override("font_size", 14 if collect_victory else 18)
 	_overlay_best.add_theme_color_override("font_color", MUTED if collect_victory else GOLD)
-	_overlay_stats.custom_minimum_size = Vector2(0.0, 32.0 if collect_victory else 66.0)
+	_overlay_stats.custom_minimum_size = Vector2(0.0, 32.0 if collect_victory else 80.0)
+	_overlay_stats.max_lines_visible = 2 if collect_victory else 4
 	_overlay_stats.add_theme_font_size_override("font_size", 12 if collect_victory else 16)
 	var save_warning := collect_victory and bool(_stats.get("save_failed", false))
 	_new_record_label.custom_minimum_size = Vector2(0.0, (48.0 if size.x < 420.0 else 26.0) if save_warning else (22.0 if collect_victory else 24.0))
 	_new_record_label.add_theme_font_size_override("font_size", 16 if save_warning else (14 if collect_victory else 18))
 	_new_record_label.add_theme_color_override("font_color", Color("#ffc586") if save_warning else (MUTED if collect_victory else GOLD))
-	_new_record_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART if save_warning else TextServer.AUTOWRAP_OFF
-	_new_record_label.max_lines_visible = 2 if save_warning else 1
+	_new_record_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_new_record_label.max_lines_visible = 3 if save_warning else 2
 	_overlay_buttons.custom_minimum_size = Vector2(0.0, MIN_BUTTON_HEIGHT)
 	_overlay_secondary_buttons.custom_minimum_size = Vector2(0.0, 40.0 if collect_victory else MIN_BUTTON_HEIGHT)
 	var card_width := minf(VICTORY_CARD_WIDTH if collect_victory else (540.0 if _mode == MODE_LEVEL_COMPLETE else 480.0), maxf(size.x - 32.0, 240.0))
 	var card_height := (438.0 if _is_collect_objective() else 376.0) if _mode == MODE_PAUSED else (VICTORY_CARD_HEIGHT if collect_victory else (492.0 if _mode == MODE_LEVEL_COMPLETE else 428.0))
 	var short_labels := card_width < 420.0
-	_resume_button.text = "继续" if short_labels else "继续游戏"
-	_next_level_button.text = "下一关" if bool(_stats.get("has_next_level", false)) else "全部通关"
-	_next_level_button.tooltip_text = "开始下一关" if bool(_stats.get("has_next_level", false)) else "已通过所有关卡"
-	_overlay_restart_button.text = ("重玩" if short_labels else "重玩本关") if _is_adventure() else ("重开" if short_labels else "重新开始")
-	_overlay_menu_button.text = ("选关" if short_labels else "返回选关") if _is_adventure() else ("菜单" if short_labels else "返回菜单")
-	_overlay_restart_button.tooltip_text = "重玩本关" if _is_adventure() else "重新开始"
-	_overlay_menu_button.tooltip_text = "返回选关" if _is_adventure() else "返回菜单"
+	_resume_button.text = L10n.t("继续" if short_labels else "继续游戏")
+	_next_level_button.text = L10n.t("下一关" if bool(_stats.get("has_next_level", false)) else "全部通关")
+	_next_level_button.tooltip_text = L10n.t("开始下一关" if bool(_stats.get("has_next_level", false)) else "已通过所有关卡")
+	_overlay_restart_button.text = L10n.t(("重玩" if short_labels else "重玩本关") if _is_adventure() else ("重开" if short_labels else "重新开始"))
+	_overlay_menu_button.text = L10n.t(("选关" if short_labels else "返回选关") if _is_adventure() else ("菜单" if short_labels else "返回菜单"))
+	_overlay_restart_button.tooltip_text = L10n.t("重玩本关" if _is_adventure() else "重新开始")
+	_overlay_menu_button.tooltip_text = L10n.t("返回选关" if _is_adventure() else "返回菜单")
+	var panel := _card.get_theme_stylebox("panel")
+	var inner_width := maxf(card_width - panel.get_content_margin(SIDE_LEFT) - panel.get_content_margin(SIDE_RIGHT), 1.0)
+	_fit_label(_overlay_title, inner_width, (32 if size.x < 420.0 else 46) if collect_victory else 24, 16, 1 if collect_victory else 2)
+	_overlay_best.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_overlay_best.max_lines_visible = 3 if _is_collect_objective() and not collect_victory else 2
+	if _is_collect_objective() and not collect_victory:
+		_overlay_best.custom_minimum_size.y = 54.0
+	_fit_label(_overlay_best, inner_width, 14 if collect_victory else 18, 11, _overlay_best.max_lines_visible)
+	_fit_label(_overlay_stats, inner_width, 12 if collect_victory else 16, 11, _overlay_stats.max_lines_visible)
+	_fit_label(_new_record_label, inner_width, 16 if save_warning else (14 if collect_victory else 18), 11, _new_record_label.max_lines_visible)
+	for label: Label in [_overlay_best, _overlay_stats, _new_record_label]:
+		label.custom_minimum_size.y = maxf(label.custom_minimum_size.y, _multiline_label_height(label, inner_width))
+	for button: Button in [_resume_button, _next_level_button, _overlay_restart_button, _overlay_menu_button, _overlay_settings_button]:
+		_fit_action_button(button)
 	var viewport_height := minf(card_height, maxf(size.y - 24.0, 1.0))
 	_card_viewport.size = Vector2(card_width, viewport_height)
 	_card_viewport.position = Vector2((size.x - card_width) * 0.5, maxf((size.y - viewport_height) * 0.5, 12.0))
@@ -1831,35 +1945,38 @@ func _layout_mobile_overlay() -> void:
 		row.custom_minimum_size = Vector2(0.0, touch)
 	# Three native buttons fit the portrait card without reducing their touch
 	# targets; concise labels leave room for the mobile font and focus outline.
-	_resume_button.text = "继续游戏"
-	_next_level_button.text = "下一关" if bool(_stats.get("has_next_level", false)) else "全部通关"
-	_next_level_button.tooltip_text = "开始下一关" if bool(_stats.get("has_next_level", false)) else "已通过所有关卡"
-	_overlay_restart_button.text = "重玩本关" if _is_adventure() else "重新开始"
-	_overlay_menu_button.text = "返回选关" if _is_adventure() else "返回菜单"
+	_resume_button.text = L10n.t("继续游戏")
+	_next_level_button.text = L10n.t("下一关" if bool(_stats.get("has_next_level", false)) else "全部通关")
+	_next_level_button.tooltip_text = L10n.t("开始下一关" if bool(_stats.get("has_next_level", false)) else "已通过所有关卡")
+	_overlay_restart_button.text = L10n.t("重玩本关" if _is_adventure() else "重新开始")
+	_overlay_menu_button.text = L10n.t("返回选关" if _is_adventure() else "返回菜单")
 	_overlay_restart_button.tooltip_text = _overlay_restart_button.text
 	_overlay_menu_button.tooltip_text = _overlay_menu_button.text
 	for button: Button in [_resume_button, _next_level_button, _overlay_restart_button, _overlay_menu_button, _overlay_settings_button]:
 		button.custom_minimum_size = Vector2(touch, touch)
 		button.add_theme_font_size_override("font_size", int(MobileLayout.dp(self, 14.0)))
-		button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	_overlay_title.custom_minimum_size = Vector2(0.0, MobileLayout.dp(self, 42.0))
-	_overlay_title.add_theme_font_size_override("font_size", int(MobileLayout.dp(self, 30.0 if collect_victory else 24.0)))
+		_fit_action_button(button)
+	_overlay_title.custom_minimum_size = Vector2(0.0, MobileLayout.dp(self, 42.0 if collect_victory else 56.0))
+	_fit_label(_overlay_title, inner_width, int(MobileLayout.dp(self, 30.0 if collect_victory else 24.0)), int(MobileLayout.dp(self, 16.0)), 1 if collect_victory else 2)
 	_overlay_title.pivot_offset = _overlay_title.size * 0.5
 	_overlay_score.custom_minimum_size = Vector2(0.0, MobileLayout.dp(self, 72.0))
 	_overlay_score.add_theme_font_size_override("font_size", int(MobileLayout.dp(self, 52.0)))
 	_overlay_best.custom_minimum_size = Vector2(0.0, MobileLayout.dp(self, 28.0 if collect_victory else (54.0 if _is_collect_objective() else 28.0)))
-	_overlay_best.add_theme_font_size_override("font_size", int(MobileLayout.dp(self, 16.0)))
+	_fit_label(_overlay_best, inner_width, int(MobileLayout.dp(self, 16.0)), int(MobileLayout.dp(self, 11.0)), 3)
 	_overlay_best.add_theme_color_override("font_color", MUTED if collect_victory else GOLD)
 	_overlay_best.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_overlay_best.max_lines_visible = 3
-	_overlay_stats.custom_minimum_size = Vector2(0.0, MobileLayout.dp(self, 66.0))
-	_overlay_stats.add_theme_font_size_override("font_size", int(MobileLayout.dp(self, 14.0)))
+	_overlay_stats.custom_minimum_size = Vector2(0.0, MobileLayout.dp(self, 66.0 if collect_victory else 80.0))
+	_overlay_stats.max_lines_visible = 2 if collect_victory else 4
+	_fit_label(_overlay_stats, inner_width, int(MobileLayout.dp(self, 14.0)), int(MobileLayout.dp(self, 10.0)), _overlay_stats.max_lines_visible)
 	var save_warning := collect_victory and bool(_stats.get("save_failed", false))
 	_new_record_label.custom_minimum_size = Vector2(0.0, MobileLayout.dp(self, 42.0 if save_warning else 26.0))
-	_new_record_label.add_theme_font_size_override("font_size", int(MobileLayout.dp(self, 14.0)))
+	_fit_label(_new_record_label, inner_width, int(MobileLayout.dp(self, 14.0)), int(MobileLayout.dp(self, 10.0)), 3 if save_warning else 2)
 	_new_record_label.add_theme_color_override("font_color", Color("#ffc586") if save_warning else (MUTED if collect_victory else GOLD))
 	_new_record_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_new_record_label.max_lines_visible = 2
+	_new_record_label.max_lines_visible = 3 if save_warning else 2
+	for label: Label in [_overlay_best, _overlay_stats, _new_record_label]:
+		label.custom_minimum_size.y = maxf(label.custom_minimum_size.y, _multiline_label_height(label, inner_width))
 	if collect_victory:
 		_overlay_objective_badge.custom_minimum_size = Vector2(minf(inner_width, MobileLayout.dp(self, 260.0)), MobileLayout.dp(self, 160.0))
 		var clear_panel := StyleBoxEmpty.new()

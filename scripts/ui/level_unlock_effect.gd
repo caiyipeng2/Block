@@ -5,6 +5,7 @@ signal frame_changed(elapsed: float)
 signal finished
 
 const BlockArt = preload("res://scripts/ui/block_art.gd")
+const L10n := preload("res://scripts/localization/game_locale.gd")
 const LAND_TIME := 1.55
 const UNLOCK_TIME := 1.67
 const DURATION := 2.20
@@ -32,6 +33,10 @@ func _ready() -> void:
 
 func _exit_tree() -> void:
 	cancel()
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_TRANSLATION_CHANGED and is_node_ready():
+		queue_redraw()
 
 func play(completed_level: int, next_level: int, completed_rect: Rect2, next_rect: Rect2, map_viewport: Rect2) -> void:
 	cancel()
@@ -121,8 +126,8 @@ func _draw_banner(alpha: float) -> void:
 	draw_line(bottom_left, band.end, Color(0.12, 0.24, 0.52, alpha), 2.0, true)
 	var title_size := int(clampf(band.size.y * 0.215, 12.0, 29.0))
 	var subtitle_size := int(clampf(band.size.y * 0.118, 9.0, 16.0))
-	_draw_centered("第 %d 关完成" % _completed_level, band.get_center() + Vector2(0.0, -band.size.y * 0.31), title_size, Color(0.97, 0.99, 1.0, alpha))
-	var subtitle := "解锁第 %d 关" % _next_level if _next_level > _completed_level else "全部关卡已完成"
+	_draw_centered(L10n.t("第 %d 关完成") % _completed_level, band.get_center() + Vector2(0.0, -band.size.y * 0.31), title_size, Color(0.97, 0.99, 1.0, alpha))
+	var subtitle := L10n.t("解锁第 %d 关") % _next_level if _next_level > _completed_level else L10n.t("全部关卡已完成")
 	_draw_centered(subtitle, band.get_center() + Vector2(0.0, band.size.y * 0.39), subtitle_size, Color(0.80, 0.93, 1.0, alpha))
 
 func _draw_centered(message: String, center: Vector2, font_size: int, color: Color) -> void:

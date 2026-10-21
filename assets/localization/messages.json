@@ -1,0 +1,806 @@
+{
+  "放置位置无效": {
+    "en": "Invalid placement",
+    "fr": "Placement impossible"
+  },
+  "这里放不下，再试一个位置": {
+    "en": "It won't fit here. Try another spot.",
+    "fr": "Pas assez de place ici. Essayez ailleurs."
+  },
+  "放置 +%d   清除 +%d   合计 +%d   清除 %d 行/列   连击 x%d": {
+    "en": "Place +%d   Clear +%d   Total +%d   %d rows/columns cleared   Combo x%d",
+    "fr": "Pose +%d   Effacement +%d   Total +%d   %d lignes/colonnes effacées   Combo x%d"
+  },
+  "新纪录！继续挑战": {
+    "en": "New best! Keep going!",
+    "fr": "Nouveau record ! Continuez !"
+  },
+  "第 %d 关初始配置无法用于当前棋盘：%s": {
+    "en": "Level %d setup is incompatible with the current board: %s",
+    "fr": "La configuration du niveau %d est incompatible avec la grille actuelle : %s"
+  },
+  "配置错误": {
+    "en": "Configuration error",
+    "fr": "Erreur de configuration"
+  },
+  "拖动方块到棋盘": {
+    "en": "Drag blocks onto the board",
+    "fr": "Glissez les blocs sur la grille"
+  },
+  "拖动方块，填满一行或一列": {
+    "en": "Drag blocks to fill a row or column",
+    "fr": "Glissez les blocs pour remplir une ligne ou une colonne"
+  },
+  "进度保存失败，仅本次运行有效": {
+    "en": "Progress couldn't be saved. It will last for this session only.",
+    "fr": "Progression non enregistrée. Elle sera conservée pour cette session uniquement."
+  },
+  "另有错误，请查看 Godot 输出。": {
+    "en": "There are more errors. Check the Godot output.",
+    "fr": "D'autres erreurs sont présentes. Consultez la sortie de Godot."
+  },
+  "关卡配置错误": {
+    "en": "Level configuration error",
+    "fr": "Erreur de configuration des niveaux"
+  },
+  "知道了": {
+    "en": "OK",
+    "fr": "OK"
+  },
+  "闯关配置未生效：\n\n%s\n\n请修正 config/adventure_levels.csv 后重新进入选关页。": {
+    "en": "Adventure configuration could not be loaded:\n\n%s\n\nFix config/adventure_levels.csv, then reopen the level selection screen.",
+    "fr": "La configuration du mode Aventure n'a pas pu être chargée :\n\n%s\n\nCorrigez config/adventure_levels.csv, puis rouvrez la sélection des niveaux."
+  },
+  "继续游戏": {
+    "en": "Resume",
+    "fr": "Reprendre"
+  },
+  "暂不退出": {
+    "en": "Keep playing",
+    "fr": "Continuer à jouer"
+  },
+  "退出游戏": {
+    "en": "Quit game",
+    "fr": "Quitter le jeu"
+  },
+  "确定退出游戏吗？\n最高分、通关记录和设置会保留。": {
+    "en": "Quit the game?\nYour best score, completed levels and settings will be kept.",
+    "fr": "Quitter le jeu ?\nVotre record, les niveaux terminés et vos réglages seront conservés."
+  },
+  "\n本局棋盘不会保存。": {
+    "en": "\nYour current board will not be saved.",
+    "fr": "\nLa grille en cours ne sera pas enregistrée."
+  },
+  "确定退出": {
+    "en": "Quit",
+    "fr": "Quitter"
+  },
+  "重新开始": {
+    "en": "Restart",
+    "fr": "Recommencer"
+  },
+  "重新开始会清空当前棋盘和本局分数。\n最高分和设置会保留。": {
+    "en": "Restarting will clear this board and your current score.\nYour best score and settings will be kept.",
+    "fr": "Recommencer effacera la grille et le score de cette partie.\nVotre record et vos réglages seront conservés."
+  },
+  "选关": {
+    "en": "Levels",
+    "fr": "Niveaux"
+  },
+  "菜单": {
+    "en": "Menu",
+    "fr": "Menu"
+  },
+  "返回": {
+    "en": "Back",
+    "fr": "Retour"
+  },
+  "返回%s后，本局棋盘不会保存。\n最高分、通关记录和设置会保留。": {
+    "en": "Returning to %s will discard this board.\nYour best score, completed levels and settings will be kept.",
+    "fr": "Retour vers %s : la grille en cours ne sera pas enregistrée.\nVotre record, les niveaux terminés et vos réglages seront conservés."
+  },
+  "确定返回": {
+    "en": "Go back",
+    "fr": "Revenir"
+  },
+  "确定返回选关": {
+    "en": "Return to levels",
+    "fr": "Revenir aux niveaux"
+  },
+  "确定返回菜单": {
+    "en": "Return to menu",
+    "fr": "Revenir au menu"
+  },
+  "返回选关后，本局棋盘不会保存。\n最高分、通关记录和设置会保留。": {
+    "en": "Returning to level selection will discard this board.\nYour best score, completed levels and settings will be kept.",
+    "fr": "Revenir à la sélection des niveaux effacera la grille en cours.\nVotre record, les niveaux terminés et vos réglages seront conservés."
+  },
+  "返回菜单后，本局棋盘不会保存。\n最高分、通关记录和设置会保留。": {
+    "en": "Returning to the menu will discard this board.\nYour best score, completed levels and settings will be kept.",
+    "fr": "Revenir au menu effacera la grille en cours.\nVotre record, les niveaux terminés et vos réglages seront conservés."
+  },
+  "保存失败，进度、最高分和设置仅本次生效。": {
+    "en": "Save failed. Progress, best score and settings will last for this session only.",
+    "fr": "Échec de l'enregistrement. La progression, le record et les réglages seront conservés pour cette session uniquement."
+  },
+  "新的三块，继续！": {
+    "en": "Three new blocks. Keep going!",
+    "fr": "Trois nouveaux blocs. Continuez !"
+  },
+  "选择一块，拖到棋盘": {
+    "en": "Pick a block and drag it onto the board",
+    "fr": "Choisissez un bloc et glissez-le sur la grille"
+  },
+  "松开放置": {
+    "en": "Release to place",
+    "fr": "Relâchez pour poser"
+  },
+  "%s：无法读取关卡配置（文件错误码 %d）": {
+    "en": "%s: cannot read level configuration (file error code %d)",
+    "fr": "%s : lecture de la configuration des niveaux impossible (code d'erreur de fichier %d)"
+  },
+  "%s：文件不是 UTF-8 编码。请在 Excel/WPS 中另存为 CSV UTF-8（逗号分隔），不要选择普通 CSV/ANSI。": {
+    "en": "%s: the file is not UTF-8 encoded. In Excel/WPS, save it as CSV UTF-8 (comma delimited), not standard CSV/ANSI.",
+    "fr": "%s : le fichier n'est pas encodé en UTF-8. Dans Excel/WPS, enregistrez-le au format CSV UTF-8 (séparé par des virgules), et non au format CSV/ANSI standard."
+  },
+  "内存配置": {
+    "en": "In-memory configuration",
+    "fr": "Configuration en mémoire"
+  },
+  "字段数为 %d，应为 %d；请检查逗号和双引号": {
+    "en": "found %d fields; expected %d. Check commas and double quotes",
+    "fr": "%d champs trouvés au lieu de %d ; vérifiez les virgules et les guillemets doubles"
+  },
+  "关卡 %d 重复，首次出现于 CSV 行 %d": {
+    "en": "duplicate level %d; first appears on CSV row %d",
+    "fr": "niveau %d en double ; première occurrence à la ligne CSV %d"
+  },
+  "表头": {
+    "en": "Header",
+    "fr": "En-tête"
+  },
+  "配置文件为空，需要表头和 96 个关卡": {
+    "en": "configuration file is empty; a header and 96 levels are required",
+    "fr": "le fichier de configuration est vide ; un en-tête et 96 niveaux sont requis"
+  },
+  "需要 %d 行关卡配置，实际为 %d 行": {
+    "en": "expected %d level rows; found %d",
+    "fr": "%d lignes de niveaux requises ; %d trouvées"
+  },
+  "缺少关卡：%s": {
+    "en": "missing levels: %s",
+    "fr": "niveaux manquants : %s"
+  },
+  "表头重复": {
+    "en": "duplicate header",
+    "fr": "en-tête en double"
+  },
+  "未知列名；列名必须与配置说明一致且不能包含额外空格": {
+    "en": "unknown column name; names must match the configuration guide exactly, without extra spaces",
+    "fr": "nom de colonne inconnu ; les noms doivent correspondre exactement au guide de configuration, sans espaces supplémentaires"
+  },
+  "缺少必需列": {
+    "en": "required column missing",
+    "fr": "colonne obligatoire manquante"
+  },
+  "难度名称不能为空，例如：入门、挑战": {
+    "en": "difficulty label cannot be empty; for example: Beginner, Challenge",
+    "fr": "le nom de la difficulté est obligatoire ; exemples : Débutant, Défi"
+  },
+  "仅支持 score（分数）或 collect（收集）": {
+    "en": "only score (score target) or collect (collection target) is supported",
+    "fr": "seuls score (objectif de points) et collect (objectif de collecte) sont acceptés"
+  },
+  "第 1–2 关必须为 score，第 3–96 关必须为 collect": {
+    "en": "levels 1–2 must use score; levels 3–96 must use collect",
+    "fr": "les niveaux 1–2 doivent utiliser score ; les niveaux 3–96 doivent utiliser collect"
+  },
+  "分数关目标须为 1–1000000": {
+    "en": "score target must be 1–1000000",
+    "fr": "l'objectif de points doit être compris entre 1 et 1000000"
+  },
+  "分数关不配置收集数量": {
+    "en": "score levels must not specify collection quantities",
+    "fr": "les niveaux à points ne doivent pas définir de quantités à collecter"
+  },
+  "分数关须使用 random": {
+    "en": "score levels must use random",
+    "fr": "les niveaux à points doivent utiliser random"
+  },
+  "分数关镜像须为 0": {
+    "en": "score levels must have mirror set to 0",
+    "fr": "les niveaux à points doivent avoir mirror défini sur 0"
+  },
+  "分数关初始标记须为 0": {
+    "en": "score levels must have initial_markers set to 0",
+    "fr": "les niveaux à points doivent avoir initial_markers défini sur 0"
+  },
+  "分数关初始占格数须为 1–63": {
+    "en": "score levels must start with 1–63 occupied cells",
+    "fr": "les niveaux à points doivent commencer avec 1 à 63 cases occupées"
+  },
+  "收集关目标分数须为 0": {
+    "en": "collection levels must have target_score set to 0",
+    "fr": "les niveaux de collecte doivent avoir target_score défini sur 0"
+  },
+  "收集关占格由模板决定，initial_fill 须为 0": {
+    "en": "collection level cells are defined by the template; initial_fill must be 0",
+    "fr": "les cases occupées des niveaux de collecte sont définies par le modèle ; initial_fill doit être égal à 0"
+  },
+  "收集关至少一种目标数量须大于 0": {
+    "en": "collection levels need at least one target quantity greater than 0",
+    "fr": "les niveaux de collecte doivent avoir au moins une quantité cible supérieure à 0"
+  },
+  "收集关仅支持 wings、heart、ring、steps、butterfly": {
+    "en": "collection levels only support wings, heart, ring, steps and butterfly",
+    "fr": "les niveaux de collecte acceptent uniquement wings, heart, ring, steps et butterfly"
+  },
+  "%s 模板最多有 %d 个占格，初始标记不能超过该值": {
+    "en": "the %s template has at most %d occupied cells; initial markers cannot exceed this number",
+    "fr": "le modèle %s contient au maximum %d cases occupées ; le nombre de marqueurs initiaux ne peut pas dépasser cette valeur"
+  },
+  "须填写 %d–%d 的整数，不能留空或使用小数": {
+    "en": "enter an integer from %d–%d; blanks and decimals are not allowed",
+    "fr": "saisissez un entier de %d à %d ; les champs vides et les décimales ne sont pas autorisés"
+  },
+  "数值 %s 超出范围 %d–%d": {
+    "en": "value %s is outside the range %d–%d",
+    "fr": "la valeur %s est hors de l'intervalle %d–%d"
+  },
+  "须填写 %s–%s 的有限数字": {
+    "en": "enter a finite number from %s–%s",
+    "fr": "saisissez un nombre fini de %s à %s"
+  },
+  "数值 %s 超出有限范围 %s–%s": {
+    "en": "value %s is outside the finite range %s–%s",
+    "fr": "la valeur %s est hors de l'intervalle fini %s–%s"
+  },
+  "字段内不能换行；请将说明写在同一行": {
+    "en": "fields cannot contain line breaks; keep each note on one line",
+    "fr": "les champs ne peuvent pas contenir de saut de ligne ; écrivez chaque note sur une seule ligne"
+  },
+  "闭合双引号后只能出现逗号或行尾": {
+    "en": "only a comma or end of line may follow a closing double quote",
+    "fr": "un guillemet double fermant doit être suivi d'une virgule ou d'une fin de ligne"
+  },
+  "未加引号的字段中出现双引号；请用双引号包围字段并将内部双引号写成两个": {
+    "en": "double quote found in an unquoted field; enclose the field in double quotes and double any quotes inside it",
+    "fr": "guillemet double dans un champ non délimité ; entourez le champ de guillemets doubles et doublez les guillemets internes"
+  },
+  "双引号未闭合；字段内不能换行": {
+    "en": "unclosed double quote; fields cannot contain line breaks",
+    "fr": "guillemet double non fermé ; les champs ne peuvent pas contenir de saut de ligne"
+  },
+  "%s，CSV 行 %d，列「%s」：%s": {
+    "en": "%s, CSV row %d, column '%s': %s",
+    "fr": "%s, ligne CSV %d, colonne « %s » : %s"
+  },
+  "%s：另有 %d 项配置错误未列出，请修正后重新读取": {
+    "en": "%s: %d more configuration errors are not listed; fix them and reload",
+    "fr": "%s : %d autres erreurs de configuration ne sont pas affichées ; corrigez-les puis rechargez le fichier"
+  },
+  "双翼": {
+    "en": "Wings",
+    "fr": "Ailes"
+  },
+  "心形": {
+    "en": "Heart",
+    "fr": "Cœur"
+  },
+  "星环": {
+    "en": "Star ring",
+    "fr": "Anneau étoilé"
+  },
+  "阶梯": {
+    "en": "Steps",
+    "fr": "Escalier"
+  },
+  "斜蝶": {
+    "en": "Tilted butterfly",
+    "fr": "Papillon incliné"
+  },
+  "蓝色宝石": {
+    "en": "Blue gem",
+    "fr": "Gemme bleue"
+  },
+  "金色宝石": {
+    "en": "Gold gem",
+    "fr": "Gemme dorée"
+  },
+  "黄星": {
+    "en": "Yellow star",
+    "fr": "Étoile jaune"
+  },
+  "红星": {
+    "en": "Red star",
+    "fr": "Étoile rouge"
+  },
+  "经典模式": {
+    "en": "Classic",
+    "fr": "Classique"
+  },
+  "闯关模式": {
+    "en": "Adventure",
+    "fr": "Aventure"
+  },
+  "自由模式": {
+    "en": "Free Play",
+    "fr": "Libre"
+  },
+  "关卡配置不可用": {
+    "en": "Level configuration unavailable",
+    "fr": "Configuration des niveaux indisponible"
+  },
+  "%s %d 个": {
+    "en": "%s ×%d",
+    "fr": "%s ×%d"
+  },
+  "目标 %d 分": {
+    "en": "Target: %d points",
+    "fr": "Objectif : %d points"
+  },
+  "确认离开": {
+    "en": "Leave game?",
+    "fr": "Quitter la partie ?"
+  },
+  "离开后，本局棋盘不会保存。": {
+    "en": "Your current board will not be saved if you leave.",
+    "fr": "Si vous partez, la grille en cours ne sera pas enregistrée."
+  },
+  "确定离开": {
+    "en": "Leave",
+    "fr": "Quitter"
+  },
+  "取消，继续游戏": {
+    "en": "Cancel and resume",
+    "fr": "Annuler et reprendre"
+  },
+  "蓝色钻石": {
+    "en": "Blue diamond",
+    "fr": "Diamant bleu"
+  },
+  "黄色星星": {
+    "en": "Yellow star",
+    "fr": "Étoile jaune"
+  },
+  "红星宝石": {
+    "en": "Red star gem",
+    "fr": "Gemme étoile rouge"
+  },
+  "收集目标": {
+    "en": "Collection goals",
+    "fr": "Objectifs de collecte"
+  },
+  "第 %d 关": {
+    "en": "Level %d",
+    "fr": "Niveau %d"
+  },
+  "清除带标记的方块，收集全部目标": {
+    "en": "Clear marked blocks to collect every target",
+    "fr": "Effacez les blocs marqués pour tout collecter"
+  },
+  "设置": {
+    "en": "Settings",
+    "fr": "Réglages"
+  },
+  "暂停（Esc）": {
+    "en": "Pause (Esc)",
+    "fr": "Pause (Échap)"
+  },
+  "重新开始（R）": {
+    "en": "Restart (R)",
+    "fr": "Recommencer (R)"
+  },
+  "返回菜单": {
+    "en": "Main menu",
+    "fr": "Menu"
+  },
+  "返回选关": {
+    "en": "Levels",
+    "fr": "Niveaux"
+  },
+  "暂停与设置": {
+    "en": "Pause and settings",
+    "fr": "Pause et réglages"
+  },
+  "暂停": {
+    "en": "Pause",
+    "fr": "Pause"
+  },
+  "下一关": {
+    "en": "Next level",
+    "fr": "Niveau suivant"
+  },
+  "开始下一关": {
+    "en": "Start next level",
+    "fr": "Lancer le niveau suivant"
+  },
+  "开始挑战": {
+    "en": "Play",
+    "fr": "Jouer"
+  },
+  "点击或按任意确认键跳过": {
+    "en": "Click or press a confirm key to skip",
+    "fr": "Cliquez ou appuyez sur une touche de validation pour passer"
+  },
+  "点击屏幕跳过": {
+    "en": "Tap to skip",
+    "fr": "Touchez pour passer"
+  },
+  "收集全部目标  ·  剩余 %d": {
+    "en": "Collect all targets  ·  %d left",
+    "fr": "Tout collecter  ·  Reste : %d"
+  },
+  "第 %d 关 · 目标 %d 分": {
+    "en": "Level %d · Target: %d points",
+    "fr": "Niveau %d · Objectif : %d points"
+  },
+  "最高分：%d": {
+    "en": "Best: %d",
+    "fr": "Record : %d"
+  },
+  "放置 +%d  ·  消除 +%d  ·  %d 线": {
+    "en": "Place +%d  ·  Clear +%d  ·  %d lines",
+    "fr": "Pose +%d  ·  Effacement +%d  ·  %d lignes"
+  },
+  "  ·  连击 ×%d": {
+    "en": "  ·  Combo ×%d",
+    "fr": "  ·  Combo ×%d"
+  },
+  "总分 %d  ·  ": {
+    "en": "Score %d  ·  ",
+    "fr": "Score %d  ·  "
+  },
+  "总分 %d  ·  %s": {
+    "en": "Score %d  ·  %s",
+    "fr": "Score %d  ·  %s"
+  },
+  "目标完成": {
+    "en": "Goal reached!",
+    "fr": "Objectif atteint !"
+  },
+  "已暂停": {
+    "en": "Paused",
+    "fr": "En pause"
+  },
+  "第 %d 关未通过": {
+    "en": "Level %d failed",
+    "fr": "Niveau %d échoué"
+  },
+  "游戏结束": {
+    "en": "Game over",
+    "fr": "Partie terminée"
+  },
+  "第 %d 关  ·  总分 %d": {
+    "en": "Level %d  ·  Score %d",
+    "fr": "Niveau %d  ·  Score %d"
+  },
+  "剩余  ": {
+    "en": "Left  ",
+    "fr": "Reste  "
+  },
+  "剩余  %s": {
+    "en": "Left  %s",
+    "fr": "Reste  %s"
+  },
+  "第 %d 关  ·  目标 %d 分": {
+    "en": "Level %d  ·  Target: %d points",
+    "fr": "Niveau %d  ·  Objectif : %d points"
+  },
+  "最高分  %d": {
+    "en": "Best  %d",
+    "fr": "Record  %d"
+  },
+  "当前连击 ×%d   ·   已消除 %d 行/列\n最近放置 +%d   消除 +%d   ·   %d 线": {
+    "en": "Combo ×%d   ·   %d rows/columns cleared\nLast placement +%d   Clear +%d   ·   %d lines",
+    "fr": "Combo ×%d   ·   %d lignes/colonnes effacées\nDernière pose +%d   Effacement +%d   ·   %d lignes"
+  },
+  "消除 %d 行/列   ·   完成 %d 回合\n最近放置 +%d   消除 +%d   ·   %d 线": {
+    "en": "%d rows/columns cleared   ·   %d turns played\nLast placement +%d   Clear +%d   ·   %d lines",
+    "fr": "%d lignes/colonnes effacées   ·   %d tours joués\nDernière pose +%d   Effacement +%d   ·   %d lignes"
+  },
+  "全部目标已完成\n消除 %d 行/列  ·  完成 %d 回合": {
+    "en": "All targets collected\n%d rows/columns cleared  ·  %d turns played",
+    "fr": "Tous les objectifs sont atteints\n%d lignes/colonnes effacées  ·  %d tours joués"
+  },
+  "进度保存失败，本次运行已解锁": {
+    "en": "Progress not saved; unlocked for this session",
+    "fr": "Progression non enregistrée ; déverrouillé pour cette session"
+  },
+  "下一关已解锁": {
+    "en": "Next level unlocked",
+    "fr": "Niveau suivant déverrouillé"
+  },
+  "恭喜完成全部 %d 关！": {
+    "en": "Congratulations! All %d levels complete!",
+    "fr": "Bravo ! Vous avez terminé les %d niveaux !"
+  },
+  "再挑战一次": {
+    "en": "Try again",
+    "fr": "Réessayer"
+  },
+  "新纪录！": {
+    "en": "New best!",
+    "fr": "Nouveau record !"
+  },
+  "再来一局": {
+    "en": "Play again",
+    "fr": "Rejouer"
+  },
+  "继续": {
+    "en": "Continue",
+    "fr": "Continuer"
+  },
+  "全部通关": {
+    "en": "All levels complete",
+    "fr": "Tous les niveaux terminés"
+  },
+  "已通过所有关卡": {
+    "en": "You've completed every level",
+    "fr": "Vous avez terminé tous les niveaux"
+  },
+  "重玩": {
+    "en": "Replay",
+    "fr": "Rejouer"
+  },
+  "重玩本关": {
+    "en": "Replay level",
+    "fr": "Rejouer ce niveau"
+  },
+  "重开": {
+    "en": "Restart",
+    "fr": "Recommencer"
+  },
+  "返回主菜单": {
+    "en": "Main menu",
+    "fr": "Menu principal"
+  },
+  "逐关挑战，点亮你的方块地图": {
+    "en": "Beat each level and light up your block map",
+    "fr": "Terminez les niveaux et illuminez votre carte de blocs"
+  },
+  "第 %d 关%s": {
+    "en": "Level %d%s",
+    "fr": "Niveau %d%s"
+  },
+  " · 尚未解锁": {
+    "en": " · Locked",
+    "fr": " · Verrouillé"
+  },
+  " · 已通关": {
+    "en": " · Complete",
+    "fr": " · Terminé"
+  },
+  "已通关 %d / %d": {
+    "en": "Completed %d / %d",
+    "fr": "Terminés : %d / %d"
+  },
+  "开始第 %d 关": {
+    "en": "Level %d",
+    "fr": "Niveau %d"
+  },
+  "第 %d 关完成": {
+    "en": "Level %d complete",
+    "fr": "Niveau %d terminé"
+  },
+  "解锁第 %d 关": {
+    "en": "Level %d unlocked",
+    "fr": "Niveau %d déverrouillé"
+  },
+  "全部关卡已完成": {
+    "en": "All levels complete!",
+    "fr": "Tous les niveaux sont terminés !"
+  },
+  "游戏设置": {
+    "en": "Settings",
+    "fr": "Réglages"
+  },
+  "点击或按 Enter 跳过": {
+    "en": "Click or press Enter to skip",
+    "fr": "Cliquez ou appuyez sur Entrée pour passer"
+  },
+  "轻触屏幕跳过": {
+    "en": "Tap to skip",
+    "fr": "Touchez pour passer"
+  },
+  "音效": {
+    "en": "Sound effects",
+    "fr": "Effets sonores"
+  },
+  "背景音乐": {
+    "en": "Music",
+    "fr": "Musique"
+  },
+  "画面震动": {
+    "en": "Screen shake",
+    "fr": "Secousses"
+  },
+  "减少动画": {
+    "en": "Reduced motion",
+    "fr": "Animations réduites"
+  },
+  "返回游戏": {
+    "en": "Resume",
+    "fr": "Reprendre"
+  },
+  "返回关卡": {
+    "en": "Levels",
+    "fr": "Niveaux"
+  },
+  "试听一次消除音效": {
+    "en": "Preview a line-clear sound",
+    "fr": "Écouter un effet d'effacement"
+  },
+  "开启音效后可以试听": {
+    "en": "Enable sound effects to preview",
+    "fr": "Activez les effets sonores pour les écouter"
+  },
+  "设置自动保存": {
+    "en": "Settings save automatically",
+    "fr": "Réglages enregistrés automatiquement"
+  },
+  "关闭设置": {
+    "en": "Close settings",
+    "fr": "Fermer les réglages"
+  },
+  "试听音效": {
+    "en": "Test sound",
+    "fr": "Tester le son"
+  },
+  "开启或关闭游戏音效": {
+    "en": "Turn game sound effects on or off",
+    "fr": "Activer ou désactiver les effets sonores du jeu"
+  },
+  "开启或关闭背景音乐": {
+    "en": "Turn background music on or off",
+    "fr": "Activer ou désactiver la musique"
+  },
+  "消除时棋盘轻震；减少动画开启后不会震动": {
+    "en": "The board shakes gently when lines clear; disabled with reduced motion",
+    "fr": "La grille tremble légèrement lors d'un effacement ; désactivé avec les animations réduites"
+  },
+  "减少粒子、飞行和画面震动，保留清晰的结果提示": {
+    "en": "Reduce particles, flying effects and screen shake while keeping results clear",
+    "fr": "Réduire les particules, les effets de vol et les secousses tout en gardant des résultats lisibles"
+  },
+  "精简时暂停": {
+    "en": "Off with reduced motion",
+    "fr": "Désactivé en mode réduit"
+  },
+  "已开启": {
+    "en": "On",
+    "fr": "Activé"
+  },
+  "已关闭": {
+    "en": "Off",
+    "fr": "Désactivé"
+  },
+  "减少粒子、飞行和震动": {
+    "en": "Reduce particles, flying effects and shake",
+    "fr": "Réduire les particules, les effets de vol et les secousses"
+  },
+  "语言": {
+    "en": "Language",
+    "fr": "Langue"
+  },
+  "中文": {
+    "en": "中文",
+    "fr": "中文"
+  },
+  "语言切换后立即生效": {
+    "en": "Language changes apply immediately",
+    "fr": "La langue change immédiatement"
+  },
+  "选择语言": {
+    "en": "Choose language",
+    "fr": "Choisir la langue"
+  },
+  "English": {
+    "en": "English",
+    "fr": "English"
+  },
+  "Français": {
+    "en": "Français",
+    "fr": "Français"
+  },
+  "教学": {
+    "en": "Tutorial",
+    "fr": "Initiation"
+  },
+  "入门": {
+    "en": "Beginner",
+    "fr": "Débutant"
+  },
+  "进阶": {
+    "en": "Advanced",
+    "fr": "Avancé"
+  },
+  "挑战": {
+    "en": "Challenge",
+    "fr": "Défi"
+  },
+  "困难": {
+    "en": "Hard",
+    "fr": "Difficile"
+  },
+  "专家": {
+    "en": "Expert",
+    "fr": "Expert"
+  },
+  "大师": {
+    "en": "Master",
+    "fr": "Maître"
+  },
+  "Nice!": {
+    "en": "Nice!",
+    "fr": "Super !"
+  },
+  "Combo": {
+    "en": "Combo",
+    "fr": "Combo"
+  },
+  "Combo!": {
+    "en": "Combo!",
+    "fr": "Combo !"
+  },
+  "Perfect!": {
+    "en": "Perfect!",
+    "fr": "Parfait !"
+  },
+  "Excellent!": {
+    "en": "Excellent!",
+    "fr": "Excellent !"
+  },
+  "Unbelievable!": {
+    "en": "Unbelievable!",
+    "fr": "Incroyable !"
+  },
+  "Well Done!": {
+    "en": "Well Done!",
+    "fr": "Bravo !"
+  },
+  "Final Block!": {
+    "en": "Final Block!",
+    "fr": "Bloc final !"
+  },
+  "COMBO": {
+    "en": "COMBO",
+    "fr": "COMBO"
+  },
+  "Line": {
+    "en": "Line",
+    "fr": "ligne"
+  },
+  "Lines": {
+    "en": "Lines",
+    "fr": "lignes"
+  },
+  "%d %s": {
+    "en": "%d %s",
+    "fr": "%d %s"
+  },
+  "%d Line": {
+    "en": "%d Line",
+    "fr": "%d ligne"
+  },
+  "%d Lines": {
+    "en": "%d Lines",
+    "fr": "%d lignes"
+  },
+  "%d%% Done": {
+    "en": "%d%% Done",
+    "fr": "%d %% terminé"
+  },
+  "SCORE %06d": {
+    "en": "SCORE %06d",
+    "fr": "SCORE %06d"
+  },
+  "COMBO x%d": {
+    "en": "COMBO x%d",
+    "fr": "COMBO x%d"
+  },
+  "COMBO --": {
+    "en": "COMBO --",
+    "fr": "COMBO --"
+  }
+}

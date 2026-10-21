@@ -2,6 +2,7 @@ extends Control
 
 ## Presentation only: Main owns persistence, pausing and destructive actions.
 signal setting_changed(key: String, value: bool)
+signal language_changed(language: String)
 signal close_requested
 signal preview_requested
 signal restart_requested
@@ -10,6 +11,7 @@ signal quit_requested
 
 const Art := preload("res://scripts/ui/casual_panel_art.gd")
 const MobileLayout := preload("res://scripts/ui/mobile_layout.gd")
+const L10n := preload("res://scripts/localization/game_locale.gd")
 const TOP_SETTINGS := ["sound_enabled", "music_enabled", "screen_shake"]
 const SETTING_NAMES := {"sound_enabled": "音效", "music_enabled": "背景音乐", "screen_shake": "画面震动", "reduced_motion": "减少动画"}
 const SETTING_ICONS := {"sound_enabled": "sound", "music_enabled": "music", "screen_shake": "shake", "reduced_motion": "motion"}
@@ -37,6 +39,14 @@ var _font: SystemFont
 var _empty_icon: ImageTexture
 var _focus_signature := -1
 var _show_focus_outline := true
+var language_select: OptionButton
+var _language_row: HBoxContainer
+var _language_label: Label
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_TRANSLATION_CHANGED and is_node_ready():
+		apply_state(_settings, _in_game, _return_to_levels, _save_warning)
 
 
 func _ready() -> void:
@@ -103,15 +113,24 @@ func apply_state(settings: Dictionary, in_game: bool, return_to_levels: bool, sa
 		return
 	for key: String in toggles:
 		var toggle: CheckButton = toggles[key]
+		toggle.text = L10n.t(SETTING_NAMES[key])
+		toggle.tooltip_text = L10n.t(str(toggle.get_meta("tooltip_source")))
 		toggle.set_pressed_no_signal(bool(settings.get(key, key != "reduced_motion")))
 		toggle.queue_redraw()
-	_buttons["BackButton"].text = "返回游戏" if in_game else "返回菜单"
+	_title.text = L10n.t("设置")
+	_close.tooltip_text = L10n.t("关闭设置")
+	_language_label.text = L10n.t("语言")
+	language_select.tooltip_text = L10n.t("语言切换后立即生效")
+	language_select.select(maxi(0, L10n.SUPPORTED_CODES.find(L10n.language())))
+	_buttons["BackButton"].text = L10n.t("返回游戏" if in_game else "返回菜单")
 	_buttons["RestartButton"].visible = in_game
 	_buttons["MenuButton"].visible = in_game
-	_buttons["MenuButton"].text = "返回关卡" if return_to_levels else "返回菜单"
+	_buttons["MenuButton"].text = L10n.t("返回关卡" if return_to_levels else "返回菜单")
+	for action_name: String in ["RestartButton", "PreviewSoundButton", "QuitButton"]:
+		_buttons[action_name].text = L10n.t(str(_buttons[action_name].get_meta("label_source")))
 	_buttons["PreviewSoundButton"].disabled = not bool(settings.get("sound_enabled", true))
-	_buttons["PreviewSoundButton"].tooltip_text = "试听一次消除音效" if bool(settings.get("sound_enabled", true)) else "开启音效后可以试听"
-	_hint.text = "设置自动保存" if save_warning.is_empty() else save_warning
+	_buttons["PreviewSoundButton"].tooltip_text = L10n.t("试听一次消除音效" if bool(settings.get("sound_enabled", true)) else "开启音效后可以试听")
+	_hint.text = L10n.t("设置自动保存" if save_warning.is_empty() else save_warning)
 	_hint.add_theme_color_override("font_color", Color("#d4e2ff") if save_warning.is_empty() else Color("#ffe2a8"))
 	_layout_controls()
 	_refresh_focus_chain(true)
@@ -146,6 +165,8 @@ func _focus_candidates() -> Array[Button]:
 		var button: Button = _buttons.get(action_name)
 		if is_instance_valid(button):
 			candidates.append(button)
+	if is_instance_valid(language_select):
+		candidates.insert(mini(4, candidates.size()), language_select)
 	return candidates
 
 
@@ -265,6 +286,22 @@ func _build_controls() -> void:
 	_separator.add_theme_stylebox_override("separator", separator_style)
 	_content.add_child(_separator)
 	_content.add_child(_new_toggle("reduced_motion"))
+	_language_row = HBoxContainer.new()
+	_language_row.name = "LanguageRow"
+	_content.add_child(_language_row)
+	_language_label = Label.new()
+	_language_label.name = "LanguageLabel"
+	_language_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_language_label.add_theme_font_override("font", _font)
+	_language_row.add_child(_language_label)
+	language_select = OptionButton.new()
+	language_select.name = "LanguageSelect"
+	language_select.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	language_select.add_theme_font_override("font", _font)
+	for language_name: String in L10n.LANGUAGE_NAMES:
+		language_select.add_item(language_name)
+	language_select.item_selected.connect(func(index: int): language_changed.emit(L10n.SUPPORTED_CODES[index]))
+	_language_row.add_child(language_select)
 	_add_action("BackButton", "返回菜单", "play", func(): close_requested.emit())
 	_add_action("RestartButton", "重新开始", "restart", func(): restart_requested.emit())
 	_add_action("MenuButton", "返回菜单", "home", func(): menu_requested.emit())
@@ -287,12 +324,14 @@ func _new_toggle(key: String) -> CheckButton:
 	# Retain native CheckButton text and checked state for keyboard/accessibility;
 	# its visible icon and lettering are drawn together with consistent spacing.
 	toggle.text = SETTING_NAMES[key]
-	toggle.tooltip_text = {
+	var tooltip_source: String = {
 		"sound_enabled": "开启或关闭游戏音效",
 		"music_enabled": "开启或关闭背景音乐",
 		"screen_shake": "消除时棋盘轻震；减少动画开启后不会震动",
 		"reduced_motion": "减少粒子、飞行和画面震动，保留清晰的结果提示",
 	}[key]
+	toggle.set_meta("tooltip_source", tooltip_source)
+	toggle.tooltip_text = L10n.t(tooltip_source)
 	toggle.focus_mode = Control.FOCUS_ALL
 	toggle.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	# CheckButton's theme uses checked/unchecked (not on/off). Override all LTR,
@@ -312,6 +351,7 @@ func _add_action(node_name: String, label: String, icon_kind: String, action: Ca
 	var button := Button.new()
 	button.name = node_name
 	button.text = label
+	button.set_meta("label_source", label)
 	button.add_theme_font_override("font", _font)
 	button.pressed.connect(action)
 	button.draw.connect(_draw_action_icon.bind(button, icon_kind))
@@ -365,6 +405,17 @@ func _layout_controls() -> void:
 	var motion: CheckButton = toggles["reduced_motion"]
 	motion.custom_minimum_size.y = motion_height
 	_style_toggle(motion)
+	_language_row.custom_minimum_size.y = MobileLayout.touch_target(self)
+	_language_row.add_theme_constant_override("separation", roundi(12.0 * _unit))
+	_language_label.add_theme_font_size_override("font_size", roundi(17.0 * _unit))
+	language_select.custom_minimum_size = Vector2(156.0 * _unit, MobileLayout.touch_target(self))
+	language_select.add_theme_font_size_override("font_size", roundi(16.0 * _unit))
+	Art.style_action(language_select, _unit, "secondary")
+	_apply_focus_style(language_select, language_select.get_theme_stylebox("focus"))
+	var popup := language_select.get_popup()
+	popup.add_theme_font_override("font", _font)
+	popup.add_theme_font_size_override("font_size", roundi(17.0 * _unit))
+	popup.add_theme_constant_override("v_separation", roundi(20.0 * _unit))
 	for action_name: String in _buttons:
 		if action_name == "CloseButton":
 			continue
@@ -372,6 +423,7 @@ func _layout_controls() -> void:
 		button.custom_minimum_size = Vector2(0.0, action_height)
 		Art.style_action(button, _unit, str(button.get_meta("tone", "green")))
 		_apply_focus_style(button, button.get_theme_stylebox("focus"))
+		L10n.fit_button(button, roundi(20.0 * _unit), roundi(12.0 * _unit))
 		button.queue_redraw()
 	var hint_font_size := maxi(roundi(12.0 * _unit), 1)
 	_hint.add_theme_font_size_override("font_size", hint_font_size)
@@ -486,6 +538,7 @@ func _draw_action_icon(button: Button, icon_kind: String) -> void:
 func _draw_text(canvas: CanvasItem, text: String, rect: Rect2, requested_size: float, color: Color, centered: bool = true) -> void:
 	if not rect.has_area():
 		return
+	text = L10n.t(text)
 	var font_size := maxi(roundi(requested_size), 1)
 	while font_size > maxi(roundi(9.0 * _unit), 1) and _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size).x > rect.size.x:
 		font_size -= 1

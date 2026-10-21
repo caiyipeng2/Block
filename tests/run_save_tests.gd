@@ -38,6 +38,8 @@ func _initialize() -> void:
 			_test_invalid_adventure_best_scores,
 			_test_invalid_adventure_retry_failures,
 			_test_invalid_boolean_types,
+			_test_language_settings,
+			_test_invalid_language_preserves_records,
 			_test_negative_score,
 			_test_round_trip_changed_settings,
 			_test_round_trip_default_settings,
@@ -74,7 +76,8 @@ func _test_defaults() -> void:
 		"music_enabled": true,
 		"reduced_motion": false,
 		"screen_shake": true,
-	}, "defaults contain independent mode records and all four settings")
+		"language": "zh_CN",
+	}, "defaults contain independent mode records, four boolean settings and Chinese language")
 
 func _test_path_contract() -> void:
 	_expect(_supports_isolated_paths(), "load_data and save_data accept an optional isolated path")
@@ -123,6 +126,7 @@ func _test_old_save_mode_migration() -> void:
 	_expect_equal(_load(path), _changed_settings(), "version-1 score remains the free-mode record and valid settings survive")
 	_expect_equal(FileAccess.get_file_as_string(path), JSON.stringify(legacy), "loading an old save does not rewrite it")
 	_expect_equal(_load(path)["adventure_retry_failures"], {}, "legacy saves start without per-level retry assistance")
+	_expect_equal(_load(path)["language"], "zh_CN", "legacy saves without language keep Chinese as the default")
 
 func _test_invalid_score_types() -> void:
 	for field: String in ["high_score", "classic_high_score"]:
@@ -281,6 +285,31 @@ func _test_invalid_boolean_types() -> void:
 			expected[field] = Repository.defaults()[field]
 			_expect_equal(_load(_json_fixture("invalid-boolean.json", payload)), expected, "invalid %s type %s uses its default" % [field, value])
 
+func _test_language_settings() -> void:
+	for language: String in ["zh_CN", "en", "fr"]:
+		var payload := _changed_settings()
+		payload["language"] = language
+		payload["classic_high_score"] = 4321
+		payload = Repository.record_level_completed(payload, 1, 350)
+		payload = Repository.record_level_failed(payload, 2)
+		var path := _json_fixture("language-settings.json", payload)
+		_expect_equal(_load(path), payload, "supported language %s loads with scores, progress and retry counts intact" % language)
+		_expect(_save(payload, path), "supported language %s saves" % language)
+		_expect_equal(_load(path), payload, "supported language %s round trips without changing other settings or records" % language)
+
+func _test_invalid_language_preserves_records() -> void:
+	var expected := _changed_settings()
+	expected["classic_high_score"] = 4321
+	expected = Repository.record_level_completed(expected, 1, 350)
+	expected = Repository.record_level_failed(expected, 2)
+	for value: Variant in ["de", "en_US", "fr-FR", "", true, false, 1, null, [], {}]:
+		var payload := expected.duplicate(true)
+		payload["language"] = value
+		var path := _json_fixture("invalid-language.json", payload)
+		_expect_equal(_load(path), expected, "unsupported language %s falls back to Chinese without losing scores or progress" % [value])
+		_expect(_save(payload, path), "invalid language %s can be safely normalized when saving" % [value])
+		_expect_equal(_load(path), expected, "saving an invalid language preserves mode records, retry counts and boolean settings")
+
 func _test_negative_score() -> void:
 	var payload := _changed_settings()
 	payload["high_score"] = -80
@@ -292,12 +321,12 @@ func _test_negative_score() -> void:
 func _test_round_trip_changed_settings() -> void:
 	var path := _path("round-trip-changed.json")
 	_expect(_save(_changed_settings(), path), "write changed settings")
-	_expect_equal(_load(path), _changed_settings(), "score and four changed boolean settings round trip")
+	_expect_equal(_load(path), _changed_settings(), "score, four changed boolean settings and default language round trip")
 
 func _test_round_trip_default_settings() -> void:
 	var path := _path("round-trip-default.json")
 	_expect(_save(Repository.defaults(), path), "write default settings")
-	_expect_equal(_load(path), Repository.defaults(), "zero score and four default boolean settings round trip")
+	_expect_equal(_load(path), Repository.defaults(), "zero score, four default boolean settings and default language round trip")
 
 func _test_round_trip_mode_progress() -> void:
 	var payload := _changed_settings()

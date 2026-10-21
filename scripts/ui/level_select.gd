@@ -6,6 +6,7 @@ const IconButton := preload("res://scripts/ui/art_icon_button.gd")
 const UnlockEffect := preload("res://scripts/ui/level_unlock_effect.gd")
 const MobileLayout := preload("res://scripts/ui/mobile_layout.gd")
 const TrophyProgress := preload("res://scripts/ui/trophy_progress.gd")
+const L10n := preload("res://scripts/localization/game_locale.gd")
 
 signal back_requested
 signal level_started(level_id: int)
@@ -188,6 +189,47 @@ func _ready() -> void:
 	_refresh_selection()
 
 
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_TRANSLATION_CHANGED and is_node_ready():
+		# Relabel the current map without canceling/restarting unlock or reveal.
+		_refresh_text()
+
+
+func _refresh_text() -> void:
+	if not is_instance_valid(_start):
+		return
+	_back.tooltip_text = L10n.t("返回主菜单")
+	_title.text = L10n.t("闯关模式")
+	_progress.text = L10n.t("已通关 %d / %d") % [highest_completed, total_levels]
+	_map_caption.text = L10n.t("逐关挑战，点亮你的方块地图")
+	_start.text = L10n.t("开始第 %d 关") % selected_level
+	_save_warning.text = L10n.t(_save_status)
+	_save_warning.tooltip_text = _save_warning.text
+	for level_id in _tiles:
+		var tile: LevelTile = _tiles[level_id]
+		tile.tooltip_text = _tile_tooltip(tile)
+	_fit_text()
+
+
+func _tile_tooltip(tile: LevelTile) -> String:
+	var status := L10n.t(" · 尚未解锁") if tile.disabled else (L10n.t(" · 已通关") if tile.completed else "")
+	return L10n.t("第 %d 关%s") % [tile.level_id, status]
+
+
+func _fit_text() -> void:
+	if not is_instance_valid(_start):
+		return
+	var mobile := MobileLayout.is_mobile()
+	var unit := MobileLayout.dp(self, 1.0) if mobile else 1.0
+	var title_max := roundi(26.0 * unit) if mobile else (32 if size.x >= 480.0 else 26)
+	var progress_max := roundi(13.0 * unit) if mobile else (17 if size.x >= 480.0 else 14)
+	var caption_max := roundi(14.0 * unit) if mobile else (18 if _map_caption.size.x >= 424.0 else 15)
+	for entry: Array in [[_title, title_max], [_progress, progress_max], [_map_caption, caption_max], [_save_warning, roundi((11.0 if mobile else 12.0) * unit)]]:
+		var label: Label = entry[0]
+		label.add_theme_font_size_override("font_size", L10n.fitted_size(label.get_theme_font("font"), label.text, label.size.x - 4.0, int(entry[1]), maxi(9, roundi(9.0 * unit))))
+	L10n.fit_button(_start, roundi((23.0 if mobile else 24.0) * unit), maxi(10, roundi(10.0 * unit)))
+
+
 func configure(level_count: int, completed_count: int, initial_selection: int = 0) -> void:
 	_cancel_unlock_animation()
 	_cancel_scroll_animation()
@@ -207,9 +249,10 @@ func select_latest() -> void:
 func set_save_status(message: String) -> void:
 	_save_status = message
 	if is_instance_valid(_save_warning):
-		_save_warning.text = message
-		_save_warning.tooltip_text = message
+		_save_warning.text = L10n.t(message)
+		_save_warning.tooltip_text = _save_warning.text
 		_save_warning.visible = not message.is_empty()
+		_fit_text()
 
 
 func activate(completed_level: int = 0, newly_unlocked_level: int = 0) -> void:
@@ -276,11 +319,11 @@ func _build_controls() -> void:
 	_back = Button.new()
 	_back.set_script(IconButton)
 	_back.set("icon_kind", "back")
-	_back.tooltip_text = "返回主菜单"
+	_back.tooltip_text = L10n.t("返回主菜单")
 	_back.pressed.connect(func() -> void: back_requested.emit())
 	_header.add_child(_back)
 	_title = _label(32, Color("#efffff"))
-	_title.text = "闯关模式"
+	_title.text = L10n.t("闯关模式")
 	_header.add_child(_title)
 	_progress = _label(17, Color("#c8dafa"))
 	_header.add_child(_progress)
@@ -299,7 +342,7 @@ func _build_controls() -> void:
 	_trophy.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_map.add_child(_trophy)
 	_map_caption = _label(18, Color("#c8e9ff"))
-	_map_caption.text = "逐关挑战，点亮你的方块地图"
+	_map_caption.text = L10n.t("逐关挑战，点亮你的方块地图")
 	_map.add_child(_map_caption)
 	_marker = GoldDiamond.new()
 	_marker.name = "SelectedLevelMarker"
@@ -360,7 +403,7 @@ func _rebuild_tiles() -> void:
 		tile.level_id = level_id
 		tile.disabled = level_id > _unlocked_level
 		tile.completed = level_id <= highest_completed
-		tile.tooltip_text = "第 %d 关%s" % [level_id, " · 尚未解锁" if tile.disabled else (" · 已通关" if tile.completed else "")]
+		tile.tooltip_text = _tile_tooltip(tile)
 		tile.pressed.connect(_select_level.bind(level_id))
 		tile.focus_entered.connect(_on_tile_focused.bind(level_id))
 		_map.add_child(tile)
@@ -516,6 +559,7 @@ func _layout_map() -> void:
 			tile.visual_side = tile_side - 4.0
 			tile.refresh()
 	_position_marker()
+	_fit_text()
 	_schedule_reveal()
 
 
@@ -661,9 +705,8 @@ func _refresh_selection() -> void:
 		var tile: LevelTile = _tiles[level_id]
 		tile.selected = int(level_id) == selected_level
 		tile.refresh()
-	_progress.text = "已通关 %d / %d" % [highest_completed, total_levels]
 	_trophy.set_progress(highest_completed, total_levels)
-	_start.text = "开始第 %d 关" % selected_level
+	_refresh_text()
 	_position_marker()
 
 

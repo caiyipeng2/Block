@@ -11,6 +11,7 @@ const GOLD := Color("#ffe56d")
 const AQUA := Color("#b2ffff")
 const PURPLE := Color("#cc8fff")
 const OUTLINE := Color("#172b75")
+const L10n := preload("res://scripts/localization/game_locale.gd")
 
 var _tween: Tween
 var _paused := false
@@ -27,6 +28,13 @@ var _pop_scale := 1.0
 var _alpha := 1.0
 var _endless_feedback := false
 var _single_clear := false
+var _display_combo := 0
+var _display_lines := 0
+var _display_board := Rect2()
+var _word: Label
+var _number: Label
+var _caption: Label
+var _detail: Label
 
 static func tier_for(line_count: int, combo: int) -> int:
 	var tier := 0
@@ -38,6 +46,11 @@ static func tier_for(line_count: int, combo: int) -> int:
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_TRANSLATION_CHANGED and is_node_ready():
+		# Preserve the current animation time and real clear/combo snapshot.
+		_refresh_content_text()
+
 func play(combo: int, line_count: int, clear_anchor: Vector2, board_rect: Rect2,
 		cell_size: float, surviving_targets: Array[Vector2], delay: float = 0.0, force_combo: bool = false,
 		endless_feedback: bool = false) -> void:
@@ -48,6 +61,9 @@ func play(combo: int, line_count: int, clear_anchor: Vector2, board_rect: Rect2,
 	_tier = next_tier
 	_endless_feedback = endless_feedback
 	_single_clear = endless_feedback and line_count == 1 and combo < 2
+	_display_combo = combo
+	_display_lines = line_count
+	_display_board = board_rect
 	_cell_size = maxf(cell_size, 1.0)
 	_content = Control.new()
 	_content.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -60,34 +76,15 @@ func play(combo: int, line_count: int, clear_anchor: Vector2, board_rect: Rect2,
 	font.font_weight = 900
 	font.font_italic = true
 	var word_color := AQUA if _tier in [0, 2] else (GOLD if _tier == 1 else Color("#f1d5ff"))
-	var title: String = "Nice!" if _single_clear else TITLES[_tier]
-	var word := _new_label(title, font_size, word_color, 9 if _tier > 0 else 7, font)
-	var word_size := word.get_minimum_size()
-	_content_size = word_size
-	var caption_y := word_size.y
+	_word = _new_label("", font_size, word_color, 9 if _tier > 0 else 7, font)
 	if combo >= 2:
 		# This is the real consecutive-clear count, never the number of lines.
-		var number := _new_label(str(combo), int(font_size * (1.44 if endless_feedback else 1.32)), GOLD, 10, font)
-		var number_size := number.get_minimum_size()
-		var gap := maxf(4.0, float(font_size) * 0.06)
-		number.position = Vector2(word_size.x + gap, 0.0)
-		word.position.y = maxf(0.0, number_size.y - word_size.y) * 0.68
-		_content_size = Vector2(word_size.x + gap + number_size.x, maxf(word_size.y, number_size.y))
-		caption_y = _content_size.y - 3.0
+		_number = _new_label(str(combo), int(font_size * (1.44 if endless_feedback else 1.32)), GOLD, 10, font)
 		if _tier > 0:
-			var caption := _new_label("COMBO", clampi(int(font_size * 0.25), 12, 17), AQUA, 3, font)
-			var caption_size := caption.get_minimum_size()
-			caption.position = Vector2(number.position.x + (number_size.x - caption_size.x) * 0.5, caption_y)
-			_content_size.y = maxf(_content_size.y, caption_y + caption_size.y)
+			_caption = _new_label("", clampi(int(font_size * 0.25), 12, 17), AQUA, 3, font)
 	if line_count >= 2 or endless_feedback:
-		var line_text := "%d %s" % [line_count, "Line" if line_count == 1 else "Lines"]
-		var detail := _new_label(line_text, clampi(int(font_size * 0.34), 14, 23), Color("#d6f8ff"), 3, font)
-		var detail_size := detail.get_minimum_size()
-		detail.position = Vector2((word_size.x - detail_size.x) * 0.5, caption_y)
-		_content_size.y = maxf(_content_size.y, caption_y + detail_size.y)
-	_content.size = _content_size
-	_content.pivot_offset = _content_size * 0.5
-	_base_scale = minf(1.0, maxf(board_rect.size.x - 34.0, 1.0) / maxf(_content_size.x, 1.0))
+		_detail = _new_label("", clampi(int(font_size * 0.34), 14, 23), Color("#d6f8ff"), 3, font)
+	_refresh_content_text()
 	_anchor = _choose_anchor(clear_anchor, board_rect, surviving_targets)
 	_content.hide()
 	_tween = create_tween()
@@ -98,6 +95,44 @@ func play(combo: int, line_count: int, clear_anchor: Vector2, board_rect: Rect2,
 	_tween.tween_method(_update_progress, 0.0, 1.0, duration)
 	_tween.tween_callback(_end)
 	_apply_pause()
+
+func _refresh_content_text() -> void:
+	if not is_instance_valid(_content) or not is_instance_valid(_word):
+		return
+	_word.text = L10n.t("Nice!" if _single_clear else str(TITLES[_tier]))
+	_word.position = Vector2.ZERO
+	var word_size := _word.get_minimum_size()
+	_content_size = word_size
+	var caption_y := word_size.y
+	if is_instance_valid(_number):
+		_number.text = str(_display_combo)
+		var number_size := _number.get_minimum_size()
+		var gap := maxf(4.0, float(_word.get_theme_font_size("font_size")) * 0.06)
+		_number.position = Vector2(word_size.x + gap, 0.0)
+		_word.position.y = maxf(0.0, number_size.y - word_size.y) * 0.68
+		_content_size = Vector2(word_size.x + gap + number_size.x, maxf(word_size.y, number_size.y))
+		caption_y = _content_size.y - 3.0
+		if is_instance_valid(_caption):
+			_caption.text = L10n.t("COMBO")
+			var caption_size := _caption.get_minimum_size()
+			_caption.position = Vector2(_number.position.x + (number_size.x - caption_size.x) * 0.5, caption_y)
+	if is_instance_valid(_detail):
+		_detail.text = L10n.t("%d Line" if _display_lines == 1 else "%d Lines") % _display_lines
+		var detail_size := _detail.get_minimum_size()
+		_detail.position = Vector2((word_size.x - detail_size.x) * 0.5, caption_y)
+	var left := 0.0
+	for child: Label in _content.get_children():
+		child.size = child.get_minimum_size()
+		left = minf(left, child.position.x)
+		_content_size = _content_size.max(child.position + child.size)
+	_content_size.x -= left
+	for child: Label in _content.get_children():
+		child.position.x -= left
+	_content.size = _content_size
+	_content.pivot_offset = _content_size * 0.5
+	_base_scale = minf(1.0, maxf(_display_board.size.x - 34.0, 1.0) / maxf(_content_size.x * 1.28, 1.0))
+	_position_content()
+	queue_redraw()
 
 func get_reserved_rect() -> Rect2:
 	if not is_instance_valid(_content):
@@ -172,6 +207,10 @@ func reset() -> void:
 		_content.hide()
 		_content.queue_free()
 	_content = null
+	_word = null
+	_number = null
+	_caption = null
+	_detail = null
 	_active = false
 	_progress = 0.0
 	_endless_feedback = false
