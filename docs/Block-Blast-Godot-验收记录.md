@@ -4,6 +4,14 @@
 引擎：Godot 4.7.2 stable  
 平台目标：Windows 桌面，鼠标输入
 
+## 闯关单线即时赞语恢复（2026-10-21；0.9.2）
+
+用户反馈闯关消除后看不到即时赞语和随消除数量变化的提示。无界面复现确认：`ClearPraise.play()` 中“首次单线”只在 `endless_feedback=true` 时被放行，而 `main.gd` 仅对自由/经典传入该标识；闯关分数教学关与收集关的单线清除在创建内容前返回，2/3/4 线仍会显示。新曲线以单线清除为主，放大了这一模式门槛的影响。
+
+修复集中在 `scripts/ui/clear_praise.gd`：首次单线不再依赖 `endless_feedback`，统一创建 `Nice!` 和 `1 Line`；单线详情仅在真正走单线档时创建；首次单线在非普通模式绘制轻量彩带/星片。`force_combo` 的 Final Block 单线仍保持原 Combo 提示。规则、计分、Combo、收集飞行、输入锁和赞语生命周期未改。
+
+验证：`clear_praise.gd`、`tests/run_ui_action_tests.gd` 的 Godot 4.7.2 `--check-only` 均退出 0、无脚本/解析/编译错误。无界面 UI action 套件新增闯关 1/2/3/4 线赞语断言，573 项中 568 项通过；5 项失败仍是既有的“通关后进入选关”等待式断言（4 项）和界面淡入 0.979 未到 1.0 的时序断言，本轮未修改相关代码。未启动桌面 GUI、未执行完整实机流程或导出。版本元数据为 `0.9.2`，实际显示与手感待用户按 F5 验收。
+
 ## 96 关数值曲线重构（2026-10-21；0.9.1）
 
 按用户确认的 10 关 × 9 周期 + 6 关终局方案重做 96 关配置。新增 `shape_profile`、`extra_blocks`、`near_win_lines`、`randomness` 四列并接入收集供块、开局追加方块与近胜线；旧 15/17 列配置使用中性默认。规则模板与生成器见 `docs/difficulty/adventure_curve_spec.json`、`tools/adventure_curve.py`，模拟器见 `tests/simulate_adventure.gd`。

@@ -248,6 +248,15 @@ func _test_shared_clear_feedback(main) -> void:
 	main.save_data["adventure_highest_completed"] = 2
 	main._start_game("adventure", 3)
 	_equal(_feedback_rules_snapshot(main.rules_config), rules_before, "收集模式不改写共用规则资源")
+	for line_count in [1, 2, 3, 4]:
+		main.game.scoring = Scoring.new(main.game.rules_config)
+		main.move_feedback.reset()
+		_present_feedback_fixture(main, _feedback_move_fixture(main, line_count))
+		var adventure_words := _praise_words(praise)
+		var adventure_titles := {1: "Nice!", 2: "Perfect!", 3: "Excellent!", 4: "Unbelievable!"}
+		var line_text := "1 Line" if line_count == 1 else "%d Lines" % line_count
+		_check(adventure_words.has(adventure_titles[line_count]) and adventure_words.has(line_text), "闯关真实 %d 线显示即时赞语和线数" % line_count)
+	main.move_feedback.reset()
 	for mode in ["free", "classic"]:
 		main._start_game(mode)
 		_equal(main.move_feedback.get_node("ClearPraise"), praise, "%s 复用同一个赞语层" % mode)

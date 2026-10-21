@@ -55,12 +55,13 @@ func play(combo: int, line_count: int, clear_anchor: Vector2, board_rect: Rect2,
 		cell_size: float, surviving_targets: Array[Vector2], delay: float = 0.0, force_combo: bool = false,
 		endless_feedback: bool = false) -> void:
 	var next_tier := tier_for(line_count, combo)
-	if line_count < 1 or (next_tier == 0 and combo < 2 and not force_combo and not endless_feedback):
+	var light_single := line_count == 1 and combo < 2
+	if line_count < 1 or (next_tier == 0 and combo < 2 and not force_combo and not light_single):
 		return
 	reset()
 	_tier = next_tier
 	_endless_feedback = endless_feedback
-	_single_clear = endless_feedback and line_count == 1 and combo < 2
+	_single_clear = light_single and not force_combo
 	_display_combo = combo
 	_display_lines = line_count
 	_display_board = board_rect
@@ -82,7 +83,7 @@ func play(combo: int, line_count: int, clear_anchor: Vector2, board_rect: Rect2,
 		_number = _new_label(str(combo), int(font_size * (1.44 if endless_feedback else 1.32)), GOLD, 10, font)
 		if _tier > 0:
 			_caption = _new_label("", clampi(int(font_size * 0.25), 12, 17), AQUA, 3, font)
-	if line_count >= 2 or endless_feedback:
+	if line_count >= 2 or endless_feedback or _single_clear:
 		_detail = _new_label("", clampi(int(font_size * 0.34), 14, 23), Color("#d6f8ff"), 3, font)
 	_refresh_content_text()
 	_anchor = _choose_anchor(clear_anchor, board_rect, surviving_targets)
@@ -264,7 +265,7 @@ func _draw() -> void:
 	if _endless_feedback:
 		_draw_endless_praise()
 		return
-	if _tier == 0:
+	if _tier == 0 and not _single_clear:
 		return
 	var angle := deg_to_rad(-3.0) * (1.0 - _progress * 0.45)
 	draw_set_transform(_anchor + _board_offset, angle, Vector2.ONE * _base_scale * _pop_scale)
