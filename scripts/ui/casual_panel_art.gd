@@ -36,14 +36,8 @@ static func style_action(button: Button, unit: float = 1.0, tone: String = "gree
 	button.add_theme_stylebox_override("hover", _action_style(face, edge.lightened(0.10), unit))
 	button.add_theme_stylebox_override("pressed", _action_style(face.darkened(0.06), edge, unit, true))
 	button.add_theme_stylebox_override("disabled", _action_style(Color("#7883a9"), Color("#59678e"), unit, true))
-	var focus := _rounded(Color.TRANSPARENT, 12.0 * unit)
-	focus.border_color = Color("#c9fff4")
-	focus.set_border_width_all(maxi(roundi(2.0 * unit), 2))
-	focus.expand_margin_left = 2.0 * unit
-	focus.expand_margin_top = 2.0 * unit
-	focus.expand_margin_right = 2.0 * unit
-	focus.expand_margin_bottom = 2.0 * unit
-	button.add_theme_stylebox_override("focus", focus)
+	# Focus stays native for keyboard activation but never paints a selected ring.
+	button.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 	button.add_theme_font_size_override("font_size", maxi(roundi(21.0 * unit), 16))
 	for role in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color", "font_hover_pressed_color"]:
 		button.add_theme_color_override(role, Color.WHITE)

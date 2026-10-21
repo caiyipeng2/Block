@@ -1234,17 +1234,8 @@ func _style_button(button: Button, accent: Color, foreground: Color) -> void:
 	button.add_theme_stylebox_override("normal", _button_box(accent))
 	button.add_theme_stylebox_override("hover", _button_box(accent.lightened(0.12)))
 	button.add_theme_stylebox_override("pressed", _button_box(accent.darkened(0.10)))
-	# Focus overlays the normal/hover style; it must not add a tinted shadow.
-	var focus := StyleBoxFlat.new()
-	focus.bg_color = Color.TRANSPARENT
-	focus.draw_center = false
-	focus.border_color = AQUA
-	focus.set_border_width_all(2)
-	focus.set_corner_radius_all(16)
-	focus.set_expand_margin_all(3.0)
-	focus.shadow_color = Color.TRANSPARENT
-	focus.shadow_size = 0
-	button.add_theme_stylebox_override("focus", focus)
+	# Focus stays native for keyboard activation but never paints a selected ring.
+	button.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 	button.add_theme_stylebox_override("disabled", _button_box(Color(accent, 0.35)))
 
 func _button_box(fill: Color) -> StyleBoxFlat:

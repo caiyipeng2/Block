@@ -363,10 +363,7 @@ func _build_controls() -> void:
 	_start.add_theme_stylebox_override("normal", Art.button_style(Color("#36af38")))
 	_start.add_theme_stylebox_override("hover", Art.button_style(Color("#4abd43")))
 	_start.add_theme_stylebox_override("pressed", Art.button_style(Color("#36af38"), true))
-	var focus := Art.panel_style(Color.TRANSPARENT, 12, Color("#82f5e9"))
-	focus.set_border_width_all(2)
-	focus.shadow_size = 0
-	_start.add_theme_stylebox_override("focus", focus)
+	_start.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 	_start.pressed.connect(_start_selected_level)
 	_footer.add_child(_start)
 	_save_warning = _label(12, Color("#ffbb8e"))

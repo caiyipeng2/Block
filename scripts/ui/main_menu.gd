@@ -231,9 +231,7 @@ func _build_controls() -> void:
 	settings.tooltip_text = L10n.t("游戏设置")
 	settings.pressed.connect(func() -> void: settings_requested.emit())
 	add_child(settings)
-	var focus := Art.panel_style(Color.TRANSPARENT, 12, Color("#b8ffff"))
-	focus.set_border_width_all(2)
-	focus.shadow_size = 0
+	var focus := StyleBoxEmpty.new()
 	settings.add_theme_stylebox_override("focus", focus)
 	var exit_button := Button.new()
 	exit_button.name = "ExitButton"

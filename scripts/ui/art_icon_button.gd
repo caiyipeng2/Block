@@ -61,7 +61,6 @@ func _apply_theme() -> void:
 	add_theme_stylebox_override("hover", Art.button_style(fill_color.lightened(0.10)))
 	add_theme_stylebox_override("pressed", Art.button_style(fill_color, true))
 	add_theme_stylebox_override("disabled", Art.button_style(Color(fill_color.r, fill_color.g, fill_color.b, 0.55), true))
-	var focus := Art.panel_style(Color.TRANSPARENT, 12, Color("#82f5e9"))
-	focus.set_border_width_all(2)
-	add_theme_stylebox_override("focus", focus)
+	# Keyboard focus remains native; the icon button itself never shows a ring.
+	add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 	queue_redraw()

@@ -31,6 +31,10 @@ func _run_tests() -> void:
 	var exit_button: Button = main.get_node_or_null("MenuControls/ExitButton")
 	_check(settings_button != null and settings_button.visible, "主菜单显示可聚焦的设置按钮")
 	_check(exit_button != null and exit_button.visible, "主菜单显示退出按钮")
+	if settings_button != null:
+		_check_no_focus_outline(settings_button, "主菜单设置按钮")
+	if exit_button != null:
+		_check_no_focus_outline(exit_button, "主菜单退出按钮")
 	if settings_button == null or exit_button == null:
 		main.free()
 		_finish()
@@ -41,6 +45,8 @@ func _run_tests() -> void:
 	var preview_button: Button = main.settings_controls.get_action_button("PreviewSoundButton")
 	_check(preview_button != null and preview_button.visible, "设置提供可见试听音效按钮")
 	if preview_button != null:
+		_check_no_focus_outline(preview_button, "设置操作按钮")
+	if preview_button != null:
 		main._set_setting("sound_enabled", true)
 		preview_button.pressed.emit()
 		_check(main.feedback_audio.sound_player.playing, "试听按钮触发真实音效")
@@ -50,6 +56,7 @@ func _run_tests() -> void:
 	for key in ["sound_enabled", "music_enabled", "reduced_motion", "screen_shake"]:
 		var toggle: CheckButton = main.setting_controls[key]
 		_equal(toggle.focus_mode, Control.FOCUS_ALL, "图标开关支持键盘聚焦")
+		_check_no_focus_outline(toggle, "设置开关 %s" % key)
 		_check(not toggle.text.is_empty(), "图标开关保留中文可访问名称")
 		var previous: bool = main.save_data[key]
 		toggle.button_pressed = not previous
@@ -71,9 +78,16 @@ func _run_tests() -> void:
 	main.menu_controls.finish_opening()
 	main.get_node("MenuControls/StartButton").pressed.emit()
 	_equal(main.screen, "game", "主菜单开始按钮进入游戏")
+	var hud_settings: Button = main.get_node("GameplayControls/PlayingHUD/Actions/SettingsButton")
+	var hud_pause: Button = main.get_node("GameplayControls/PlayingHUD/Actions/PauseButton")
+	_check_no_focus_outline(hud_settings, "游戏设置齿轮")
+	_check_no_focus_outline(hud_pause, "游戏暂停按钮")
+	_check_no_focus_outline(main.gameplay_ui.get("_resume_button"), "暂停继续按钮")
 	main.game.board.set_cell(0, 0, 2)
 	main.get_node("GameplayControls/PlayingHUD/Actions/RestartButton").pressed.emit()
 	_equal(main.confirmation_action, "restart", "重新开始先显示确认")
+	_check_no_focus_outline(main.confirmation_dialog.get_ok_button(), "确认弹窗主操作")
+	_check_no_focus_outline(main.confirmation_dialog.get_cancel_button(), "确认弹窗取消操作")
 	_equal(main.game.board.get_cell(0, 0), 2, "确认之前保留棋盘")
 	main._cancel_confirmation()
 	_equal(main.game.board.get_cell(0, 0), 2, "取消重开仍保留棋盘")
@@ -110,6 +124,8 @@ func _run_tests() -> void:
 	var result_menu: Button = main.gameplay_ui.get("_overlay_menu_button")
 	_check(next_level != null and not next_level.disabled, "通关面板释放下一关按钮")
 	_check(result_menu != null and not result_menu.disabled, "通关面板释放返回选关按钮")
+	_check_no_focus_outline(next_level, "通关下一关按钮")
+	_check_no_focus_outline(result_menu, "通关返回选关按钮")
 	next_level.pressed.emit()
 	_equal(main.screen, "levels", "下一关先进入选关页展示新关解锁")
 	_equal(main.game, null, "进入选关页清理上一关游戏")
@@ -558,6 +574,9 @@ func _test_retry_failure_lifecycle(main) -> void:
 	main._toggle_pause()
 	main._show_menu()
 	_equal(SaveRepository.level_failure_count(main.save_data, 3), 1, "主动离开未失败棋局不累加失败次数")
+
+func _check_no_focus_outline(button: Button, label: String) -> void:
+	_check(button != null and button.get_theme_stylebox("focus") is StyleBoxEmpty, "%s 不显示自然焦点外框" % label)
 
 func _check(value: bool, message: String) -> void:
 	checks += 1

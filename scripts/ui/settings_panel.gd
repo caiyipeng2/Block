@@ -38,7 +38,6 @@ var _hint: Label
 var _font: SystemFont
 var _empty_icon: ImageTexture
 var _focus_signature := -1
-var _show_focus_outline := true
 var language_select: OptionButton
 var _language_row: HBoxContainer
 var _language_label: Label
@@ -58,7 +57,6 @@ func _ready() -> void:
 	var empty := Image.create_empty(1, 1, false, Image.FORMAT_RGBA8)
 	empty.fill(Color.TRANSPARENT)
 	_empty_icon = ImageTexture.create_from_image(empty)
-	_show_focus_outline = not MobileLayout.is_mobile()
 	_build_controls()
 	resized.connect(_layout_controls)
 	visibility_changed.connect(_on_visibility_changed)
@@ -73,34 +71,9 @@ func _process(_delta: float) -> void:
 	_refresh_focus_chain()
 
 
-func _input(event: InputEvent) -> void:
-	if not MobileLayout.is_mobile():
-		return
-	# Record input modality while hidden too, so opening Settings with a physical
-	# keyboard still shows focus. Never consume these events or change focus.
-	if event is InputEventScreenTouch or event is InputEventScreenDrag:
-		_set_focus_outline_visible(false)
-	elif event is InputEventKey and event.pressed:
-		_set_focus_outline_visible(true)
-	elif event is InputEventJoypadButton and event.pressed:
-		_set_focus_outline_visible(true)
-	elif event is InputEventJoypadMotion and absf(event.axis_value) > 0.35:
-		_set_focus_outline_visible(true)
-
-
-func _set_focus_outline_visible(show_outline: bool) -> void:
-	if _show_focus_outline == show_outline:
-		return
-	_show_focus_outline = show_outline
-	for button: Button in _focus_candidates():
-		var focus: StyleBox = button.get_meta("keyboard_focus_style", null)
-		if focus != null:
-			_apply_focus_style(button, focus)
-
-
-func _apply_focus_style(button: Button, keyboard_style: StyleBox) -> void:
-	button.set_meta("keyboard_focus_style", keyboard_style)
-	button.add_theme_stylebox_override("focus", keyboard_style if _show_focus_outline else StyleBoxEmpty.new())
+func _apply_focus_style(button: Button) -> void:
+	# Native focus is kept for Tab/Enter; the panel never paints a selected ring.
+	button.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 	button.queue_redraw()
 
 
@@ -411,7 +384,7 @@ func _layout_controls() -> void:
 	language_select.custom_minimum_size = Vector2(156.0 * _unit, MobileLayout.touch_target(self))
 	language_select.add_theme_font_size_override("font_size", roundi(16.0 * _unit))
 	Art.style_action(language_select, _unit, "secondary")
-	_apply_focus_style(language_select, language_select.get_theme_stylebox("focus"))
+	_apply_focus_style(language_select)
 	var popup := language_select.get_popup()
 	popup.add_theme_font_override("font", _font)
 	popup.add_theme_font_size_override("font_size", roundi(17.0 * _unit))
@@ -422,7 +395,7 @@ func _layout_controls() -> void:
 		var button: Button = _buttons[action_name]
 		button.custom_minimum_size = Vector2(0.0, action_height)
 		Art.style_action(button, _unit, str(button.get_meta("tone", "green")))
-		_apply_focus_style(button, button.get_theme_stylebox("focus"))
+		_apply_focus_style(button)
 		L10n.fit_button(button, roundi(20.0 * _unit), roundi(12.0 * _unit))
 		button.queue_redraw()
 	var hint_font_size := maxi(roundi(12.0 * _unit), 1)
@@ -471,12 +444,7 @@ func _style_toggle(button: Button) -> void:
 	hover.set_corner_radius_all(maxi(roundi(9.0 * _unit), 1))
 	button.add_theme_stylebox_override("hover", hover)
 	button.add_theme_stylebox_override("hover_pressed", hover)
-	var focus := StyleBoxFlat.new()
-	focus.bg_color = Color.TRANSPARENT
-	focus.border_color = Color("#c9fff4")
-	focus.set_corner_radius_all(maxi(roundi(9.0 * _unit), 1))
-	focus.set_border_width_all(maxi(roundi(2.0 * _unit), 1))
-	_apply_focus_style(button, focus)
+	_apply_focus_style(button)
 	button.queue_redraw()
 
 

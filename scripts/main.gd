@@ -1005,18 +1005,10 @@ func _add_button(parent: Control, node_name: String, text: String, color: Color,
 	button.add_theme_stylebox_override("hover", Art.button_style(color.lightened(0.10)))
 	button.add_theme_stylebox_override("pressed", Art.button_style(color, true))
 	button.add_theme_stylebox_override("disabled", Art.button_style(color.darkened(0.3), true))
-	button.add_theme_stylebox_override("focus", _focus_box())
+	button.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 	button.pressed.connect(action)
 	parent.add_child(button)
 	return button
-
-func _focus_box() -> StyleBoxFlat:
-	var box := StyleBoxFlat.new()
-	box.bg_color = Color.TRANSPARENT
-	box.border_color = Color("#82f5e9")
-	box.set_border_width_all(3)
-	box.set_corner_radius_all(14)
-	return box
 
 func _layout_controls() -> void:
 	if menu_controls == null:

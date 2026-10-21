@@ -4,6 +4,12 @@
 引擎：Godot 4.7.2 stable  
 平台目标：Windows 桌面，鼠标输入
 
+## 界面自然焦点外框移除（2026-10-21；0.9.0）
+
+用户截图指出游戏HUD齿轮和暂停“继续游戏”保留自动选中描边。主菜单设置/退出、HUD图标、暂停/结算操作、设置面板、确认弹窗与选关开始按钮的focus StyleBox现统一为空；原生聚焦、键盘/手柄导航与激活、tooltip、hover/pressed/disabled保留，设置与确认弹窗不再按输入方式切换焦点框。
+
+ArtIconButton、CasualPanelArt、SettingsPanel、ActionConfirmation、GameplayControls、MainMenu、LevelSelect、Main及UI action测试共九份Godot 4.7.2 `--check-only`退出0、无脚本/解析/编译错误。UI action新增菜单设置/退出、设置操作与开关、HUD齿轮/暂停、暂停继续、确认弹窗、通关下一关/返回按钮的焦点样式断言；在“减少动画”测试存档下551项检查0失败。普通动画设置下既有的“通关后立即按下一关”4项时序断言失败与本次样式修改无关，未改动该逻辑。未执行桌面GUI、完整游戏测试或实机验收；实际视觉与键盘操作仍待用户验收。
+
 ## 手机选关页（2026-10-20；0.8.9 / versionCode7）
 
 按用户参考图调整手机选关页：标题左右64dp对称居中，返回改为较小的无框箭头但保留48dp点击区；顶部84dp、底部96dp，绿色开始按钮宽约66%。手机格面28–32dp、间距1.5dp，常见宽度采用11列紧凑塔形。
