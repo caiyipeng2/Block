@@ -1,6 +1,7 @@
 extends SceneTree
 
 const ModeCatalog = preload("res://scripts/modes/mode_catalog.gd")
+const LevelTable = preload("res://scripts/modes/adventure_level_table.gd")
 const ClearColorResolver = preload("res://scripts/ui/clear_color_resolver.gd")
 
 var failures := 0
@@ -111,8 +112,12 @@ func _run_tests() -> void:
 	main.save_data["adventure_highest_completed"] = 2
 	main._start_game("adventure", 3)
 	var objective_stats := {"target_counts": main.game.target_counts, "target_total": main.game.target_total}
+	var configured_kinds := 0
+	for kind: String in LevelTable.TARGET_COLUMNS:
+		if int(LevelTable.level(3).get(kind, 0)) > 0:
+			configured_kinds += 1
 	var visible_kinds: Array = main.gameplay_ui.call("_active_target_kinds", objective_stats)
-	_equal(visible_kinds.size(), 3, "本关只显示配置的三类目标")
+	_equal(visible_kinds.size(), configured_kinds, "本关只显示配表里配额大于零的目标种类")
 	_equal(main.gameplay_ui.call("_target_count", objective_stats, "target_counts", "red_star"), 0, "缺席的红星不按总配额虚构目标")
 	main.gameplay_ui.accept_objective_intro()
 	main.game.status = GameState.Status.LEVEL_COMPLETE

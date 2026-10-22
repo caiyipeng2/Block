@@ -1,6 +1,7 @@
 extends SceneTree
 
 const Resolver = preload("res://scripts/ui/clear_color_resolver.gd")
+const Preview = preload("res://scripts/ui/clear_preview.gd")
 
 var _failures: int = 0
 
@@ -14,6 +15,7 @@ func _initialize() -> void:
 	_test_crossing_group_deduplicates_cells()
 	_test_multiple_crossings_form_one_group()
 	_test_fallbacks_and_empty_board()
+	_test_spectrum_band_strength_tiers()
 	if _failures == 0:
 		print("CLEAR COLOR TESTS PASSED")
 	quit(0 if _failures == 0 else 1)
@@ -110,11 +112,24 @@ func _test_fallbacks_and_empty_board() -> void:
 	for key in ["cell_colors", "row_colors", "column_colors", "rows", "columns"]:
 		_assert_equal(empty_result[key].size(), 0, "空棋盘无消除颜色: " + key)
 
+func _test_spectrum_band_strength_tiers() -> void:
+	_assert_close(Preview.spectrum_band_strength(0), 0.0, "没有消除线时不启用彩虹带")
+	_assert_close(Preview.spectrum_band_strength(1), 0.0, "单行保持轻量，不出现彩虹带")
+	_assert_close(Preview.spectrum_band_strength(2), 0.5, "两线彩虹带半档")
+	_assert_close(Preview.spectrum_band_strength(3), 0.75, "三线彩虹带三档")
+	_assert_close(Preview.spectrum_band_strength(4), 1.0, "四线彩虹带满档")
+	_assert_close(Preview.spectrum_band_strength(6), 1.0, "彩虹带档位封顶为 1")
+
 func _set_row(board: BoardRules, y: int, colors: Array) -> void:
 	for x in range(colors.size()):
 		board.set_cell(x, y, int(colors[x]))
 
 func _assert_equal(actual: Variant, expected: Variant, message: String) -> void:
 	if actual != expected:
+		_failures += 1
+		push_error(message + ": expected=" + str(expected) + ", actual=" + str(actual))
+
+func _assert_close(actual: float, expected: float, message: String) -> void:
+	if absf(actual - expected) > 0.0001:
 		_failures += 1
 		push_error(message + ": expected=" + str(expected) + ", actual=" + str(actual))

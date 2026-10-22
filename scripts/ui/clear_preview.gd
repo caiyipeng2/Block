@@ -3,6 +3,9 @@ extends RefCounted
 ## Presentation only: the caller supplies the resolver's deduplicated clear mask.
 ## Cached geometry stays in cell coordinates so resizing never leaves a stale halo.
 
+const BAND_HALF_WIDTH := 0.085
+const BAND_CORE_HALF_WIDTH := 0.022
+
 var _cell_colors: Dictionary = {}
 var _row_colors: Dictionary = {}
 var _column_colors: Dictionary = {}
@@ -50,26 +53,43 @@ func highlight(reduced_motion: bool) -> float:
 		return 0.0
 	return 0.29 if reduced_motion else 0.29 + sin(_phase * 0.85) * 0.018
 
-func draw(canvas: CanvasItem, board_rect: Rect2, reduced_motion: bool, intensity: float = 1.0, show_sparks: bool = true) -> void:
+func draw(canvas: CanvasItem, board_rect: Rect2, reduced_motion: bool, intensity: float = 1.0, show_sparks: bool = true, band_strength: float = 0.0) -> void:
 	if not is_active() or board_rect.size.x <= 0.0 or board_rect.size.y <= 0.0:
 		return
 	var cell_size := board_rect.size / float(_board_size)
 	var unit := minf(cell_size.x, cell_size.y)
 	var breath := (1.0 if reduced_motion else 0.98 + sin(_phase * 0.85) * 0.02) * clampf(intensity, 0.0, 1.0)
+	var band := clampf(band_strength, 0.0, 1.0)
 	# Small opacity steps feather the bloom; the narrow rim carries the color.
-	var halo_extent := minf(unit * 0.19, 11.5)
-	_draw_layer(canvas, board_rect, cell_size, halo_extent, 0.008 * breath, 0.20, false, reduced_motion)
-	_draw_layer(canvas, board_rect, cell_size, halo_extent * 0.83, 0.014 * breath, 0.20, false, reduced_motion)
-	_draw_layer(canvas, board_rect, cell_size, halo_extent * 0.67, 0.022 * breath, 0.20, false, reduced_motion)
-	_draw_layer(canvas, board_rect, cell_size, halo_extent * 0.52, 0.034 * breath, 0.20, false, reduced_motion)
-	_draw_layer(canvas, board_rect, cell_size, halo_extent * 0.39, 0.047 * breath, 0.20, false, reduced_motion)
-	_draw_layer(canvas, board_rect, cell_size, halo_extent * 0.28, 0.065 * breath, 0.20, false, reduced_motion)
-	_draw_layer(canvas, board_rect, cell_size, halo_extent * 0.19, 0.090 * breath, 0.20, false, reduced_motion)
-	_draw_layer(canvas, board_rect, cell_size, minf(unit * 0.020, 1.25), 0.48 * breath, 0.52, false, reduced_motion)
+	# Multi-line clears widen and brighten the same stack so the region reads hot.
+	var bloom := 1.0 + band * 1.35
+	var halo_extent := minf(unit * (0.19 + band * 0.07), 11.5 + unit * 0.07)
+	_draw_layer(canvas, board_rect, cell_size, halo_extent, 0.008 * breath * bloom, 0.20, false, reduced_motion)
+	_draw_layer(canvas, board_rect, cell_size, halo_extent * 0.83, 0.014 * breath * bloom, 0.20, false, reduced_motion)
+	_draw_layer(canvas, board_rect, cell_size, halo_extent * 0.67, 0.022 * breath * bloom, 0.20, false, reduced_motion)
+	_draw_layer(canvas, board_rect, cell_size, halo_extent * 0.52, 0.034 * breath * bloom, 0.20, false, reduced_motion)
+	_draw_layer(canvas, board_rect, cell_size, halo_extent * 0.39, 0.047 * breath * bloom, 0.20, false, reduced_motion)
+	_draw_layer(canvas, board_rect, cell_size, halo_extent * 0.28, 0.065 * breath * bloom, 0.20, false, reduced_motion)
+	_draw_layer(canvas, board_rect, cell_size, halo_extent * 0.19, 0.090 * breath * bloom, 0.20, false, reduced_motion)
+	_draw_layer(canvas, board_rect, cell_size, minf(unit * 0.020, 1.25), 0.48 * breath * (1.0 + band * 0.45), 0.52, false, reduced_motion)
 	var core_half_width := minf(unit * 0.025, clampf(unit * 0.007, 0.35, 0.50))
-	_draw_layer(canvas, board_rect, cell_size, core_half_width, 0.78 * breath, 0.62, true, reduced_motion)
+	_draw_layer(canvas, board_rect, cell_size, core_half_width, 0.78 * breath * (1.0 + band * 0.20), 0.62, true, reduced_motion)
+	if band > 0.0:
+		_draw_bands(canvas, board_rect, cell_size, unit, band * breath, reduced_motion)
 	if not reduced_motion and show_sparks and intensity > 0.0:
 		_draw_sparks(canvas, board_rect, cell_size, unit, breath)
+
+## Single lines stay a light warm bloom; the spectrum bands only exist where two
+## cleared lines share a boundary, so the tier follows the real line count.
+static func spectrum_band_strength(lines: int) -> float:
+	return 0.0 if lines <= 1 else minf(0.25 * float(lines), 1.0)
+
+func _draw_bands(canvas: CanvasItem, board_rect: Rect2, cell_size: Vector2, unit: float, strength: float, reduced_motion: bool) -> void:
+	# The edges kept inside the union are exactly the boundaries between cleared
+	# lines. Painting them wide gives the reference's rainbow stripes.
+	_draw_layer(canvas, board_rect, cell_size, unit * BAND_HALF_WIDTH, 0.30 * strength, 1.0, false, reduced_motion, true)
+	_draw_layer(canvas, board_rect, cell_size, unit * BAND_HALF_WIDTH * 0.55, 0.46 * strength, 1.0, false, reduced_motion, true)
+	_draw_layer(canvas, board_rect, cell_size, unit * BAND_CORE_HALF_WIDTH, 0.72 * strength, 1.0, true, reduced_motion, true)
 
 func _rebuild_geometry() -> void:
 	_edges.clear()
@@ -121,7 +141,8 @@ func _rebuild_geometry() -> void:
 		joint["outline"] = _joint_outline(directions)
 	if outer_edges.is_empty():
 		return
-	var spark_count := mini(4, maxi(2, floori(float(outer_edges.size()) * 0.13)))
+	var line_total := _row_colors.size() + _column_colors.size()
+	var spark_count := clampi(int(round(float(line_total) * 2.5)), 2, 10)
 	for index in range(spark_count):
 		var edge_index := mini(int((float(index) + 0.35) * float(outer_edges.size()) / float(spark_count)), outer_edges.size() - 1)
 		var edge: Dictionary = outer_edges[edge_index]
@@ -164,24 +185,33 @@ func _joint_outline(directions: int) -> PackedVector2Array:
 			points.append(Vector2(cos(angle), sin(angle)))
 	return points
 
-func _draw_layer(canvas: CanvasItem, board_rect: Rect2, cell_size: Vector2, half_width: float, opacity: float, inner_strength: float, white_core: bool, reduced_motion: bool) -> void:
+## A band lies inside the union, so its ends sit on the outline itself; pulling
+## them in for the rounded corner would leave the stripe short of the rim.
+func _needs_shorten(point: Vector2i, inner_only: bool) -> bool:
+	if inner_only and bool(_joints[point]["outer"]):
+		return false
+	return not bool(_joints[point]["straight"])
+
+func _draw_layer(canvas: CanvasItem, board_rect: Rect2, cell_size: Vector2, half_width: float, opacity: float, inner_strength: float, white_core: bool, reduced_motion: bool, inner_only: bool = false) -> void:
 	if half_width <= 0.0:
 		return
 	# Straight segments meet directly; corners share one patch without stacked glow.
 	for edge in _edges:
+		if inner_only and bool(edge["outer"]):
+			continue
 		var start: Vector2 = board_rect.position + Vector2(edge["a"]) * cell_size
 		var end: Vector2 = board_rect.position + Vector2(edge["b"]) * cell_size
 		var direction := (end - start).normalized()
 		var across := Vector2(-direction.y, direction.x) * half_width
-		if not bool(_joints[Vector2i(edge["a"])]["straight"]):
+		if _needs_shorten(Vector2i(edge["a"]), inner_only):
 			start += direction * half_width
-		if not bool(_joints[Vector2i(edge["b"])]["straight"]):
+		if _needs_shorten(Vector2i(edge["b"]), inner_only):
 			end -= direction * half_width
 		var alpha := opacity * (1.0 if bool(edge["outer"]) else inner_strength)
 		_paint_polygon(canvas, PackedVector2Array([start - across, end - across, end + across, start + across]), board_rect, cell_size, int(edge["color"]), alpha, white_core, reduced_motion)
 	for point in _joints:
 		var joint: Dictionary = _joints[point]
-		if bool(joint["straight"]):
+		if bool(joint["straight"]) or (inner_only and bool(joint["outer"])):
 			continue
 		var center: Vector2 = board_rect.position + Vector2(point) * cell_size
 		var alpha := opacity * (1.0 if bool(joint["outer"]) else inner_strength)

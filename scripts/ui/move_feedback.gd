@@ -57,6 +57,7 @@ var _collected_target_events: Array[Dictionary] = []
 var _clear_rows: Array[int] = []
 var _clear_columns: Array[int] = []
 var _clear_outline := ClearPreview.new()
+var _clear_band := 0.0
 var _placed_scale := 1.0
 var _clear_progress := 0.0
 var _flash_progress := 0.0
@@ -303,6 +304,7 @@ func reset_move(preserve_praise: bool = false) -> void:
 	_clear_rows.clear()
 	_clear_columns.clear()
 	_clear_outline.reset()
+	_clear_band = 0.0
 	_context.clear()
 	_particles.clear()
 	_rebound_piece = null
@@ -467,6 +469,8 @@ func _configure_clear_outline() -> void:
 		if not columns.has(column):
 			columns[column] = _resolved_cell_color_id(Vector2i(column, 0))
 	_clear_outline.configure(colors, rows, columns, _board_size, _palette)
+	var line_count := maxi(int(_context.get("clear_lines", _clear_rows.size() + _clear_columns.size())), 1)
+	_clear_band = ClearPreview.spectrum_band_strength(line_count)
 
 func _clear_spectrum_color(point: Vector2) -> Color:
 	return ClearPreview.spectrum_color(point, _board_size, not _clear_rows.is_empty(), not _clear_columns.is_empty())
@@ -579,6 +583,9 @@ func _endless_clear_strength() -> float:
 	return minf((0.65 if combo < 2 and line_count == 1 else 1.0) + float(tier) * 0.28, 1.84)
 
 func _set_accent_progress(progress: float) -> void:
+	# The bands outlive the restored board, so their twinkle rides this tween:
+	# pausing the accent freezes the spectrum instead of running a second clock.
+	_clear_outline.advance(maxf(progress - _accent_progress, 0.0) * ACCENT_DURATION)
 	_accent_progress = progress
 	queue_redraw()
 
@@ -652,6 +659,7 @@ func _draw() -> void:
 				_draw_final_piece()
 			_draw_clear_lines()
 	_draw_endless_clear_accent()
+	_draw_clear_afterglow()
 	_draw_particles()
 
 func _draw_final_piece() -> void:
@@ -701,8 +709,11 @@ func _draw_clear_cell_light(coordinate: Vector2i, block_rect: Rect2, alpha: floa
 						sheen = clampf(1.0 - absf(grid_point.x - front) / 0.80, 0.0, 1.0)
 					if _clear_columns.has(coordinate.x):
 						sheen = maxf(sheen, clampf(1.0 - absf(grid_point.y - front) / 0.80, 0.0, 1.0))
-				var color := _clear_spectrum_color(grid_point).lightened(sheen * 0.18)
-				color.a = alpha * (0.025 + sheen * 0.22)
+				var color := _clear_spectrum_color(grid_point)
+				# The travelling front burns toward white; multi-line clears carry a hotter
+				# core and a wider wash so the region reads as saturated color, not a rim.
+				color = color.lerp(Color(1.0, 0.97, 0.88), sheen * (0.10 + 0.35 * _clear_band))
+				color.a = alpha * ((0.06 + 0.16 * _clear_band) + sheen * (0.22 + 0.30 * _clear_band))
 				colors.append(color)
 			draw_polygon(points, colors)
 
@@ -738,10 +749,17 @@ func _target_kind(value: Variant) -> String:
 	return str(value) if value is String and value in ["red_star", "gold_gem", "blue_diamond", "yellow_star"] else "red_star"
 
 func _draw_clear_lines() -> void:
-	if not _clear_started:
+	if not _clear_started or (_dispersing and _clear_band > 0.0):
 		return
 	var intensity := pow(1.0 - _clear_progress, 0.75) if _dispersing else 1.0
-	_clear_outline.draw(self, Rect2(_board_rect.position + _board_offset, _board_rect.size), false, intensity, false)
+	_clear_outline.draw(self, Rect2(_board_rect.position + _board_offset, _board_rect.size), false, intensity, false, _clear_band)
+
+func _draw_clear_afterglow() -> void:
+	# Multi-line spectrum bands outlive the restored board: the accent tween keeps
+	# fading them while input is already free, so they never lengthen the lock.
+	if not _dispersing or _clear_band <= 0.0 or _accent_progress >= 1.0:
+		return
+	_clear_outline.draw(self, Rect2(_board_rect.position + _board_offset, _board_rect.size), false, pow(1.0 - _accent_progress, 1.5), true, _clear_band)
 
 func _draw_particles() -> void:
 	var accent_elapsed := _accent_progress * ACCENT_DURATION
