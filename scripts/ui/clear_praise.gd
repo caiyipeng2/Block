@@ -77,7 +77,7 @@ func play(combo: int, line_count: int, clear_anchor: Vector2, board_rect: Rect2,
 	font.font_weight = 900
 	font.font_italic = true
 	var word_color := AQUA if _tier in [0, 2] else (GOLD if _tier == 1 else Color("#f1d5ff"))
-	_word = _new_label("", font_size, word_color, 9 if _tier > 0 else 7, font)
+	_word = _new_label("", font_size, word_color, 9 if _tier > 0 else (5 if _single_clear else 7), font)
 	if combo >= 2:
 		# This is the real consecutive-clear count, never the number of lines.
 		_number = _new_label(str(combo), int(font_size * (1.44 if endless_feedback else 1.32)), GOLD, 10, font)
@@ -161,8 +161,8 @@ func _new_label(text: String, font_size: int, color: Color, outline_size: int, f
 	label.add_theme_color_override("font_outline_color", OUTLINE)
 	label.add_theme_constant_override("outline_size", outline_size)
 	label.add_theme_color_override("font_shadow_color", Color("#102049"))
-	label.add_theme_constant_override("shadow_offset_x", 2)
-	label.add_theme_constant_override("shadow_offset_y", 5)
+	label.add_theme_constant_override("shadow_offset_x", 1)
+	label.add_theme_constant_override("shadow_offset_y", 3)
 	_content.add_child(label)
 	return label
 
@@ -259,6 +259,15 @@ func _position_content() -> void:
 		_content.rotation = deg_to_rad(-3.0) * (1.0 - _progress * 0.45)
 		_content.modulate.a = _alpha
 
+## Both feedback paths share one soft halo: a filled backdrop behind the words
+## reads as a grey plate on the dark board, so tier weight lives in the light.
+func _draw_halo() -> void:
+	var strength := 0.58 if _single_clear else 1.0 + float(_tier) * 0.18
+	var halo_radius := minf(_content_size.x * 0.46, _cell_size * 2.0)
+	for layer in range(3):
+		var halo := Color(AQUA.r, AQUA.g, AQUA.b, _alpha * strength * 0.025 / float(layer + 1))
+		draw_circle(Vector2.ZERO, halo_radius + float(layer) * _cell_size * 0.15, halo)
+
 func _draw() -> void:
 	if not _active:
 		return
@@ -269,18 +278,7 @@ func _draw() -> void:
 		return
 	var angle := deg_to_rad(-3.0) * (1.0 - _progress * 0.45)
 	draw_set_transform(_anchor + _board_offset, angle, Vector2.ONE * _base_scale * _pop_scale)
-	var half := _content_size * Vector2(0.56, 0.39)
-	var left := -half.x - _cell_size * 0.30
-	var right := half.x + _cell_size * 0.30
-	var band_alpha := _alpha * 0.42
-	# A translucent color ribbon supports the type without hiding the board.
-	draw_polygon(PackedVector2Array([
-		Vector2(left, -half.y), Vector2(0.0, -half.y - 5.0), Vector2(right, -half.y),
-		Vector2(right - 8.0, half.y), Vector2(0.0, half.y + 5.0), Vector2(left + 8.0, half.y)
-	]), PackedColorArray([
-		Color(GOLD.r, GOLD.g, GOLD.b, 0.0), Color(AQUA.r, AQUA.g, AQUA.b, band_alpha * 0.64), Color(PURPLE.r, PURPLE.g, PURPLE.b, 0.0),
-		Color(PURPLE.r, PURPLE.g, PURPLE.b, band_alpha * 0.28), Color(PURPLE.r, PURPLE.g, PURPLE.b, band_alpha), Color(GOLD.r, GOLD.g, GOLD.b, band_alpha * 0.28)
-	]))
+	_draw_halo()
 	var burst := 1.0 - clampf(_progress / 0.48, 0.0, 1.0)
 	for ray in range(6 + _tier * 2):
 		var ray_angle := float(ray) * 2.399963
@@ -309,11 +307,7 @@ func _draw_endless_praise() -> void:
 	draw_set_transform(_anchor + _board_offset, angle, Vector2.ONE * _base_scale * _pop_scale)
 	# Keep the words open over the board: a soft halo and sparse gold/aqua
 	# stars give feedback without an opaque ribbon or another tile material.
-	var strength := 0.58 if _single_clear else 1.0 + float(_tier) * 0.18
-	var halo_radius := minf(_content_size.x * 0.46, _cell_size * 2.0)
-	for layer in range(3):
-		var halo := Color(AQUA.r, AQUA.g, AQUA.b, _alpha * strength * 0.025 / float(layer + 1))
-		draw_circle(Vector2.ZERO, halo_radius + float(layer) * _cell_size * 0.15, halo)
+	_draw_halo()
 	var star_fade := pow(1.0 - _progress, 1.35)
 	var count := 4 if _single_clear else 8 + _tier * 3
 	for index in range(count):
