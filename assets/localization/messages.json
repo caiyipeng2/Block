@@ -191,6 +191,10 @@
     "en": "only score (score target) or collect (collection target) is supported",
     "fr": "seuls score (objectif de points) et collect (objectif de collecte) sont acceptés"
   },
+  "仅支持 friendly、mixed 或 pressure": {
+    "en": "only friendly, mixed or pressure is supported",
+    "fr": "seuls friendly, mixed ou pressure sont acceptés"
+  },
   "第 1–2 关必须为 score，第 3–96 关必须为 collect": {
     "en": "levels 1–2 must use score; levels 3–96 must use collect",
     "fr": "les niveaux 1–2 doivent utiliser score ; les niveaux 3–96 doivent utiliser collect"
@@ -215,6 +219,22 @@
     "en": "score levels must have initial_markers set to 0",
     "fr": "les niveaux à points doivent avoir initial_markers défini sur 0"
   },
+  "分数教学关不使用额外初始方块，须为 0": {
+    "en": "score tutorial levels must not use extra initial blocks; set this to 0",
+    "fr": "les niveaux tutoriels à points ne doivent pas utiliser de blocs initiaux supplémentaires ; définissez cette valeur à 0"
+  },
+  "分数教学关不使用近胜线，须为 0": {
+    "en": "score tutorial levels must not use near-win lines; set this to 0",
+    "fr": "les niveaux tutoriels à points ne doivent pas utiliser de lignes presque gagnantes ; définissez cette valeur à 0"
+  },
+  "分数教学关使用独立教学供块，随机度须为 50": {
+    "en": "score tutorial levels use the dedicated tutorial tray; randomness must be 50",
+    "fr": "les niveaux tutoriels à points utilisent le plateau dédié au tutoriel ; le hasard doit être de 50"
+  },
+  "分数教学关使用独立教学供块，须为 mixed": {
+    "en": "score tutorial levels use the dedicated tutorial tray; shape profile must be mixed",
+    "fr": "les niveaux tutoriels à points utilisent le plateau dédié au tutoriel ; le profil de formes doit être mixed"
+  },
   "分数关初始占格数须为 1–63": {
     "en": "score levels must start with 1–63 occupied cells",
     "fr": "les niveaux à points doivent commencer avec 1 à 63 cases occupées"
@@ -234,6 +254,10 @@
   "收集关仅支持 wings、heart、ring、steps、butterfly": {
     "en": "collection levels only support wings, heart, ring, steps and butterfly",
     "fr": "les niveaux de collecte acceptent uniquement wings, heart, ring, steps et butterfly"
+  },
+  "近胜线需要额外初始方块支撑，不能大于 extra_blocks": {
+    "en": "near-win lines require extra initial blocks and cannot exceed extra_blocks",
+    "fr": "les lignes presque gagnantes nécessitent des blocs initiaux supplémentaires et ne peuvent pas dépasser extra_blocks"
   },
   "%s 模板最多有 %d 个占格，初始标记不能超过该值": {
     "en": "the %s template has at most %d occupied cells; initial markers cannot exceed this number",
@@ -330,6 +354,26 @@
   "关卡配置不可用": {
     "en": "Level configuration unavailable",
     "fr": "Configuration des niveaux indisponible"
+  },
+  "未知收集模板": {
+    "en": "Unknown collection template",
+    "fr": "Modèle de collecte inconnu"
+  },
+  "初始标记超过模板占格": {
+    "en": "Initial markers exceed the template cells",
+    "fr": "Les marqueurs initiaux dépassent les cases du modèle"
+  },
+  "模板包含完整行列": {
+    "en": "The template contains a complete row or column",
+    "fr": "Le modèle contient une ligne ou une colonne complète"
+  },
+  "形状池无有效方块": {
+    "en": "The shape pool has no valid blocks",
+    "fr": "Le pool de formes ne contient aucun bloc valide"
+  },
+  "当前棋盘无法容纳初始托盘": {
+    "en": "The current board cannot fit the initial tray",
+    "fr": "La grille actuelle ne peut pas accueillir le plateau initial"
   },
   "%s %d 个": {
     "en": "%s ×%d",

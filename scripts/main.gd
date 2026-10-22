@@ -14,6 +14,14 @@ const MobileLayout := preload("res://scripts/ui/mobile_layout.gd")
 const SettingsPanelScript := preload("res://scripts/ui/settings_panel.gd")
 const ActionConfirmationScript := preload("res://scripts/ui/action_confirmation.gd")
 const L10n := preload("res://scripts/localization/game_locale.gd")
+const SETUP_REASON_SOURCES := {
+	"invalid_level_configuration": "关卡配置不可用",
+	"unknown_collection_template": "未知收集模板",
+	"initial_markers_exceed_actual_template_cells": "初始标记超过模板占格",
+	"template_contains_full_line": "模板包含完整行列",
+	"invalid_shape_pool": "形状池无有效方块",
+	"board_cannot_fit_initial_tray": "当前棋盘无法容纳初始托盘",
+}
 
 signal quit_requested
 
@@ -74,6 +82,10 @@ var display_remaining_counts: Dictionary = {}
 var progress_milestones_shown: Dictionary = {}
 var pending_level_unlock: Dictionary = {}
 var level_config_dialog: AcceptDialog
+var _level_config_error_kind := ""
+var _level_config_error_details := ""
+var _level_config_error_level := 0
+var _level_config_error_reason := ""
 
 func _ready() -> void:
 	set_process_input(true)
@@ -144,6 +156,7 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_TRANSLATION_CHANGED and is_node_ready() and is_instance_valid(settings_controls):
 		_refresh_confirmation_texts()
 		_refresh_controls()
+		_refresh_level_config_dialog()
 		queue_redraw()
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST and OS.has_feature("android"):
 		# Android's system back uses the same pause/menu path as desktop Esc.
@@ -373,7 +386,7 @@ func _start_game(mode: String = "", level_id: int = 0) -> void:
 		var failures := SaveRepository.level_failure_count(save_data, next_level)
 		setup = ModeCatalog.level_setup(next_level, ModeCatalog.MAX_LEVELS, rules_config, failures)
 		if not bool(setup.get("config_valid", false)) or bool(setup.get("initial_setup_invalid", false)):
-			_show_level_config_error(L10n.t("第 %d 关初始配置无法用于当前棋盘：%s") % [next_level, L10n.t(str(setup.get("initial_diagnostics", {}).get("reason", "配置错误")))])
+			_show_initial_setup_error(next_level, str(setup.get("initial_diagnostics", {}).get("reason", "配置错误")))
 			return
 		seed = int(setup["level_seed"])
 	else:
@@ -516,10 +529,44 @@ func _reload_adventure_config() -> bool:
 	if errors.size() > 3:
 		visible_errors.append(L10n.t("另有错误，请查看 Godot 输出。"))
 	push_error("\n".join(errors))
-	_show_level_config_error("\n".join(visible_errors))
+	_show_level_config_error("\n".join(visible_errors), "table")
 	return false
 
-func _show_level_config_error(details: String) -> void:
+func _localized_setup_reason(reason: String) -> String:
+	var source := str(SETUP_REASON_SOURCES.get(reason, "配置错误"))
+	return L10n.t(source)
+
+func _show_initial_setup_error(level_id: int, reason: String) -> void:
+	_level_config_error_kind = "setup"
+	_level_config_error_details = ""
+	_level_config_error_level = level_id
+	_level_config_error_reason = reason
+	_apply_level_config_error_dialog()
+
+func _show_level_config_error(details: String, kind: String = "details") -> void:
+	_level_config_error_kind = kind
+	_level_config_error_details = details
+	_level_config_error_level = 0
+	_level_config_error_reason = ""
+	_apply_level_config_error_dialog()
+
+func _refresh_level_config_dialog() -> void:
+	if not is_instance_valid(level_config_dialog) or not level_config_dialog.visible:
+		return
+	if _level_config_error_kind == "table":
+		var errors := ModeCatalog.reload_level_config()
+		if errors.is_empty():
+			return
+		var visible_errors := PackedStringArray()
+		for index in range(mini(3, errors.size())):
+			visible_errors.append(errors[index])
+		if errors.size() > 3:
+			visible_errors.append(L10n.t("另有错误，请查看 Godot 输出。"))
+		_level_config_error_details = "\n".join(visible_errors)
+	_apply_level_config_error_dialog()
+
+func _apply_level_config_error_dialog() -> void:
+	var should_popup := not is_instance_valid(level_config_dialog) or not level_config_dialog.visible
 	if not is_instance_valid(level_config_dialog):
 		level_config_dialog = AcceptDialog.new()
 		level_config_dialog.name = "LevelConfigError"
@@ -528,11 +575,15 @@ func _show_level_config_error(details: String) -> void:
 		add_child(level_config_dialog)
 	level_config_dialog.title = L10n.t("关卡配置错误")
 	level_config_dialog.ok_button_text = L10n.t("知道了")
+	var details := _level_config_error_details
+	if _level_config_error_kind == "setup":
+		details = L10n.t("第 %d 关初始配置无法用于当前棋盘：%s") % [_level_config_error_level, _localized_setup_reason(_level_config_error_reason)]
 	level_config_dialog.dialog_text = L10n.t("闯关配置未生效：\n\n%s\n\n请修正 config/adventure_levels.csv 后重新进入选关页。") % details
 	_refresh_controls()
 	var width := mini(720, maxi(260, int(size.x) - 48))
 	level_config_dialog.min_size = Vector2i(width, 200)
-	level_config_dialog.popup_centered(Vector2i(width, 0))
+	if should_popup:
+		level_config_dialog.popup_centered(Vector2i(width, 0))
 
 func _start_adventure_level(level_id: int) -> void:
 	if level_id >= 1 and level_id <= _unlocked_level():

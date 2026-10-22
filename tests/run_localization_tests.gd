@@ -48,6 +48,7 @@ func _run_tests() -> void:
 	_equal(main.save_path, _save_path, "Main uses isolated save")
 	_check(not main.feedback_audio.sound_player.playing and not main.feedback_audio.music_player.playing, "test audio remains disabled")
 	L10n.clear_missing_keys()
+	await _test_error_localization(main)
 	await _test_menu_opening_roundtrip(scene)
 	for code: String in L10n.SUPPORTED_CODES:
 		await _test_language_surfaces(main, code)
@@ -120,6 +121,79 @@ func _test_repository_languages() -> void:
 		profile["language"] = invalid
 		_write_json(path, profile)
 		_equal(Repository.load_data(path)["language"], "zh_CN", "invalid language safely defaults: %s" % str(invalid))
+
+func _test_error_localization(main) -> void:
+	var config_error_sources: Array[String] = [
+		"仅支持 friendly、mixed 或 pressure",
+		"分数教学关不使用额外初始方块，须为 0",
+		"分数教学关不使用近胜线，须为 0",
+		"分数教学关使用独立教学供块，随机度须为 50",
+		"分数教学关使用独立教学供块，须为 mixed",
+		"近胜线需要额外初始方块支撑，不能大于 extra_blocks",
+	]
+	var setup_reasons := [
+		"invalid_level_configuration",
+		"unknown_collection_template",
+		"initial_markers_exceed_actual_template_cells",
+		"template_contains_full_line",
+		"invalid_shape_pool",
+		"board_cannot_fit_initial_tray",
+	]
+	for code: String in ["en", "fr"]:
+		_choose_language(main, code)
+		await _settle()
+		for source: String in config_error_sources:
+			_assert_translated(L10n.t(source), code, "%s translates configuration validation source" % code)
+		_check(main.has_method("_localized_setup_reason"), "%s exposes a localized setup reason mapper" % code)
+		if main.has_method("_localized_setup_reason"):
+			for reason: String in setup_reasons:
+				var translated := str(main.call("_localized_setup_reason", reason))
+				_check(translated != reason, "%s maps setup reason %s to player text" % [code, reason])
+				_assert_translated(translated, code, "%s setup reason %s" % [code, reason])
+	var screen_before: String = main.screen
+	var game_before = main.game
+	_choose_language(main, "zh_CN")
+	main._show_level_config_error("fixture error")
+	await _settle()
+	var body_source := "闯关配置未生效：\n\n%s\n\n请修正 config/adventure_levels.csv 后重新进入选关页。"
+	for code: String in ["zh_CN", "en", "fr", "en", "zh_CN"]:
+		_choose_language(main, code)
+		await _settle()
+		_check(main.level_config_dialog.visible, "configuration error dialog stays open after %s switch" % code)
+		_equal(main.level_config_dialog.title, L10n.t("关卡配置错误"), "configuration error title refreshes %s" % code)
+		_equal(main.level_config_dialog.dialog_text, L10n.t(body_source) % "fixture error", "configuration error body refreshes %s" % code)
+		_equal(main.level_config_dialog.get_ok_button().text, L10n.t("知道了"), "configuration error OK refreshes %s" % code)
+		_equal(main.screen, screen_before, "configuration error language switch keeps screen")
+		_equal(main.game, game_before, "configuration error language switch keeps game")
+	_check(main.has_method("_show_initial_setup_error"), "configuration error dialog has a refreshable setup-error entry point")
+	if main.has_method("_show_initial_setup_error"):
+		_choose_language(main, "zh_CN")
+		main.call("_show_initial_setup_error", 3, "unknown_collection_template")
+		await _settle()
+		_choose_language(main, "en")
+		await _settle()
+		_assert_translated(main.level_config_dialog.dialog_text, "en", "English setup error dialog refresh")
+		_check(not main.level_config_dialog.dialog_text.contains("unknown_collection_template"), "English setup error hides machine reason")
+		_choose_language(main, "fr")
+		await _settle()
+		_assert_translated(main.level_config_dialog.dialog_text, "fr", "French setup error dialog refresh")
+		_check(not main.level_config_dialog.dialog_text.contains("unknown_collection_template"), "French setup error hides machine reason")
+	main.level_config_dialog.hide()
+	var original_rules: GameRulesConfig = main.rules_config
+	var broken_rules: GameRulesConfig = original_rules.duplicate(true)
+	broken_rules.shape_pool.clear()
+	main.rules_config = broken_rules
+	for code: String in ["en", "fr"]:
+		_choose_language(main, code)
+		main._start_game("adventure", 1)
+		await _settle()
+		_check(main.level_config_dialog.visible, "%s invalid setup opens configuration dialog" % code)
+		_assert_translated(main.level_config_dialog.dialog_text, code, "%s invalid setup dialog" % code)
+		_check(not main.level_config_dialog.dialog_text.contains("invalid_shape_pool"), "%s invalid setup hides machine reason" % code)
+	main.level_config_dialog.hide()
+	main.rules_config = original_rules
+	_choose_language(main, "zh_CN")
+	await _settle()
 
 func _test_language_surfaces(main, code: String) -> void:
 	main._show_menu()
