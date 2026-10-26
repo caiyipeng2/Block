@@ -88,6 +88,8 @@ var _level_config_error_level := 0
 var _level_config_error_reason := ""
 
 func _ready() -> void:
+	get_tree().auto_accept_quit = false
+	get_window().close_requested.connect(_ask_quit)
 	set_process_input(true)
 	save_data = SaveRepository.load_data(save_path)
 	L10n.set_language(str(save_data.get("language", "zh_CN")))
@@ -173,16 +175,16 @@ func _input(event: InputEvent) -> void:
 		return
 	if is_instance_valid(level_config_dialog) and level_config_dialog.visible:
 		return
+	if not confirmation_action.is_empty():
+		if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
+			_cancel_confirmation()
+		return
 	if _objective_intro_open():
 		if event is InputEventKey and event.pressed and not event.echo and event.keycode in [KEY_ENTER, KEY_KP_ENTER, KEY_SPACE, KEY_ESCAPE]:
 			gameplay_ui.accept_objective_intro()
 			get_viewport().set_input_as_handled()
 		# Leave mouse/Tab events to the native modal controls. No tray or
 		# gameplay shortcut can act before the player accepts the objective.
-		return
-	if not confirmation_action.is_empty():
-		if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
-			_cancel_confirmation()
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_ESCAPE:
@@ -465,7 +467,17 @@ func _check_progress_milestones() -> void:
 			gameplay_ui.show_progress_milestone(threshold, _reduced_motion())
 
 func _on_collections_settled() -> void:
+	_try_show_game_over()
 	_try_show_level_complete()
+
+func _try_show_game_over() -> void:
+	if exiting or game == null or screen != "game" or not game.is_game_over() or _result_feedback_pending():
+		return
+	move_feedback.reset_move()
+	screen = "game_over"
+	paused = false
+	_refresh_controls()
+	queue_redraw()
 
 func _try_show_level_complete() -> void:
 	if exiting or game == null or screen != "game" or not game.is_level_complete() or _result_feedback_pending():
@@ -917,11 +929,8 @@ func _on_feedback_finished() -> void:
 	pending_move = {}
 	pending_tray = []
 	rebound_piece_id = -1
-	if game != null and screen == "game" and game.is_game_over():
-		screen = "game_over"
-		paused = false
-	elif game != null and screen == "game" and game.is_level_complete():
-		_try_show_level_complete()
+	_try_show_game_over()
+	_try_show_level_complete()
 	_refresh_controls()
 	if game != null and screen == "game" and refilled and game.round_index != last_notice_round and not _is_collect_mode():
 		last_notice_round = game.round_index

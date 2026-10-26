@@ -15,6 +15,7 @@ SUITES = {
     "save": ("run_save_tests.gd", "SAVE TESTS PASSED"),
     "audio": ("run_audio_tests.gd", "AUDIO TESTS PASSED"),
     "exit": ("run_exit_tests.gd", "EXIT TEST PASSED"),
+    "terminal": ("run_terminal_flow_tests.gd", "TERMINAL FLOW TESTS PASSED"),
 }
 
 
