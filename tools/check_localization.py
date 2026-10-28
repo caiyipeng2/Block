@@ -34,6 +34,7 @@ ENGLISH_UI_SOURCES = {
     "Final Block!", "COMBO", "%d Line", "%d Lines", "%d%% Done", "SCORE %06d",
     "COMBO x%d", "COMBO --", "English", "Français",
 }
+NON_UI_SCRIPT_NAMES = {"leaderboard_bots.gd"}
 
 
 def unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -49,6 +50,8 @@ def source_keys(project_root: Path) -> tuple[set[str], int]:
     required = set(ENGLISH_UI_SOURCES)
     script_count = 0
     for path in sorted((project_root / "scripts").rglob("*.gd")):
+        if path.name in NON_UI_SCRIPT_NAMES:
+            continue
         script_count += 1
         text = path.read_text(encoding="utf-8-sig")
         for match in GD_TOKENS.finditer(text):

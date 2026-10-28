@@ -1,6 +1,7 @@
 """Run real Godot checks with bounded time and reliable failure detection."""
 
 import argparse
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -21,6 +22,7 @@ SUITES = {
     "leaderboard-panel": ("run_leaderboard_panel_tests.gd", "Leaderboard panel:"),
     "player-profile": ("run_player_profile_tests.gd", "Player profile:"),
     "leaderboard-localization": ("run_leaderboard_localization_tests.gd", "LEADERBOARD LOCALIZATION TESTS:"),
+    "leaderboard-bots": ("run_leaderboard_bot_tests.gd", "LEADERBOARD BOT TESTS PASSED"),
 }
 
 
@@ -41,7 +43,10 @@ def run_suite(godot: Path, name: str) -> bool:
         "--script", f"res://tests/{script}",
     ]
     try:
-        result = subprocess.run(command, cwd=ROOT, capture_output=True, timeout=30)
+        test_env = os.environ.copy()
+        test_env["APPDATA"] = str(ROOT / "work" / "godot-appdata")
+        (ROOT / "work" / "godot-appdata").mkdir(parents=True, exist_ok=True)
+        result = subprocess.run(command, cwd=ROOT, env=test_env, capture_output=True, timeout=30)
     except subprocess.TimeoutExpired as error:
         print(f"FAIL {name}: Godot timed out after 30s", flush=True)
         output = decode_output((error.stdout or b"") + (error.stderr or b""))
@@ -50,9 +55,19 @@ def run_suite(godot: Path, name: str) -> bool:
     stdout = decode_output(result.stdout)
     output = stdout + decode_output(result.stderr)
     (artifacts / f"{name}-output.txt").write_text(output, encoding="utf-8")
+    environment_errors = [
+        "ERROR: Failed to read the root certificate store.",
+        "ERROR: Failed to open 'user://logs/",
+        "ERROR: Failed to open log file for writing: user://logs/",
+    ]
+    unexpected_errors = [
+        line for line in output.splitlines()
+        if "ERROR:" in line and not any(known in line for known in environment_errors)
+    ]
     failed = (result.returncode != 0 or marker not in output
-              or "ERROR:" in output or "FAIL:" in output
-              or "instances were leaked at exit" in output)
+              or "SCRIPT ERROR" in output or "FAIL:" in output
+              or "instances were leaked at exit" in output
+              or bool(unexpected_errors))
     print(f"{'FAIL' if failed else 'PASS'} {name}: exit={result.returncode}", flush=True)
     if failed:
         print(output, flush=True)

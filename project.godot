@@ -39,14 +39,16 @@ enabled=PackedStringArray("res://addons/godot_ai/plugin.cfg")
 
 [internationalization]
 
-locale/fallback="zh_CN"
 locale/include_text_server_data=true
+locale/fallback="zh_CN"
 
 [leaderboard]
 
 api_base_url=""
 firebase_api_key=""
 ruleset_id="block-0.9.5-v1"
+bot_target_count=100
+bot_refresh_seconds=1800
 
 [physics]
 

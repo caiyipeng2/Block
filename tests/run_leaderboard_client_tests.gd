@@ -98,8 +98,9 @@ func _test_client() -> void:
 	var board_id := wire.requests.size()
 	_check(wire.requests[-1]["url"].contains("/leaderboards/classic"), "authorized session reads selected mode")
 	var entry := {"account_id": "account-a", "rank": 127, "nickname": "Étoile", "avatar": 2, "score": 90, "completed": 0}
-	wire.completed.emit(board_id, 200, {"entries": [], "me": entry, "next_cursor": "", "updated_at": 1700000000}, "")
+	wire.completed.emit(board_id, 200, {"entries": [], "real_player_count": 0, "me": entry, "next_cursor": "", "updated_at": 1700000000}, "")
 	_check(client.view()["me"].get("rank") == 127, "personal rank may be outside top100")
+	_check(client.view()["entries"].size() == 100 and client.view()["entries"][0].get("is_bot", false), "known empty board is filled with visible bots")
 	client.open_board("free", true)
 	var free_id := wire.requests.size()
 	client.open_board("adventure", true)
@@ -153,11 +154,13 @@ func _test_pagination_consistency() -> void:
 	var wire: TestTransport = client._transport
 	client.open_board("classic")
 	var first := _empty_board()
+	first["real_player_count"] = 100
 	first["entries"] = [{"account_id": "a", "rank": 1, "nickname": "Alpha", "avatar": 0, "score": 100, "completed": 0}, {"account_id": "b", "rank": 2, "nickname": "Beta", "avatar": 0, "score": 90, "completed": 0}]
 	first["next_cursor"] = "page2"
 	wire.completed.emit(1, 200, first, "")
 	client.load_more()
 	var second := _empty_board()
+	second["real_player_count"] = 100
 	second["entries"] = [{"account_id": "c", "rank": 1, "nickname": "Gamma", "avatar": 0, "score": 110, "completed": 0}]
 	wire.completed.emit(2, 200, second, "")
 	_check(client.view()["entries"] == first["entries"], "rank inversion across pages retains acknowledged cache")
@@ -271,7 +274,9 @@ func _dispose(client: Node) -> void:
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(STORE_PATH))
 
 func _empty_board() -> Dictionary:
-	return {"entries": [], "me": {}, "next_cursor": "", "updated_at": 1700000000}
+	# Legacy fixture: an authoritative empty response with no filler. The bot
+	# integration test passes real_player_count=0 explicitly.
+	return {"entries": [], "real_player_count": 100, "me": {}, "next_cursor": "", "updated_at": 1700000000}
 
 func _ticket(client: Node) -> void:
 	client._transport.completed.emit(client._transport.requests.size(), 200, {"run_id": client._run["id"], "ticket": "signed-ticket", "ruleset_id": client._ruleset}, "")

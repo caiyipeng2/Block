@@ -3,8 +3,10 @@ extends Node
 signal changed
 const Store := preload("res://scripts/persistence/leaderboard_store.gd")
 const Transport := preload("res://scripts/persistence/leaderboard_transport.gd")
+const Bots := preload("res://scripts/persistence/leaderboard_bots.gd")
 const CACHE_SECONDS := 60
 const MAX_REPLAY_MOVES := 20000
+const BOARD_LIMIT := 100
 var store: RefCounted
 var selected_mode := "adventure"
 var _transport: Node
@@ -41,6 +43,8 @@ func available() -> bool:
 	return _base_url.begins_with("https://") and not _api_key.is_empty() and not store.read_failed
 
 func _process(_delta: float) -> void:
+	if _refresh_bot_cache(selected_mode):
+		changed.emit()
 	if available() and _retry_at > 0 and Time.get_ticks_msec() >= _retry_at:
 		_retry_at = 0
 		# Board reads and writes are independent: opening a board must not
@@ -73,6 +77,7 @@ func open_board(mode: String = "", force: bool = false) -> void:
 		store.persist()
 	_opened = true
 	_neighbors.clear()
+	_refresh_bot_cache(selected_mode)
 	if not available():
 		_states[selected_mode] = "unconfigured"
 		changed.emit()
@@ -96,7 +101,7 @@ func close_board() -> void:
 
 func load_more() -> void:
 	var current := view()
-	if not available() or not _has_session() or str(current["next_cursor"]).is_empty() or current["entries"].size() >= 100 or _has_pending("board", selected_mode):
+	if not available() or not _has_session() or str(current["next_cursor"]).is_empty() or current["entries"].size() >= BOARD_LIMIT or _has_pending("board", selected_mode):
 		return
 	_fetch_board(selected_mode, current["next_cursor"])
 
@@ -106,6 +111,7 @@ func load_neighbors() -> void:
 	_send("neighbors", _base_url + "/v1/leaderboards/" + selected_mode + "/me?ruleset_id=" + _ruleset.uri_encode(), HTTPClient.METHOD_GET, {}, {"mode": selected_mode, "generation": _generations[selected_mode]})
 
 func view() -> Dictionary:
+	_refresh_bot_cache(selected_mode)
 	var cached: Dictionary = store.data["cache"].get(_cache_key(selected_mode), {})
 	var mine: Dictionary = cached.get("me", {})
 	var pending := _local_pending(selected_mode)
@@ -234,7 +240,7 @@ func _sync_next() -> void:
 
 func _fetch_board(mode: String, cursor: String = "") -> void:
 	_generations[mode] = int(_generations[mode]) + 1
-	var url := _base_url + "/v1/leaderboards/" + mode + "?limit=20&ruleset_id=" + _ruleset.uri_encode()
+	var url := _base_url + "/v1/leaderboards/" + mode + "?limit=" + str(BOARD_LIMIT) + "&ruleset_id=" + _ruleset.uri_encode()
 	if not cursor.is_empty():
 		url += "&cursor=" + cursor.uri_encode()
 	_send("board", url, HTTPClient.METHOD_GET, {}, {"mode": mode, "cursor": cursor, "generation": _generations[mode]})
@@ -374,7 +380,8 @@ func _accept_board(context: Dictionary, body: Dictionary) -> void:
 	var mode: String = context["mode"]
 	if context["generation"] != _generations[mode]:
 		return
-	if not _valid_entries(body.get("entries"), 20) or not body.get("me") is Dictionary or (not body["me"].is_empty() and not _valid_entry(body["me"])) or not body.get("next_cursor", "") is String or not _valid_integer(body.get("updated_at"), 0, Store.MAX_SCORE):
+	var real_player_count: Variant = body.get("real_player_count", body.get("total_players", body.get("entries", []).size()))
+	if not _valid_entries(body.get("entries"), BOARD_LIMIT) or not _valid_integer(real_player_count, 0, Store.MAX_SCORE) or not body.get("me") is Dictionary or (not body["me"].is_empty() and not _valid_entry(body["me"])) or not body.get("next_cursor", "") is String or not _valid_integer(body.get("updated_at"), 0, Store.MAX_SCORE):
 		_states[mode] = "error"
 		return
 	var entries: Array = body["entries"].duplicate(true)
@@ -382,7 +389,10 @@ func _accept_board(context: Dictionary, body: Dictionary) -> void:
 		var cache: Dictionary = store.data["cache"].get(_cache_key(mode), {})
 		if cache.get("next_cursor") != context["cursor"]:
 			return
-		var previous: Array = cache.get("entries", []).duplicate(true)
+		var previous: Array = []
+		for entry: Dictionary in cache.get("entries", []):
+			if not bool(entry.get("is_bot", false)):
+				previous.append(entry.duplicate(true))
 		var ids := {}
 		for entry: Dictionary in previous:
 			ids[entry["account_id"]] = true
@@ -390,13 +400,35 @@ func _accept_board(context: Dictionary, body: Dictionary) -> void:
 			if not ids.has(entry["account_id"]):
 				previous.append(entry)
 		entries = previous.slice(0, 100)
-		if not _valid_entries(entries, 100):
+		if not _valid_entries(entries, BOARD_LIMIT):
 			_states[mode] = "loading"
 			_fetch_board(mode)
 			return
-	store.data["cache"][_cache_key(mode)] = {"entries": entries, "me": body["me"], "next_cursor": body.get("next_cursor", "") if entries.size() < 100 else "", "updated_at": body["updated_at"], "fetched_at": Time.get_unix_time_from_system()}
+	var filled: Dictionary = Bots.fill(mode, entries, int(real_player_count), Bots.target_count(), Bots.current_epoch(), body["me"])
+	entries = filled["entries"]
+	var next_cursor := str(body.get("next_cursor", "")) if int(filled["real_player_count"]) >= BOARD_LIMIT and entries.size() < BOARD_LIMIT else ""
+	store.data["cache"][_cache_key(mode)] = {"entries": entries, "me": body["me"], "real_player_count": filled["real_player_count"], "bot_epoch": filled["bot_epoch"], "next_cursor": next_cursor, "updated_at": body["updated_at"], "fetched_at": Time.get_unix_time_from_system()}
 	store.persist()
 	_states[mode] = "empty" if entries.is_empty() else "ready"
+
+func _refresh_bot_cache(mode: String) -> bool:
+	var key := _cache_key(mode)
+	if not store.data.get("cache", {}).has(key):
+		return false
+	var cache: Dictionary = store.data["cache"][key]
+	var epoch := Bots.current_epoch()
+	if int(cache.get("bot_epoch", -1)) == epoch:
+		return false
+	var real_entries: Array = []
+	for entry: Dictionary in cache.get("entries", []):
+		if not bool(entry.get("is_bot", false)):
+			real_entries.append(entry.duplicate(true))
+	var filled: Dictionary = Bots.fill(mode, real_entries, int(cache.get("real_player_count", real_entries.size())), Bots.target_count(), epoch, cache.get("me", {}))
+	cache["entries"] = filled["entries"]
+	cache["bot_epoch"] = filled["bot_epoch"]
+	cache["real_player_count"] = filled["real_player_count"]
+	store.persist()
+	return true
 
 func _cache_key(mode: String) -> String:
 	return _ruleset + ":" + mode
