@@ -10,6 +10,7 @@ signal settings_requested
 signal open_settings_requested
 signal next_level_requested
 signal levels_requested
+signal leaderboard_requested
 signal objective_intro_dismissed
 
 const BlockArt := preload("res://scripts/ui/block_art.gd")
@@ -83,6 +84,8 @@ var _new_record_label: Label
 var _overlay_buttons: HBoxContainer
 var _overlay_secondary_buttons: HBoxContainer
 var _overlay_settings_button: Button
+var _leaderboard_button: Button
+var _leaderboard_status: Label
 var _resume_button: Button
 var _overlay_restart_button: Button
 var _overlay_menu_button: Button
@@ -867,6 +870,16 @@ func _build_controls() -> void:
 		if not _overlay_settings_button.disabled:
 			open_settings_requested.emit())
 	_overlay_secondary_buttons.add_child(_overlay_settings_button)
+	_leaderboard_status = _new_label("LeaderboardStatus", 15)
+	_leaderboard_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_leaderboard_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_leaderboard_status.add_theme_color_override("font_color", AQUA)
+	_overlay_box.add_child(_leaderboard_status)
+	_leaderboard_button = _new_button("LeaderboardButton", "查看排行榜")
+	_leaderboard_button.pressed.connect(func():
+		if not _leaderboard_button.disabled and _mode in [MODE_GAME_OVER, MODE_LEVEL_COMPLETE]:
+			leaderboard_requested.emit())
+	_overlay_box.add_child(_leaderboard_button)
 	_victory_confetti = Control.new()
 	_victory_confetti.name = "VictoryConfetti"
 	_victory_confetti.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -962,7 +975,7 @@ func _on_intro_gui_input(event: InputEvent) -> void:
 
 func _on_card_resized() -> void:
 	_card.pivot_offset = _card.size * 0.5
-	for button: Button in [_resume_button, _next_level_button, _overlay_restart_button, _overlay_menu_button, _overlay_settings_button]:
+	for button: Button in [_resume_button, _next_level_button, _overlay_restart_button, _overlay_menu_button, _overlay_settings_button, _leaderboard_button]:
 		_fit_action_button(button)
 
 func _draw_intro_ribbon() -> void:
@@ -1218,6 +1231,7 @@ func _apply_theme() -> void:
 	_style_button(_overlay_restart_button, GOLD, Color("#213759"))
 	_style_button(_overlay_menu_button, Color("#2c4677"), _text)
 	_style_button(_overlay_settings_button, Color("#2c4677"), _text)
+	_style_button(_leaderboard_button, Color("#2c4677"), _text)
 	_style_button(_intro_start_button, GOLD, Color("#213759"))
 	_intro_title.add_theme_color_override("font_color", Color.WHITE)
 	_intro_subtitle.add_theme_color_override("font_color", Color("#d8e9ff"))
@@ -1295,7 +1309,7 @@ func _apply_state(mode_changed: bool) -> void:
 	_pause_button.disabled = intro_visible or bool(_stats.get("modal_backdrop", false))
 	_resume_button.disabled = false
 	_next_level_button.disabled = input_locked or not bool(_stats.get("has_next_level", false))
-	for button: Button in [_settings_button, _playing_restart_button, _playing_menu_button, _overlay_restart_button, _overlay_menu_button, _overlay_settings_button, _collect_back_button, _collect_settings_button]:
+	for button: Button in [_settings_button, _playing_restart_button, _playing_menu_button, _overlay_restart_button, _overlay_menu_button, _overlay_settings_button, _leaderboard_button, _collect_back_button, _collect_settings_button]:
 		button.disabled = input_locked
 	_playing_root.visible = _mode == MODE_PLAYING
 	_overlay_root.visible = _mode in [MODE_PAUSED, MODE_GAME_OVER, MODE_LEVEL_COMPLETE]
@@ -1323,7 +1337,7 @@ func _apply_state(mode_changed: bool) -> void:
 	_layout_controls()
 	if _focus_pending:
 		if _mode == MODE_HIDDEN:
-			for button: Button in [_settings_button, _pause_button, _playing_restart_button, _playing_menu_button, _resume_button, _overlay_restart_button, _overlay_menu_button, _next_level_button, _overlay_settings_button, _collect_back_button, _collect_settings_button]:
+			for button: Button in [_settings_button, _pause_button, _playing_restart_button, _playing_menu_button, _resume_button, _overlay_restart_button, _overlay_menu_button, _next_level_button, _overlay_settings_button, _leaderboard_button, _collect_back_button, _collect_settings_button]:
 				button.release_focus()
 		else:
 			_grab_first_focus()
@@ -1334,7 +1348,21 @@ func _apply_state(mode_changed: bool) -> void:
 			_start_victory_animation()
 	queue_redraw()
 
+func set_leaderboard_status(data: Dictionary) -> void:
+	var rank := int(data.get("rank", 0))
+	if rank > 0:
+		_leaderboard_status.text = L10n.t("上次全球排名：%d") % rank
+	else:
+		_leaderboard_status.text = L10n.t("尚未上榜")
+	if not bool(data.get("available", false)) or bool(data.get("local_only", false)):
+		_leaderboard_status.text = L10n.t("仅保存于本机") if rank == 0 else _leaderboard_status.text + " · " + L10n.t("仅保存于本机")
+	elif bool(data.get("pending", false)):
+		_leaderboard_status.text += " · " + L10n.t("成绩待同步")
+
 func _configure_overlay_actions() -> void:
+	var terminal := _mode in [MODE_GAME_OVER, MODE_LEVEL_COMPLETE]
+	_leaderboard_button.visible = terminal
+	_leaderboard_status.visible = terminal
 	var collect_victory := _is_collect_objective() and _mode == MODE_LEVEL_COMPLETE
 	var target_parent: Node = _overlay_secondary_buttons if collect_victory else _overlay_buttons
 	for button: Button in [_overlay_restart_button, _overlay_menu_button]:
@@ -1369,6 +1397,10 @@ func _configure_overlay_actions() -> void:
 		_overlay_title.add_theme_constant_override("shadow_offset_y", 0)
 		_overlay_box.move_child(_overlay_objective_badge, 0)
 		_overlay_box.move_child(_overlay_title, 1)
+	_overlay_box.move_child(_leaderboard_status, _new_record_label.get_index() + 1)
+	_overlay_box.move_child(_leaderboard_button, _leaderboard_status.get_index() + 1)
+	_overlay_box.move_child(_overlay_buttons, _leaderboard_button.get_index() + 1)
+	_overlay_box.move_child(_overlay_secondary_buttons, _overlay_buttons.get_index() + 1)
 
 func _update_texts(mode_changed: bool, update_score: bool = true) -> void:
 	var score := int(_stats.get("score", 0))
@@ -1427,6 +1459,8 @@ func _update_texts(mode_changed: bool, update_score: bool = true) -> void:
 	_resume_button.tooltip_text = L10n.t("继续游戏")
 	_overlay_settings_button.text = L10n.t("设置")
 	_overlay_settings_button.tooltip_text = _overlay_settings_button.text
+	_leaderboard_button.text = L10n.t("查看排行榜")
+	_leaderboard_button.tooltip_text = _leaderboard_button.text
 	if update_score:
 		_refresh_score(score, mode_changed)
 
@@ -1892,6 +1926,9 @@ func _layout_overlay() -> void:
 	_overlay_secondary_buttons.custom_minimum_size = Vector2(0.0, 40.0 if collect_victory else MIN_BUTTON_HEIGHT)
 	var card_width := minf(VICTORY_CARD_WIDTH if collect_victory else (540.0 if _mode == MODE_LEVEL_COMPLETE else 480.0), maxf(size.x - 32.0, 240.0))
 	var card_height := (438.0 if _is_collect_objective() else 376.0) if _mode == MODE_PAUSED else (VICTORY_CARD_HEIGHT if collect_victory else (492.0 if _mode == MODE_LEVEL_COMPLETE else 428.0))
+	if _mode in [MODE_GAME_OVER, MODE_LEVEL_COMPLETE]:
+		card_height += 80.0
+	_leaderboard_status.custom_minimum_size.y = 24.0
 	var short_labels := card_width < 420.0
 	_resume_button.text = L10n.t("继续" if short_labels else "继续游戏")
 	_next_level_button.text = L10n.t("下一关" if bool(_stats.get("has_next_level", false)) else "全部通关")
@@ -1912,7 +1949,7 @@ func _layout_overlay() -> void:
 	_fit_label(_new_record_label, inner_width, 16 if save_warning else (14 if collect_victory else 18), 11, _new_record_label.max_lines_visible)
 	for label: Label in [_overlay_best, _overlay_stats, _new_record_label]:
 		label.custom_minimum_size.y = maxf(label.custom_minimum_size.y, _multiline_label_height(label, inner_width))
-	for button: Button in [_resume_button, _next_level_button, _overlay_restart_button, _overlay_menu_button, _overlay_settings_button]:
+	for button: Button in [_resume_button, _next_level_button, _overlay_restart_button, _overlay_menu_button, _overlay_settings_button, _leaderboard_button]:
 		_fit_action_button(button)
 	var viewport_height := minf(card_height, maxf(size.y - 24.0, 1.0))
 	_card_viewport.size = Vector2(card_width, viewport_height)
@@ -1943,7 +1980,7 @@ func _layout_mobile_overlay() -> void:
 	_overlay_menu_button.text = L10n.t("返回选关" if _is_adventure() else "返回菜单")
 	_overlay_restart_button.tooltip_text = _overlay_restart_button.text
 	_overlay_menu_button.tooltip_text = _overlay_menu_button.text
-	for button: Button in [_resume_button, _next_level_button, _overlay_restart_button, _overlay_menu_button, _overlay_settings_button]:
+	for button: Button in [_resume_button, _next_level_button, _overlay_restart_button, _overlay_menu_button, _overlay_settings_button, _leaderboard_button]:
 		button.custom_minimum_size = Vector2(touch, touch)
 		button.add_theme_font_size_override("font_size", int(MobileLayout.dp(self, 14.0)))
 		_fit_action_button(button)
@@ -1979,6 +2016,10 @@ func _layout_mobile_overlay() -> void:
 		panel.set_content_margin_all(padding)
 		_card.add_theme_stylebox_override("panel", panel)
 	var card_height := MobileLayout.dp(self, 510.0 if collect_victory else (444.0 if _is_collect_objective() else 404.0))
+	if _mode in [MODE_GAME_OVER, MODE_LEVEL_COMPLETE]:
+		card_height += MobileLayout.dp(self, 80.0)
+	_leaderboard_status.custom_minimum_size.y = MobileLayout.dp(self, 24.0)
+	_fit_label(_leaderboard_status, inner_width, int(MobileLayout.dp(self, 13.0)), int(MobileLayout.dp(self, 10.0)), 2)
 	var viewport_height := minf(card_height, content.size.y - MobileLayout.dp(self, 12.0))
 	_card_viewport.size = Vector2(card_width, maxf(viewport_height, 1.0))
 	_card_viewport.position = content.position + (content.size - _card_viewport.size) * 0.5

@@ -16,6 +16,11 @@ SUITES = {
     "audio": ("run_audio_tests.gd", "AUDIO TESTS PASSED"),
     "exit": ("run_exit_tests.gd", "EXIT TEST PASSED"),
     "terminal": ("run_terminal_flow_tests.gd", "TERMINAL FLOW TESTS PASSED"),
+    "leaderboard-client": ("run_leaderboard_client_tests.gd", "LEADERBOARD CLIENT TESTS PASSED"),
+    "leaderboard-navigation": ("run_leaderboard_navigation_tests.gd", "LEADERBOARD NAVIGATION TESTS PASSED"),
+    "leaderboard-panel": ("run_leaderboard_panel_tests.gd", "Leaderboard panel:"),
+    "player-profile": ("run_player_profile_tests.gd", "Player profile:"),
+    "leaderboard-localization": ("run_leaderboard_localization_tests.gd", "LEADERBOARD LOCALIZATION TESTS:"),
 }
 
 
@@ -46,7 +51,7 @@ def run_suite(godot: Path, name: str) -> bool:
     output = stdout + decode_output(result.stderr)
     (artifacts / f"{name}-output.txt").write_text(output, encoding="utf-8")
     failed = (result.returncode != 0 or marker not in output
-              or "SCRIPT ERROR" in output or "FAIL:" in output
+              or "ERROR:" in output or "FAIL:" in output
               or "instances were leaked at exit" in output)
     print(f"{'FAIL' if failed else 'PASS'} {name}: exit={result.returncode}", flush=True)
     if failed:

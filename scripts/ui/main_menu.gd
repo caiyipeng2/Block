@@ -6,6 +6,7 @@ signal free_requested
 signal classic_requested
 signal adventure_requested
 signal settings_requested
+signal leaderboard_requested
 signal quit_requested
 
 const Art := preload("res://scripts/ui/block_art.gd")
@@ -86,6 +87,8 @@ func _refresh_text() -> void:
 	_warning.text = L10n.t(_save_warning)
 	_warning.tooltip_text = _warning.text
 	get_node("SettingsButton").tooltip_text = "" if MobileLayout.is_mobile() else L10n.t("游戏设置")
+	get_node("LeaderboardButton").tooltip_text = L10n.t("排行榜")
+	get_node("LeaderboardButton/Caption").text = L10n.t("排行榜")
 	get_node("ExitButton").text = L10n.t("退出游戏")
 	_skip.text = L10n.t("轻触屏幕跳过" if MobileLayout.is_mobile() else "点击或按 Enter 跳过")
 
@@ -116,6 +119,7 @@ func present(first_launch: bool = false, reduced_motion: bool = false) -> void:
 			button.disabled = true
 			button.entrance_preview = true
 		get_node("SettingsButton").disabled = true
+		get_node("LeaderboardButton").disabled = true
 		get_node("ExitButton").disabled = true
 		_apply_opening(0.0)
 		var epoch := _epoch
@@ -233,6 +237,16 @@ func _build_controls() -> void:
 	add_child(settings)
 	var focus := StyleBoxEmpty.new()
 	settings.add_theme_stylebox_override("focus", focus)
+	var leaderboard := IconButton.new()
+	leaderboard.name = "LeaderboardButton"
+	leaderboard.icon_kind = "trophy"
+	leaderboard.icon_color = Color("#ffcf4d")
+	leaderboard.fill_color = Color("#21599f")
+	leaderboard.pressed.connect(func(): leaderboard_requested.emit())
+	add_child(leaderboard)
+	var caption := _label(12, Color("#e6f5ff"))
+	caption.name = "Caption"
+	leaderboard.add_child(caption)
 	var exit_button := Button.new()
 	exit_button.name = "ExitButton"
 	exit_button.text = L10n.t("退出游戏")
@@ -302,6 +316,7 @@ func _layout_controls() -> void:
 	var settings: Control = get_node("SettingsButton")
 	settings.position = Vector2(maxf(12.0, size.x - 72.0), 20.0)
 	settings.size = Vector2(48.0, 48.0)
+	_layout_leaderboard_button(Vector2(24.0, 20.0), 48.0, 1.0)
 	var exit_button: Control = get_node("ExitButton")
 	exit_button.size = Vector2(128.0, exit_height)
 	exit_button.position = Vector2((size.x - exit_button.size.x) * 0.5, exit_top)
@@ -327,6 +342,7 @@ func _layout_mobile_controls() -> void:
 	settings.size = Vector2.ONE * target
 	settings.tooltip_text = ""
 	settings.position = Vector2(area.end.x - padding - target, area.position.y + 12.0 * unit)
+	_layout_leaderboard_button(area.position + Vector2(padding, 12.0 * unit), target, unit)
 	var exit_button: Button = get_node("ExitButton")
 	exit_button.size = Vector2(150.0 * unit, target)
 	exit_button.position = Vector2(area.get_center().x - exit_button.size.x * 0.5, area.end.y - 40.0 * unit - target)
@@ -364,6 +380,15 @@ func _layout_mobile_controls() -> void:
 	_skip.add_theme_font_size_override("font_size", roundi(13.0 * unit))
 	_skip.text = L10n.t("轻触屏幕跳过")
 
+func _layout_leaderboard_button(origin: Vector2, side: float, unit: float) -> void:
+	var button: Button = get_node("LeaderboardButton")
+	button.position = origin
+	button.size = Vector2.ONE * side
+	var caption: Label = button.get_node("Caption")
+	caption.position = Vector2(-12.0 * unit, side + 2.0 * unit)
+	caption.size = Vector2(side + 24.0 * unit, 20.0 * unit)
+	caption.add_theme_font_size_override("font_size", L10n.fitted_size(caption.get_theme_font("font"), caption.text, caption.size.x, roundi(12.0 * unit), roundi(9.0 * unit)))
+
 func _settle_controls() -> void:
 	_logo.position = _logo_destination
 	_logo.scale = Vector2.ONE
@@ -376,7 +401,7 @@ func _settle_controls() -> void:
 		button.modulate = Color.WHITE
 		button.disabled = false
 		button.entrance_preview = false
-	for name in ["SettingsButton", "ExitButton"]:
+	for name in ["SettingsButton", "LeaderboardButton", "ExitButton"]:
 		var button: Button = get_node(name)
 		button.modulate = Color.WHITE
 		button.disabled = false
@@ -412,6 +437,7 @@ func _apply_opening(elapsed: float) -> void:
 	_best.visible = size.y >= 560.0
 	_best.modulate.a = smoothstep(1.58, 1.96, elapsed)
 	get_node("SettingsButton").modulate.a = smoothstep(1.64, 2.02, elapsed)
+	get_node("LeaderboardButton").modulate.a = smoothstep(1.64, 2.02, elapsed)
 	get_node("ExitButton").modulate.a = smoothstep(1.80, 2.16, elapsed)
 	_warning.visible = false
 	_skip.visible = elapsed < 1.80

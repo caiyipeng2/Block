@@ -110,6 +110,13 @@ static func draw_icon(canvas: CanvasItem, kind: String, rect: Rect2, color: Colo
 			for point in [Vector2(0.10, 0.28), Vector2(0.50, 0.10), Vector2(0.90, 0.28)]:
 				canvas.draw_circle(origin + point * side, side * 0.065, color.lightened(0.12))
 			canvas.draw_line(origin + Vector2(0.23, 0.79) * side, origin + Vector2(0.77, 0.79) * side, color.lightened(0.40), maxf(1.0, side * 0.04), true)
+		"trophy":
+			_polygon(canvas, origin, side, [Vector2(0.25, 0.12), Vector2(0.75, 0.12), Vector2(0.70, 0.49), Vector2(0.58, 0.62), Vector2(0.42, 0.62), Vector2(0.30, 0.49)], color)
+			for x in [0.24, 0.76]:
+				canvas.draw_arc(origin + Vector2(x, 0.29) * side, side * 0.17, 0.0, PI, 16, color, weight * 0.72, true)
+			canvas.draw_rect(Rect2(origin + Vector2(0.45, 0.57) * side, Vector2(0.10, 0.23) * side), color)
+			canvas.draw_rect(Rect2(origin + Vector2(0.26, 0.79) * side, Vector2(0.48, 0.12) * side), color.darkened(0.06))
+			canvas.draw_line(origin + Vector2(0.30, 0.16) * side, origin + Vector2(0.70, 0.16) * side, color.lightened(0.35), weight * 0.5, true)
 		"gear", "settings":
 			var center := origin + Vector2.ONE * side * 0.5
 			var segments := 32

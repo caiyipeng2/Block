@@ -8,7 +8,10 @@ signal preview_requested
 signal restart_requested
 signal menu_requested
 signal quit_requested
+signal profile_requested
+signal google_binding_requested
 
+const Avatar := preload("res://scripts/ui/leaderboard_avatar.gd")
 const Art := preload("res://scripts/ui/casual_panel_art.gd")
 const MobileLayout := preload("res://scripts/ui/mobile_layout.gd")
 const L10n := preload("res://scripts/localization/game_locale.gd")
@@ -41,11 +44,17 @@ var _focus_signature := -1
 var language_select: OptionButton
 var _language_row: HBoxContainer
 var _language_label: Label
+var _account: Dictionary = {}
+var _account_card: PanelContainer
+var _account_content: VBoxContainer
+var _account_labels: Dictionary = {}
+var _account_avatar: Control
 
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_TRANSLATION_CHANGED and is_node_ready():
 		apply_state(_settings, _in_game, _return_to_levels, _save_warning)
+		apply_account(_account)
 
 
 func _ready() -> void:
@@ -134,7 +143,7 @@ func _focus_candidates() -> Array[Button]:
 		var toggle: Button = toggles.get(key)
 		if is_instance_valid(toggle):
 			candidates.append(toggle)
-	for action_name: String in ["BackButton", "RestartButton", "MenuButton", "PreviewSoundButton", "QuitButton", "CloseButton"]:
+	for action_name: String in ["ProfileButton", "GoogleBindingButton", "BackButton", "RestartButton", "MenuButton", "PreviewSoundButton", "QuitButton", "CloseButton"]:
 		var button: Button = _buttons.get(action_name)
 		if is_instance_valid(button):
 			candidates.append(button)
@@ -190,7 +199,7 @@ func _refresh_focus_chain(force: bool = false) -> void:
 	if eligible.has(_close):
 		_set_directional_focus(_close, rows[-1] if not rows.is_empty() else first, first, first, first)
 	var focused := get_viewport().gui_get_focus_owner()
-	if is_visible_in_tree() and candidates.has(focused) and not eligible.has(focused):
+	if is_visible_in_tree() and focused is Button and candidates.has(focused) and not eligible.has(focused):
 		first.grab_focus()
 
 
@@ -275,6 +284,7 @@ func _build_controls() -> void:
 		language_select.add_item(language_name)
 	language_select.item_selected.connect(func(index: int): language_changed.emit(L10n.SUPPORTED_CODES[index]))
 	_language_row.add_child(language_select)
+	_build_account_card()
 	_add_action("BackButton", "返回菜单", "play", func(): close_requested.emit())
 	_add_action("RestartButton", "重新开始", "restart", func(): restart_requested.emit())
 	_add_action("MenuButton", "返回菜单", "home", func(): menu_requested.emit())
@@ -288,7 +298,85 @@ func _build_controls() -> void:
 	_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_hint.add_theme_font_override("font", _font)
 	_content.add_child(_hint)
+	apply_account(_account)
 	apply_state(_settings, _in_game, _return_to_levels, _save_warning)
+
+
+func apply_account(state: Dictionary) -> void:
+	# Presentation only: no SDK, persistence or optimistic binding success here.
+	_account = state.duplicate(true)
+	if not is_instance_valid(_account_card):
+		return
+	var failed := bool(_account.get("save_failed", false))
+	var available := bool(_account.get("available", false))
+	var bound := bool(_account.get("bound", false))
+	_account_labels["AccountTitle"].text = L10n.t("设备账号")
+	var nickname := str(_account.get("nickname", ""))
+	_account_labels["AccountNickname"].text = nickname if not nickname.is_empty() else L10n.t("玩家")
+	_account_avatar.avatar = clampi(int(_account.get("avatar", 0)), 0, 5)
+	_account_labels["AccountState"].text = L10n.t("Google 已绑定" if bound else "设备账号已启用")
+	_account_labels["AccountSaveStatus"].text = L10n.t("本机存档保存失败，请重试" if failed else "本机存档正常保存")
+	_account_labels["AccountSaveStatus"].add_theme_color_override("font_color", Color("#ffe2a8") if failed else Color("#d4e2ff"))
+	if available:
+		_account_labels["AccountServiceStatus"].text = ""
+	else:
+		_account_labels["AccountServiceStatus"].text = L10n.t("账号服务尚未开放" if failed else "账号服务尚未开放，本机存档正常保存")
+	_account_labels["AccountServiceStatus"].visible = not available
+	# Already localized by the caller; never translate player content or payloads.
+	var sync_status := str(_account.get("sync_status", ""))
+	_account_labels["AccountSyncStatus"].text = sync_status
+	_account_labels["AccountSyncStatus"].visible = not sync_status.is_empty()
+	_account_labels["AccountBindingHint"].text = L10n.t("绑定后可上传存档并在新设备恢复")
+	_buttons["ProfileButton"].text = L10n.t("编辑资料")
+	_buttons["GoogleBindingButton"].text = L10n.t("管理绑定" if bound else "绑定 Google 账号")
+	_buttons["GoogleBindingButton"].disabled = not available
+	_layout_controls()
+	_refresh_focus_chain(true)
+
+
+func _build_account_card() -> void:
+	_account_card = PanelContainer.new()
+	_account_card.name = "DeviceAccountCard"
+	_content.add_child(_account_card)
+	_account_content = VBoxContainer.new()
+	_account_card.add_child(_account_content)
+	_account_label("AccountTitle", _account_content)
+	var row := HBoxContainer.new()
+	_account_content.add_child(row)
+	_account_avatar = Avatar.new()
+	_account_avatar.name = "AccountAvatar"
+	row.add_child(_account_avatar)
+	var nickname := _account_label("AccountNickname", row)
+	nickname.autowrap_mode = TextServer.AUTOWRAP_OFF
+	nickname.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	nickname.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	nickname.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	for label_name in ["AccountState", "AccountSaveStatus", "AccountSyncStatus", "AccountServiceStatus"]:
+		_account_label(label_name, _account_content)
+	_account_labels["AccountSyncStatus"].auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	_add_action("ProfileButton", "编辑资料", "", func(): profile_requested.emit(), "secondary")
+	_buttons["ProfileButton"].reparent(_account_content)
+	_add_action("GoogleBindingButton", "绑定 Google 账号", "", _request_google_binding, "secondary")
+	_buttons["GoogleBindingButton"].reparent(_account_content)
+	_account_label("AccountBindingHint", _account_content)
+
+
+func _account_label(node_name: String, parent: Node) -> Label:
+	var label := Label.new()
+	label.name = node_name
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.add_theme_font_override("font", _font)
+	label.add_theme_color_override("font_color", Color("#d4e2ff"))
+	parent.add_child(label)
+	_account_labels[node_name] = label
+	return label
+
+
+func _request_google_binding() -> void:
+	if bool(_account.get("available", false)):
+		google_binding_requested.emit()
 
 
 func _new_toggle(key: String) -> CheckButton:
@@ -405,6 +493,7 @@ func _layout_controls() -> void:
 	# short screens need scrolling, the measured warning still fits the viewport.
 	var scrollbar_width := _scroll.get_v_scroll_bar().get_combined_minimum_size().x
 	var hint_text_width := maxf(width - 52.0 * _unit - scrollbar_width, 1.0)
+	_layout_account(hint_text_width)
 	var hint_text_height := _font.get_multiline_string_size(_hint.text, HORIZONTAL_ALIGNMENT_CENTER, hint_text_width, hint_font_size, -1, HINT_BREAK_FLAGS).y
 	var hint_height := maxf(26.0 * _unit, ceilf(hint_text_height + 4.0 * _unit))
 	_hint.custom_minimum_size.y = hint_height
@@ -432,6 +521,28 @@ func _layout_controls() -> void:
 	_style_toggle(_close)
 	_set_rect(_scroll, inner.grow(-12.0 * _unit))
 	queue_redraw()
+
+
+func _layout_account(available_width: float) -> void:
+	var style := Art.inner_style(_unit)
+	style.bg_color = Color("#293779")
+	style.set_content_margin_all(10.0 * _unit)
+	_account_card.add_theme_stylebox_override("panel", style)
+	_account_content.add_theme_constant_override("separation", roundi(8.0 * _unit))
+	_account_avatar.custom_minimum_size = Vector2.ONE * 52.0 * _unit
+	var text_width := maxf(available_width - 20.0 * _unit, 1.0)
+	for label_name: String in _account_labels:
+		var label: Label = _account_labels[label_name]
+		var font_size := maxi(roundi((18.0 if label_name in ["AccountTitle", "AccountNickname"] else 12.0) * _unit), 1)
+		label.add_theme_font_size_override("font_size", font_size)
+		if label_name != "AccountNickname":
+			label.custom_minimum_size.y = ceilf(_font.get_multiline_string_size(label.text, HORIZONTAL_ALIGNMENT_LEFT, text_width, font_size, -1, HINT_BREAK_FLAGS).y + 3.0 * _unit)
+	var google: Button = _buttons["GoogleBindingButton"]
+	for role: String in ["normal", "hover", "pressed"]:
+		var blue: StyleBoxFlat = google.get_theme_stylebox(role).duplicate()
+		blue.bg_color = Color("#2378ed").darkened(0.1 if role == "pressed" else 0.0)
+		blue.border_color = Color("#1854b9")
+		google.add_theme_stylebox_override(role, blue)
 
 
 func _style_toggle(button: Button) -> void:

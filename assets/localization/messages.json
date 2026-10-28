@@ -846,5 +846,233 @@
   "COMBO --": {
     "en": "COMBO --",
     "fr": "COMBO --"
+  },
+  "排行榜": {
+    "en": "Leaderboard",
+    "fr": "Classement"
+  },
+  "排行榜规则": {
+    "en": "Leaderboard rules",
+    "fr": "Règles du classement"
+  },
+  "先比通关数，再比总积分": {
+    "en": "Levels completed first, then total points",
+    "fr": "Niveaux terminés, puis total des points"
+  },
+  "单局最高分": {
+    "en": "Best single-game score",
+    "fr": "Meilleur score en une partie"
+  },
+  "闯关先比通关数，再比总积分；经典和自由比较单局最高分。相同成绩并列，只有已确认的成绩计入排名。": {
+    "en": "Adventure ranks players by levels completed, then total points; Classic and Free Play use the best single-game score. Equal results share a rank. Only confirmed results count toward the leaderboard.",
+    "fr": "En mode Aventure, le classement dépend des niveaux terminés, puis du total des points ; les modes Classique et Libre utilisent le meilleur score en une partie. Les résultats identiques sont ex æquo. Seuls les résultats confirmés comptent pour le classement."
+  },
+  "上次更新：%s（UTC）": {
+    "en": "Last updated: %s (UTC)",
+    "fr": "Dernière mise à jour : %s (UTC)"
+  },
+  "刷新": {
+    "en": "Refresh",
+    "fr": "Actualiser"
+  },
+  "重试": {
+    "en": "Retry",
+    "fr": "Réessayer"
+  },
+  "名次": {
+    "en": "Rank",
+    "fr": "Rang"
+  },
+  "玩家": {
+    "en": "Player",
+    "fr": "Joueur"
+  },
+  "玩家%04d": {
+    "en": "Player%04d",
+    "fr": "Joueur%04d"
+  },
+  "通关 / 总积分": {
+    "en": "Levels / Total points",
+    "fr": "Niveaux / Total des points"
+  },
+  "加载更多": {
+    "en": "Load more",
+    "fr": "Afficher plus"
+  },
+  "我的附近排名": {
+    "en": "Ranks near mine",
+    "fr": "Rangs proches du mien"
+  },
+  "尚未上榜": {
+    "en": "Not ranked yet",
+    "fr": "Pas encore classé"
+  },
+  "通关后可上榜": {
+    "en": "Complete a level to join the leaderboard",
+    "fr": "Terminez un niveau pour figurer au classement"
+  },
+  "取得正分后可上榜": {
+    "en": "Score above zero to join the leaderboard",
+    "fr": "Obtenez un score positif pour figurer au classement"
+  },
+  "我": {
+    "en": "Me",
+    "fr": "Moi"
+  },
+  "待同步：%s": {
+    "en": "Pending sync: %s",
+    "fr": "Synchronisation en attente : %s"
+  },
+  "仅本机：%s": {
+    "en": "This device only: %s",
+    "fr": "Sur cet appareil uniquement : %s"
+  },
+  "重玩关卡": {
+    "en": "Replay levels",
+    "fr": "Rejouer les niveaux"
+  },
+  "继续闯关": {
+    "en": "Continue Adventure",
+    "fr": "Continuer l'aventure"
+  },
+  "排行榜服务尚未开放": {
+    "en": "Leaderboard service is not available yet",
+    "fr": "Le service de classement n'est pas encore disponible"
+  },
+  "加载中…": {
+    "en": "Loading…",
+    "fr": "Chargement…"
+  },
+  "还没有玩家上榜，来创造第一条纪录吧": {
+    "en": "No players ranked yet. Set the first record!",
+    "fr": "Aucun joueur au classement. Établissez le premier record !"
+  },
+  "离线 · 显示上次排名": {
+    "en": "Offline · Showing previous rankings",
+    "fr": "Hors ligne · Affichage du dernier classement"
+  },
+  "暂时无法连接排行榜": {
+    "en": "Unable to connect to the leaderboard right now",
+    "fr": "Connexion au classement impossible pour le moment"
+  },
+  "排行榜维护中，请稍后重试": {
+    "en": "Leaderboard under maintenance. Please try again later.",
+    "fr": "Classement en maintenance. Réessayez plus tard."
+  },
+  "%s关": {
+    "en": "%s levels",
+    "fr": "%s niveaux"
+  },
+  "编辑资料": {
+    "en": "Edit profile",
+    "fr": "Modifier le profil"
+  },
+  "昵称": {
+    "en": "Nickname",
+    "fr": "Pseudo"
+  },
+  "昵称为2–12个字符，不含控制字符或标记": {
+    "en": "Use 2–12 characters, without control characters or markup",
+    "fr": "Utilisez 2–12 caractères, sans caractères de contrôle ni balises"
+  },
+  "选择头像": {
+    "en": "Choose avatar",
+    "fr": "Choisir un avatar"
+  },
+  "保存": {
+    "en": "Save",
+    "fr": "Enregistrer"
+  },
+  "取消": {
+    "en": "Cancel",
+    "fr": "Annuler"
+  },
+  "黄色方块": {
+    "en": "Yellow block",
+    "fr": "Bloc jaune"
+  },
+  "绿色方块": {
+    "en": "Green block",
+    "fr": "Bloc vert"
+  },
+  "紫色星星": {
+    "en": "Purple star",
+    "fr": "Étoile violette"
+  },
+  "青色菱形": {
+    "en": "Cyan diamond",
+    "fr": "Losange cyan"
+  },
+  "红色方块": {
+    "en": "Red block",
+    "fr": "Bloc rouge"
+  },
+  "橙色小熊": {
+    "en": "Orange bear",
+    "fr": "Ours orange"
+  },
+  "设备账号": {
+    "en": "Device account",
+    "fr": "Compte de l'appareil"
+  },
+  "Google 已绑定": {
+    "en": "Google linked",
+    "fr": "Google associé"
+  },
+  "设备账号已启用": {
+    "en": "Device account enabled",
+    "fr": "Compte de l'appareil activé"
+  },
+  "本机存档保存失败，请重试": {
+    "en": "Local save failed. Please try again.",
+    "fr": "Échec de l'enregistrement local. Réessayez."
+  },
+  "本机存档正常保存": {
+    "en": "Local saves are working normally",
+    "fr": "L'enregistrement local fonctionne normalement"
+  },
+  "账号服务尚未开放": {
+    "en": "Account service is not available yet",
+    "fr": "Le service de compte n'est pas encore disponible"
+  },
+  "账号服务尚未开放，本机存档正常保存": {
+    "en": "Account service is not available yet. Local saves are working normally.",
+    "fr": "Le service de compte n'est pas encore disponible. L'enregistrement local fonctionne normalement."
+  },
+  "绑定后可上传存档并在新设备恢复": {
+    "en": "Link an account to upload saves and restore them on a new device",
+    "fr": "Associez un compte pour envoyer vos sauvegardes et les restaurer sur un nouvel appareil"
+  },
+  "管理绑定": {
+    "en": "Manage linked account",
+    "fr": "Gérer le compte associé"
+  },
+  "绑定 Google 账号": {
+    "en": "Link Google account",
+    "fr": "Associer un compte Google"
+  },
+  "查看排行榜": {
+    "en": "View leaderboard",
+    "fr": "Voir le classement"
+  },
+  "上次全球排名：%d": {
+    "en": "Last global rank: %d",
+    "fr": "Dernier rang mondial : %d"
+  },
+  "仅保存于本机": {
+    "en": "Saved on this device only",
+    "fr": "Enregistré sur cet appareil uniquement"
+  },
+  "成绩待同步": {
+    "en": "Result pending sync",
+    "fr": "Résultat en attente de synchronisation"
+  },
+  "成绩暂时无法保存到同步队列": {
+    "en": "Unable to save this result to the sync queue right now",
+    "fr": "Impossible d'enregistrer ce résultat dans la file de synchronisation pour le moment"
+  },
+  "这次成绩未计入排行榜": {
+    "en": "This result was not counted toward the leaderboard",
+    "fr": "Ce résultat n'a pas été pris en compte dans le classement"
   }
 }

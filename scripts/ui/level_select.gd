@@ -9,6 +9,7 @@ const TrophyProgress := preload("res://scripts/ui/trophy_progress.gd")
 const L10n := preload("res://scripts/localization/game_locale.gd")
 
 signal back_requested
+signal leaderboard_requested
 signal level_started(level_id: int)
 signal level_selected(level_id: int)
 
@@ -20,6 +21,7 @@ var _unlocked_level: int = 1
 var _header: Panel
 var _footer: Panel
 var _back: Button
+var _leaderboard: Button
 var _title: Label
 var _progress: Label
 var _scroll: ScrollContainer
@@ -322,6 +324,13 @@ func _build_controls() -> void:
 	_back.tooltip_text = L10n.t("返回主菜单")
 	_back.pressed.connect(func() -> void: back_requested.emit())
 	_header.add_child(_back)
+	_leaderboard = IconButton.new()
+	_leaderboard.name = "LeaderboardButton"
+	_leaderboard.icon_kind = "trophy"
+	_leaderboard.icon_color = Color("#ffcf4d")
+	_leaderboard.tooltip_text = L10n.t("排行榜")
+	_leaderboard.pressed.connect(func(): leaderboard_requested.emit())
+	_header.add_child(_leaderboard)
 	_title = _label(32, Color("#efffff"))
 	_title.text = L10n.t("闯关模式")
 	_header.add_child(_title)
@@ -426,7 +435,10 @@ func _layout_controls() -> void:
 	_back.size = Vector2(52.0, 52.0)
 	_back.set("frameless", false)
 	_back.set("icon_scale", 0.55)
-	var heading_right_margin := 86.0 if size.x >= 480.0 else 20.0
+	_leaderboard.position = Vector2(size.x - 76.0, 20.0)
+	_leaderboard.size = _back.size
+	_leaderboard.tooltip_text = L10n.t("排行榜")
+	var heading_right_margin := 86.0
 	_title.position = Vector2(86.0, 16.0)
 	_title.size = Vector2(maxf(0.0, size.x - 86.0 - heading_right_margin), 42.0)
 	_title.add_theme_font_size_override("font_size", 32 if size.x >= 480.0 else 26)
@@ -456,6 +468,9 @@ func _layout_mobile_controls() -> void:
 	_back.size = Vector2.ONE * target
 	_back.set("frameless", true)
 	_back.set("icon_scale", 0.48)
+	_leaderboard.position = Vector2(area.size.x - target - 8.0 * unit, 8.0 * unit)
+	_leaderboard.size = Vector2.ONE * target
+	_leaderboard.tooltip_text = L10n.t("排行榜")
 	_title.position = Vector2(64.0, 12.0) * unit
 	_title.size = Vector2(maxf(1.0, area.size.x - 128.0 * unit), 40.0 * unit)
 	_title.add_theme_font_size_override("font_size", roundi(26.0 * unit))

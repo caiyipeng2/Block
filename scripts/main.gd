@@ -13,6 +13,9 @@ const MainMenuScript := preload("res://scripts/ui/main_menu.gd")
 const MobileLayout := preload("res://scripts/ui/mobile_layout.gd")
 const SettingsPanelScript := preload("res://scripts/ui/settings_panel.gd")
 const ActionConfirmationScript := preload("res://scripts/ui/action_confirmation.gd")
+const LeaderboardClient := preload("res://scripts/persistence/leaderboard_client.gd")
+const LeaderboardPanel := preload("res://scripts/ui/leaderboard_panel.gd")
+const PlayerProfileDialog := preload("res://scripts/ui/player_profile_dialog.gd")
 const L10n := preload("res://scripts/localization/game_locale.gd")
 const SETUP_REASON_SOURCES := {
 	"invalid_level_configuration": "关卡配置不可用",
@@ -86,6 +89,11 @@ var _level_config_error_kind := ""
 var _level_config_error_details := ""
 var _level_config_error_level := 0
 var _level_config_error_reason := ""
+var leaderboard_client: Node
+var leaderboard_panel: Control
+var player_profile_dialog: Control
+var _leaderboard_origin := "menu"
+var _leaderboard_return_focus: Control
 
 func _ready() -> void:
 	get_tree().auto_accept_quit = false
@@ -128,6 +136,7 @@ func _ready() -> void:
 	level_select.level_started.connect(_start_adventure_level)
 	_create_menu_controls()
 	_create_confirmation_dialog()
+	_create_leaderboard_controls()
 	resized.connect(_layout_controls)
 	get_window().focus_exited.connect(_on_window_focus_lost)
 	_layout_controls()
@@ -178,6 +187,15 @@ func _input(event: InputEvent) -> void:
 	if not confirmation_action.is_empty():
 		if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
 			_cancel_confirmation()
+			get_viewport().set_input_as_handled()
+		return
+	if is_instance_valid(player_profile_dialog) and player_profile_dialog.visible:
+		if event is InputEventKey and event.keycode == KEY_ESCAPE:
+			player_profile_dialog._input(event)
+		return
+	if screen == "leaderboard" and event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
+		_close_leaderboard()
+		get_viewport().set_input_as_handled()
 		return
 	if _objective_intro_open():
 		if event is InputEventKey and event.pressed and not event.echo and event.keycode in [KEY_ENTER, KEY_KP_ENTER, KEY_SPACE, KEY_ESCAPE]:
@@ -287,6 +305,9 @@ func _handle_release(position: Vector2) -> void:
 	input_locked = true
 	var result: Dictionary = game.place_piece(index, origin, _piece_color_id(piece))
 	if bool(result.get("ok", false)):
+		leaderboard_client.record_move(index, origin, int(result["placed_color"]), game.scoring.score, game.is_level_complete())
+		if game.is_game_over() or game.is_level_complete():
+			leaderboard_client.finish_run(game.scoring.score, game.is_level_complete())
 		_record_level_failure()
 		if bool(result.get("tray_adapted", false)):
 			# Tutorial adaptation happens after the legal move. Keep the visual
@@ -397,11 +418,13 @@ func _start_game(mode: String = "", level_id: int = 0) -> void:
 	# Validate the next setup before touching the current game's snapshot.
 	_clear_confirmation()
 	_reset_visual_feedback()
+	_finish_leaderboard_run()
 	_save_high_score()
 	game_mode = next_mode
 	current_level = next_level
 	level_objective = ModeCatalog.objective_config(current_level) if game_mode == "adventure" else {}
 	game = GameState.new(seed, rules_config.board_size, rules_config, setup)
+	leaderboard_client.begin_run(game_mode, current_level, seed, SaveRepository.level_failure_count(save_data, current_level) if game_mode == "adventure" else 0)
 	display_remaining_counts = game.target_remaining_counts.duplicate()
 	progress_milestones_shown.clear()
 	level_completion_recorded = false
@@ -654,6 +677,7 @@ func _show_confirmation(action: String) -> void:
 	if exiting or not confirmation_action.is_empty():
 		return
 	confirmation_return_focus = get_viewport().gui_get_focus_owner()
+	move_child(confirmation_dialog, -1)
 	confirmation_action = action
 	confirmation_was_paused = paused
 	_cancel_drag()
@@ -772,6 +796,8 @@ func _set_setting(key: String, value: bool) -> void:
 func _persist_data() -> void:
 	var saved := SaveRepository.save_data(save_data, save_path)
 	save_status_text = "" if saved else "保存失败，进度、最高分和设置仅本次生效。"
+	if is_instance_valid(leaderboard_client):
+		leaderboard_client.update_records(save_data)
 
 func _set_language(language: String) -> void:
 	if language not in L10n.SUPPORTED_CODES:
@@ -855,6 +881,7 @@ func _request_quit() -> void:
 	_cancel_drag()
 	_reset_visual_feedback()
 	set_process_input(false)
+	_finish_leaderboard_run()
 	_save_high_score()
 	if feedback_audio != null:
 		feedback_audio.apply_settings({"sound_enabled": false, "music_enabled": false})
@@ -890,6 +917,7 @@ func _return_to_menu() -> void:
 		return
 	_clear_confirmation()
 	_reset_visual_feedback()
+	_finish_leaderboard_run()
 	_save_high_score()
 	game = null
 	board_placement_orders.clear()
@@ -1031,6 +1059,111 @@ func _create_menu_controls() -> void:
 	settings_controls.menu_requested.connect(_menu_from_settings)
 	settings_controls.quit_requested.connect(_ask_quit)
 
+func _create_leaderboard_controls() -> void:
+	leaderboard_client = LeaderboardClient.new()
+	leaderboard_client.name = "LeaderboardClient"
+	add_child(leaderboard_client)
+	leaderboard_client.configure(save_path + ".leaderboard", save_data, null, str(ProjectSettings.get_setting("leaderboard/api_base_url", "")), str(ProjectSettings.get_setting("leaderboard/firebase_api_key", "")))
+	leaderboard_panel = LeaderboardPanel.new()
+	leaderboard_panel.name = "LeaderboardPanel"
+	leaderboard_panel.z_index = 20
+	leaderboard_panel.visible = false
+	add_child(leaderboard_panel)
+	leaderboard_panel.back_requested.connect(_close_leaderboard)
+	leaderboard_panel.mode_selected.connect(func(mode: String): leaderboard_client.open_board(mode))
+	leaderboard_panel.refresh_requested.connect(func(): leaderboard_client.open_board("", true))
+	leaderboard_panel.more_requested.connect(leaderboard_client.load_more)
+	leaderboard_panel.neighbors_requested.connect(leaderboard_client.load_neighbors)
+	leaderboard_panel.play_requested.connect(_play_from_leaderboard)
+	leaderboard_panel.profile_requested.connect(_open_player_profile)
+	player_profile_dialog = PlayerProfileDialog.new()
+	player_profile_dialog.name = "PlayerProfileDialog"
+	player_profile_dialog.z_index = 40
+	player_profile_dialog.visible = false
+	add_child(player_profile_dialog)
+	player_profile_dialog.profile_saved.connect(_save_player_profile)
+	player_profile_dialog.close_requested.connect(player_profile_dialog.close_dialog)
+	menu_controls.leaderboard_requested.connect(_open_leaderboard)
+	gameplay_ui.leaderboard_requested.connect(func(): _open_leaderboard(game_mode))
+	level_select.leaderboard_requested.connect(_open_leaderboard.bind("adventure"))
+	settings_controls.profile_requested.connect(_open_player_profile)
+	settings_controls.google_binding_requested.connect(_google_binding_unavailable)
+	leaderboard_client.changed.connect(_refresh_leaderboard)
+	get_window().focus_entered.connect(_refresh_online_on_foreground)
+	leaderboard_client.connect_service()
+
+func _open_leaderboard(mode: String = "") -> void:
+	if screen not in ["menu", "levels", "game_over", "level_complete"] or not confirmation_action.is_empty():
+		return
+	_leaderboard_origin = screen
+	_leaderboard_return_focus = get_viewport().gui_get_focus_owner()
+	menu_controls.finish_opening(false)
+	screen = "leaderboard"
+	leaderboard_client.open_board(mode)
+	_refresh_controls()
+	leaderboard_panel.focus_primary()
+	_play_feedback("click")
+
+func _close_leaderboard() -> void:
+	if screen != "leaderboard":
+		return
+	leaderboard_client.close_board()
+	screen = _leaderboard_origin
+	_refresh_controls()
+	if is_instance_valid(_leaderboard_return_focus) and _leaderboard_return_focus.is_visible_in_tree():
+		_leaderboard_return_focus.grab_focus()
+	_play_feedback("click")
+
+func _play_from_leaderboard(mode: String) -> void:
+	if screen != "leaderboard" or mode not in LeaderboardClient.Store.MODES:
+		return
+	if mode == "adventure":
+		if not _reload_adventure_config():
+			return
+		leaderboard_client.close_board()
+		_finish_leaderboard_run()
+		_save_high_score()
+		game = null
+		_open_levels(false)
+		level_select.select_latest()
+	else:
+		leaderboard_client.close_board()
+		_start_game(mode)
+
+func _open_player_profile() -> void:
+	if screen not in ["leaderboard", "settings"]:
+		return
+	player_profile_dialog.open_profile(leaderboard_client.store.data["profile"])
+
+func _save_player_profile(nickname: String, avatar: int) -> void:
+	if leaderboard_client.update_profile(nickname, avatar):
+		player_profile_dialog.close_dialog()
+	else:
+		player_profile_dialog.show_error("本机存档保存失败，请重试" if leaderboard_client.store.save_failed else "昵称为2–12个字符，不含控制字符或标记")
+
+func _google_binding_unavailable() -> void:
+	var account: Dictionary = leaderboard_client.account_view()
+	account["sync_status"] = L10n.t("账号服务尚未开放，本机存档正常保存")
+	settings_controls.apply_account(account)
+
+func _refresh_leaderboard() -> void:
+	if not is_instance_valid(leaderboard_panel):
+		return
+	if screen == "leaderboard":
+		leaderboard_panel.apply_view(leaderboard_client.view())
+	settings_controls.apply_account(leaderboard_client.account_view())
+	gameplay_ui.set_leaderboard_status(leaderboard_client.result_view(game_mode))
+
+func _refresh_online_on_foreground() -> void:
+	if screen == "leaderboard":
+		leaderboard_client.open_board()
+	else:
+		leaderboard_client.connect_service()
+
+func _finish_leaderboard_run() -> void:
+	if game != null and is_instance_valid(leaderboard_client):
+		leaderboard_client.finish_run(game.scoring.score, game.is_level_complete())
+
 func _restart_from_settings() -> void:
 	if screen != "settings" or settings_origin != "game":
 		return
@@ -1091,6 +1224,10 @@ func _layout_controls() -> void:
 	menu_controls.size = size
 	settings_controls.position = Vector2.ZERO
 	settings_controls.size = size
+	for control: Control in [leaderboard_panel, player_profile_dialog]:
+		if is_instance_valid(control):
+			control.position = Vector2.ZERO
+			control.size = size
 	if is_instance_valid(confirmation_dialog):
 		confirmation_dialog.position = Vector2.ZERO
 		confirmation_dialog.size = size
@@ -1107,6 +1244,9 @@ func _refresh_controls() -> void:
 	menu_controls.visible = screen == "menu" or (screen == "settings" and settings_origin == "menu")
 	settings_controls.visible = screen == "settings"
 	level_select.visible = screen == "levels"
+	if is_instance_valid(leaderboard_panel):
+		leaderboard_panel.visible = screen == "leaderboard"
+		player_profile_dialog.set_process_input(confirmation_action.is_empty())
 	move_feedback.visible = screen in ["game", "game_over", "level_complete"] or (screen == "settings" and settings_origin == "game")
 	if gameplay_ui != null:
 		if screen != "game" or exiting:
@@ -1159,6 +1299,7 @@ func _refresh_controls() -> void:
 		gameplay_ui.set_playfield(_board_rect())
 		gameplay_ui.set_mode(mode, stats)
 	settings_controls.apply_state(save_data, settings_origin == "game" and game != null, game_mode == "adventure", save_status_text)
+	_refresh_leaderboard()
 
 func _tray_hit(position: Vector2) -> int:
 	if game == null or input_locked or _objective_intro_open() or game.status != GameState.Status.PLAYING:
