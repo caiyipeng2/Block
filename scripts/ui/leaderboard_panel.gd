@@ -37,6 +37,12 @@ var _notice: Label
 var _updated: Label
 var _eligibility: Label
 var _rules: Label
+var _rules_dialog: Control
+var _rules_dialog_card: Panel
+var _rules_dialog_title: Label
+var _rules_dialog_body: Label
+var _rules_dialog_close: Button
+var _rules_dialog_ok: Button
 var _pending: Label
 var _personal_score: Label
 var _personal_avatar: Control
@@ -74,6 +80,8 @@ func apply_view(data: Dictionary) -> void:
 	_buttons.InfoButton.tooltip_text = L10n.t("排行榜规则")
 	_metric.text = L10n.t("先比通关数，再比总积分" if _mode == "adventure" else "单局最高分")
 	_rules.text = L10n.t(RULES)
+	_rules.visible = false
+	_refresh_rules_dialog()
 	for i in range(MODES.size()):
 		var tab: Button = _buttons[TAB_NAMES[i]]
 		tab.text = L10n.t(TAB_KEYS[i])
@@ -84,7 +92,7 @@ func apply_view(data: Dictionary) -> void:
 				tab.add_theme_color_override(role, Color("#56340d"))
 	var status := str(_data.get("status", "unconfigured"))
 	var cached := bool(_data.get("has_cache", false))
-	var show_records := status == "ready" or (cached and status in ["offline", "error", "maintenance", "loading"])
+	var show_records := status == "ready" or (cached and status in ["unconfigured", "offline", "error", "maintenance", "loading"])
 	_status.text = _status_text(status, cached)
 	_status.visible = not _status.text.is_empty()
 	_status.add_theme_color_override("font_color", Color("#ffe4a0") if status in ["offline", "error", "maintenance"] else Color("#e1eeff"))
@@ -147,10 +155,28 @@ func get_action_button(action_name: String) -> Button:
 	return _buttons.get(action_name)
 
 func focus_primary() -> void:
+	if rules_popup_open():
+		_rules_dialog_ok.grab_focus()
+		return
 	if is_visible_in_tree() and is_instance_valid(_outer):
 		_buttons.PlayButton.grab_focus()
 
+func rules_popup_open() -> bool:
+	return is_instance_valid(_rules_dialog) and _rules_dialog.visible
+
+func close_rules_popup() -> void:
+	if not rules_popup_open():
+		return
+	_rules_dialog.hide()
+	if is_visible_in_tree():
+		_buttons.InfoButton.grab_focus()
+
 func _unhandled_key_input(event: InputEvent) -> void:
+	if rules_popup_open():
+		if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
+			close_rules_popup()
+			get_viewport().set_input_as_handled()
+		return
 	if is_visible_in_tree() and event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
 		back_requested.emit()
 		get_viewport().set_input_as_handled()
@@ -163,6 +189,7 @@ func _build() -> void:
 	surface.border_color = Color("#71b0ff")
 	_outer.add_theme_stylebox_override("panel", surface)
 	add_child(_outer)
+	_build_rules_dialog()
 	_stack = _vbox(_outer, "Layout", 8)
 	var title_row := HBoxContainer.new()
 	_stack.add_child(title_row)
@@ -286,6 +313,7 @@ func _layout() -> void:
 	_outer.size = Vector2(width, maxf(0, safe.size.y - 16 * _unit))
 	_stack.position = Vector2.ONE * 10 * _unit
 	_stack.size = _outer.size - Vector2.ONE * 20 * _unit
+	_layout_rules_dialog()
 	call_deferred("_fit_buttons")
 
 func _fit_buttons() -> void:
@@ -429,9 +457,88 @@ func _apply_focus_style(button: Button) -> void:
 	button.add_theme_stylebox_override("focus", focus)
 
 func _toggle_rules() -> void:
-	_rules.visible = not _rules.visible
-	if _rules.visible:
-		_scroll.scroll_vertical = 0
+	if rules_popup_open():
+		close_rules_popup()
+		return
+	_refresh_rules_dialog()
+	_rules_dialog.show()
+	_layout_rules_dialog()
+	_rules_dialog_ok.grab_focus.call_deferred()
+
+func _refresh_rules_dialog() -> void:
+	if not is_instance_valid(_rules_dialog):
+		return
+	_rules_dialog_title.text = L10n.t("排行榜规则")
+	_rules_dialog_body.text = L10n.t(RULES)
+	_rules_dialog_ok.text = L10n.t("知道了")
+	_rules_dialog_close.tooltip_text = L10n.t("返回")
+	_rules_dialog_close.accessibility_name = L10n.t("返回")
+
+func _build_rules_dialog() -> void:
+	_rules_dialog = Control.new()
+	_rules_dialog.name = "RulesDialog"
+	_rules_dialog.mouse_filter = Control.MOUSE_FILTER_STOP
+	_rules_dialog.process_mode = Node.PROCESS_MODE_ALWAYS
+	_rules_dialog.z_index = 100
+	_rules_dialog.hide()
+	add_child(_rules_dialog)
+	var backdrop := ColorRect.new()
+	backdrop.name = "Backdrop"
+	backdrop.color = Color(0.025, 0.045, 0.11, 0.76)
+	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
+	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	backdrop.gui_input.connect(func(event: InputEvent):
+		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+			close_rules_popup())
+	_rules_dialog.add_child(backdrop)
+	_rules_dialog_card = Panel.new()
+	_rules_dialog_card.name = "RulesCard"
+	_rules_dialog.add_child(_rules_dialog_card)
+	_rules_dialog_title = _label(_rules_dialog_card, "RulesTitle", "", 22)
+	_rules_dialog_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_rules_dialog_title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_rules_dialog_body = _label(_rules_dialog_card, "RulesBody", "", 16)
+	_rules_dialog_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_rules_dialog_body.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+	_rules_dialog_body.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_rules_dialog_close = Button.new()
+	_rules_dialog_close.name = "CloseButton"
+	_rules_dialog_close.text = "×"
+	_rules_dialog_close.pressed.connect(close_rules_popup)
+	_rules_dialog_close.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	_style_button(_rules_dialog_close, Color("#2056bb"))
+	_rules_dialog_card.add_child(_rules_dialog_close)
+	_rules_dialog_ok = Button.new()
+	_rules_dialog_ok.name = "OKButton"
+	_rules_dialog_ok.pressed.connect(close_rules_popup)
+	_rules_dialog_ok.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	_style_button(_rules_dialog_ok, Color("#19b83d"))
+	_rules_dialog_card.add_child(_rules_dialog_ok)
+	_refresh_rules_dialog()
+
+func _layout_rules_dialog() -> void:
+	if not is_instance_valid(_rules_dialog) or not is_instance_valid(_rules_dialog_card):
+		return
+	_rules_dialog.position = Vector2.ZERO
+	_rules_dialog.size = size
+	var safe := MobileLayout.safe_content_rect(self)
+	var width := minf(420.0 * _unit, maxf(1.0, safe.size.x - 32.0 * _unit))
+	var height := minf(286.0 * _unit, maxf(1.0, safe.size.y - 32.0 * _unit))
+	_rules_dialog_card.position = safe.get_center() - Vector2(width, height) * 0.5
+	_rules_dialog_card.size = Vector2(width, height)
+	_rules_dialog_card.add_theme_stylebox_override("panel", Art.panel_style(_unit))
+	_rules_dialog_title.position = Vector2(18, 10) * _unit
+	_rules_dialog_title.size = Vector2(width / _unit - 72, 40) * _unit
+	_rules_dialog_close.position = Vector2(width - 54.0 * _unit, 8.0 * _unit)
+	_rules_dialog_close.size = Vector2.ONE * 44.0 * _unit
+	_rules_dialog_body.position = Vector2(20, 62) * _unit
+	_rules_dialog_body.size = Vector2(width / _unit - 40, height / _unit - 132) * _unit
+	_rules_dialog_ok.position = Vector2(20, height / _unit - 60) * _unit
+	_rules_dialog_ok.size = Vector2(width / _unit - 40, 48) * _unit
+	for label: Label in [_rules_dialog_title, _rules_dialog_body]:
+		label.add_theme_font_size_override("font_size", roundi((22 if label == _rules_dialog_title else 16) * _unit))
+	L10n.fit_button(_rules_dialog_close, roundi(22 * _unit), roundi(8 * _unit))
+	L10n.fit_button(_rules_dialog_ok, roundi(17 * _unit), roundi(10 * _unit))
 
 func _clear(parent: Node) -> void:
 	for child in parent.get_children():

@@ -38,6 +38,7 @@ func configure(path: String, local_save: Dictionary, transport: Node = null, bas
 	for mode: String in Store.MODES:
 		_states[mode] = "offline" if store.data["cache"].has(_cache_key(mode)) else "unconfigured"
 		_generations[mode] = 0
+	_seed_offline_bot_caches()
 
 func available() -> bool:
 	return _base_url.begins_with("https://") and not _api_key.is_empty() and not store.read_failed
@@ -417,18 +418,43 @@ func _refresh_bot_cache(mode: String) -> bool:
 		return false
 	var cache: Dictionary = store.data["cache"][key]
 	var epoch := Bots.current_epoch()
-	if int(cache.get("bot_epoch", -1)) == epoch:
-		return false
 	var real_entries: Array = []
+	var has_bots := false
 	for entry: Dictionary in cache.get("entries", []):
 		if not bool(entry.get("is_bot", false)):
 			real_entries.append(entry.duplicate(true))
+		else:
+			has_bots = true
+	var real_player_count := int(cache.get("real_player_count", real_entries.size()))
+	if int(cache.get("bot_epoch", -1)) == epoch and (has_bots or real_player_count >= Bots.target_count() or real_entries.size() >= Bots.target_count()):
+		return false
 	var filled: Dictionary = Bots.fill(mode, real_entries, int(cache.get("real_player_count", real_entries.size())), Bots.target_count(), epoch, cache.get("me", {}))
 	cache["entries"] = filled["entries"]
 	cache["bot_epoch"] = filled["bot_epoch"]
 	cache["real_player_count"] = filled["real_player_count"]
 	store.persist()
 	return true
+
+func _seed_offline_bot_caches() -> void:
+	# A missing backend must still leave the board useful in a fresh install.
+	# These entries are explicitly presentation-only and are replaced by the
+	# first valid server response; no local score is assigned a global rank.
+	if available():
+		return
+	var changed_local := false
+	for mode: String in Store.MODES:
+		var key := _cache_key(mode)
+		if store.data["cache"].has(key):
+			continue
+		var filled: Dictionary = Bots.fill(mode, [], 0, Bots.target_count(), Bots.current_epoch(), {})
+		store.data["cache"][key] = {
+			"entries": filled["entries"], "me": {}, "real_player_count": 0,
+			"bot_epoch": filled["bot_epoch"], "next_cursor": "", "updated_at": 0,
+			"fetched_at": 0,
+		}
+		changed_local = true
+	if changed_local:
+		store.persist()
 
 func _cache_key(mode: String) -> String:
 	return _ruleset + ":" + mode

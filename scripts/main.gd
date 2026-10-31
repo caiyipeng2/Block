@@ -193,6 +193,11 @@ func _input(event: InputEvent) -> void:
 		if event is InputEventKey and event.keycode == KEY_ESCAPE:
 			player_profile_dialog._input(event)
 		return
+	if screen == "leaderboard" and is_instance_valid(leaderboard_panel) and leaderboard_panel.rules_popup_open():
+		if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
+			leaderboard_panel.close_rules_popup()
+			get_viewport().set_input_as_handled()
+		return
 	if screen == "leaderboard" and event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
 		_close_leaderboard()
 		get_viewport().set_input_as_handled()
