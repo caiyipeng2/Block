@@ -48,7 +48,10 @@ api_base_url=""
 firebase_api_key=""
 ruleset_id="block-0.9.5-v1"
 bot_target_count=100
-bot_refresh_seconds=1800
+bot_daily_refresh_seconds=86400
+bot_weekly_refresh_seconds=604800
+bot_classic_score_cap=12000
+bot_free_score_cap=18000
 
 [physics]
 

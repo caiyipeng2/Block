@@ -386,8 +386,13 @@ func _accept_board(context: Dictionary, body: Dictionary) -> void:
 		_states[mode] = "error"
 		return
 	var entries: Array = body["entries"].duplicate(true)
+	var cached_before: Dictionary = store.data["cache"].get(_cache_key(mode), {})
+	var previous_bots: Array = []
+	for cached_entry: Dictionary in cached_before.get("entries", []):
+		if bool(cached_entry.get("is_bot", false)):
+			previous_bots.append(cached_entry.duplicate(true))
 	if not context["cursor"].is_empty():
-		var cache: Dictionary = store.data["cache"].get(_cache_key(mode), {})
+		var cache: Dictionary = cached_before
 		if cache.get("next_cursor") != context["cursor"]:
 			return
 		var previous: Array = []
@@ -405,10 +410,10 @@ func _accept_board(context: Dictionary, body: Dictionary) -> void:
 			_states[mode] = "loading"
 			_fetch_board(mode)
 			return
-	var filled: Dictionary = Bots.fill(mode, entries, int(real_player_count), Bots.target_count(), Bots.current_epoch(), body["me"])
+	var filled: Dictionary = Bots.fill(mode, entries, int(real_player_count), Bots.target_count(), Bots.current_epoch(), body["me"], Bots.current_week_epoch(), previous_bots)
 	entries = filled["entries"]
 	var next_cursor := str(body.get("next_cursor", "")) if int(filled["real_player_count"]) >= BOARD_LIMIT and entries.size() < BOARD_LIMIT else ""
-	store.data["cache"][_cache_key(mode)] = {"entries": entries, "me": body["me"], "real_player_count": filled["real_player_count"], "bot_epoch": filled["bot_epoch"], "next_cursor": next_cursor, "updated_at": body["updated_at"], "fetched_at": Time.get_unix_time_from_system()}
+	store.data["cache"][_cache_key(mode)] = {"entries": entries, "me": body["me"], "real_player_count": filled["real_player_count"], "bot_epoch": filled["bot_epoch"], "bot_week_epoch": filled["bot_week_epoch"], "bot_model_version": filled["bot_model_version"], "next_cursor": next_cursor, "updated_at": body["updated_at"], "fetched_at": Time.get_unix_time_from_system()}
 	store.persist()
 	_states[mode] = "empty" if entries.is_empty() else "ready"
 
@@ -418,19 +423,24 @@ func _refresh_bot_cache(mode: String) -> bool:
 		return false
 	var cache: Dictionary = store.data["cache"][key]
 	var epoch := Bots.current_epoch()
+	var week := Bots.current_week_epoch()
 	var real_entries: Array = []
+	var previous_bots: Array = []
 	var has_bots := false
 	for entry: Dictionary in cache.get("entries", []):
 		if not bool(entry.get("is_bot", false)):
 			real_entries.append(entry.duplicate(true))
 		else:
 			has_bots = true
+			previous_bots.append(entry.duplicate(true))
 	var real_player_count := int(cache.get("real_player_count", real_entries.size()))
-	if int(cache.get("bot_epoch", -1)) == epoch and (has_bots or real_player_count >= Bots.target_count() or real_entries.size() >= Bots.target_count()):
+	if int(cache.get("bot_epoch", -1)) == epoch and int(cache.get("bot_week_epoch", -1)) == week and int(cache.get("bot_model_version", 0)) == Bots.MODEL_VERSION and (has_bots or real_player_count >= Bots.target_count() or real_entries.size() >= Bots.target_count()):
 		return false
-	var filled: Dictionary = Bots.fill(mode, real_entries, int(cache.get("real_player_count", real_entries.size())), Bots.target_count(), epoch, cache.get("me", {}))
+	var filled: Dictionary = Bots.fill(mode, real_entries, int(cache.get("real_player_count", real_entries.size())), Bots.target_count(), epoch, cache.get("me", {}), week, previous_bots)
 	cache["entries"] = filled["entries"]
 	cache["bot_epoch"] = filled["bot_epoch"]
+	cache["bot_week_epoch"] = filled["bot_week_epoch"]
+	cache["bot_model_version"] = filled["bot_model_version"]
 	cache["real_player_count"] = filled["real_player_count"]
 	store.persist()
 	return true
@@ -446,10 +456,10 @@ func _seed_offline_bot_caches() -> void:
 		var key := _cache_key(mode)
 		if store.data["cache"].has(key):
 			continue
-		var filled: Dictionary = Bots.fill(mode, [], 0, Bots.target_count(), Bots.current_epoch(), {})
+		var filled: Dictionary = Bots.fill(mode, [], 0, Bots.target_count(), Bots.current_epoch(), {}, Bots.current_week_epoch())
 		store.data["cache"][key] = {
 			"entries": filled["entries"], "me": {}, "real_player_count": 0,
-			"bot_epoch": filled["bot_epoch"], "next_cursor": "", "updated_at": 0,
+			"bot_epoch": filled["bot_epoch"], "bot_week_epoch": filled["bot_week_epoch"], "bot_model_version": filled["bot_model_version"], "next_cursor": "", "updated_at": 0,
 			"fetched_at": 0,
 		}
 		changed_local = true
