@@ -1126,6 +1126,7 @@ func _play_from_leaderboard(mode: String) -> void:
 		if not _reload_adventure_config():
 			return
 		leaderboard_client.close_board()
+		_reset_visual_feedback()
 		_finish_leaderboard_run()
 		_save_high_score()
 		game = null

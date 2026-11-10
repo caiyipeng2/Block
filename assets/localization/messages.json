@@ -863,13 +863,17 @@
     "en": "Best single-game score",
     "fr": "Meilleur score en une partie"
   },
-  "闯关先比通关数，再比总积分；经典和自由比较单局最高分。相同成绩并列，只有已确认的成绩计入排名。": {
-    "en": "Adventure ranks players by levels completed, then total points; Classic and Free Play use the best single-game score. Equal results share a rank. Only confirmed results count toward the leaderboard.",
-    "fr": "En mode Aventure, le classement dépend des niveaux terminés, puis du total des points ; les modes Classique et Libre utilisent le meilleur score en une partie. Les résultats identiques sont ex æquo. Seuls les résultats confirmés comptent pour le classement."
+  "闯关先比通关数，再比总积分；经典和自由比较单局最高分。相同成绩并列。": {
+    "en": "Adventure ranks players by levels completed, then total points; Classic and Free Play use the best single-game score. Equal results share a rank.",
+    "fr": "En mode Aventure, le classement dépend des niveaux terminés, puis du total des points ; les modes Classique et Libre utilisent le meilleur score en une partie. Les résultats identiques sont ex æquo."
   },
   "上次更新：%s（UTC）": {
     "en": "Last updated: %s (UTC)",
     "fr": "Dernière mise à jour : %s (UTC)"
+  },
+  "榜单更新：%s": {
+    "en": "Board updated: %s",
+    "fr": "Classement mis à jour : %s"
   },
   "刷新": {
     "en": "Refresh",
@@ -1058,6 +1062,10 @@
   "上次全球排名：%d": {
     "en": "Last global rank: %d",
     "fr": "Dernier rang mondial : %d"
+  },
+  "当前排名：%d": {
+    "en": "Current rank: %d",
+    "fr": "Rang actuel : %d"
   },
   "仅保存于本机": {
     "en": "Saved on this device only",

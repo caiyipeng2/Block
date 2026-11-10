@@ -17,7 +17,7 @@ const MODES := ["adventure", "classic", "free"]
 const TAB_NAMES := ["AdventureTab", "ClassicTab", "FreeTab"]
 const TAB_KEYS := ["闯关模式", "经典模式", "自由模式"]
 const TAB_COLORS := [Color("#ffc62b"), Color("#16c855"), Color("#ba41ed")]
-const RULES := "闯关先比通关数，再比总积分；经典和自由比较单局最高分。相同成绩并列，只有已确认的成绩计入排名。"
+const RULES := "闯关先比通关数，再比总积分；经典和自由比较单局最高分。相同成绩并列。"
 
 var _data: Dictionary = {}
 var _mode := "adventure"
@@ -90,9 +90,9 @@ func apply_view(data: Dictionary) -> void:
 		if i == 0 and MODES[i] == _mode:
 			for role in ["font_color", "font_hover_color", "font_pressed_color"]:
 				tab.add_theme_color_override(role, Color("#56340d"))
-	var status := str(_data.get("status", "unconfigured"))
+	var status := str(_data.get("status", "local"))
 	var cached := bool(_data.get("has_cache", false))
-	var show_records := status == "ready" or (cached and status in ["unconfigured", "offline", "error", "maintenance", "loading"])
+	var show_records := status in ["ready", "local"] or (cached and status in ["unconfigured", "offline", "error", "maintenance", "loading"])
 	_status.text = _status_text(status, cached)
 	_status.visible = not _status.text.is_empty()
 	_status.add_theme_color_override("font_color", Color("#ffe4a0") if status in ["offline", "error", "maintenance"] else Color("#e1eeff"))
@@ -101,9 +101,14 @@ func apply_view(data: Dictionary) -> void:
 	_notice.visible = not notice.is_empty()
 	var timestamp := int(_data.get("updated_at", 0))
 	_updated.visible = show_records and timestamp > 0
-	_updated.text = L10n.t("上次更新：%s（UTC）") % Time.get_datetime_string_from_unix_time(timestamp).replace("T", " ") if _updated.visible else ""
+	if not _updated.visible:
+		_updated.text = ""
+	elif status == "local":
+		_updated.text = L10n.t("榜单更新：%s") % _local_datetime(timestamp)
+	else:
+		_updated.text = L10n.t("上次更新：%s（UTC）") % Time.get_datetime_string_from_unix_time(timestamp).replace("T", " ")
 	_buttons.RetryButton.text = L10n.t("刷新" if status in ["ready", "empty"] else "重试")
-	_buttons.RetryButton.visible = status != "unconfigured"
+	_buttons.RetryButton.visible = status not in ["unconfigured", "local"]
 	_buttons.RetryButton.disabled = status == "loading"
 	_clear(_podium)
 	_clear(_rows)
@@ -329,6 +334,7 @@ func _fit_buttons() -> void:
 
 func _status_text(status: String, cached: bool) -> String:
 	match status:
+		"local": return ""
 		"unconfigured": return L10n.t("排行榜服务尚未开放")
 		"loading": return L10n.t("加载中…")
 		"empty": return L10n.t("还没有玩家上榜，来创造第一条纪录吧")
@@ -341,6 +347,10 @@ func _score(entry: Dictionary) -> String:
 	if _mode == "adventure":
 		return L10n.t("%s关") % _integer(int(entry.get("completed", 0))) + "\n" + value
 	return value
+
+func _local_datetime(timestamp: int) -> String:
+	var bias := int(Time.get_time_zone_from_system().get("bias", 0))
+	return Time.get_datetime_string_from_unix_time(timestamp + bias * 60).replace("T", " ")
 
 func _integer(value: int) -> String:
 	var digits := str(value)

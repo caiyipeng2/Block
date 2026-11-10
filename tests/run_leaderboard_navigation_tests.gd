@@ -89,7 +89,7 @@ func _run() -> void:
 		for refresh in range(3):
 			main._refresh_controls()
 			_check(status_label.get_index() < result_button.get_index() and result_button.get_index() < actions.get_index(), "result action ordering remains stable on refresh %d" % refresh)
-		_check(main.gameplay_ui.get("_leaderboard_status").text == "仅保存于本机", "unconfigured result reports local save only")
+		_check(main.gameplay_ui.get("_leaderboard_status").text == "尚未上榜", "client-only result shows unranked without device-only warnings")
 		result_button.pressed.emit()
 		_check(main.screen == "leaderboard" and main.game == original, "result entry does not replace game")
 		main._close_leaderboard()

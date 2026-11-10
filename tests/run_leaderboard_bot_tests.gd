@@ -20,6 +20,8 @@ func _run() -> void:
 	_test_epoch_changes()
 	_test_daily_weekly_cycles()
 	_test_real_player_cutover()
+	_test_identity_name_collisions()
+	_test_local_player_placement()
 	if _failures == 0:
 		print("LEADERBOARD BOT TESTS PASSED")
 
@@ -108,6 +110,58 @@ func _test_real_player_cutover() -> void:
 	_check(entries.size() == 100, "100 real players keep a full board")
 	_check(_count_bots(entries) == 0, "bots disappear when real players reach 100")
 	_check(_count_real(entries) == 100, "all real players remain after bot cutover")
+
+func _test_identity_name_collisions() -> void:
+	var baseline: Dictionary = Bots.fill("classic", [], 0, 100, 40000, {}, 3000)
+	var entries: Array = baseline["entries"]
+	var previous: Dictionary = entries[0].duplicate(true)
+	previous["nickname"] = str(entries[1].get("nickname", ""))
+	var restored: Dictionary = Bots.fill("classic", [], 0, 100, 40000, {}, 3000, [previous])
+	_check(_unique_bot_names(restored["entries"]), "restored bot identity cannot duplicate another bot name")
+	var real := [{"account_id": "real-player", "nickname": str(previous.get("nickname", "")), "avatar": 0, "score": 0, "completed": 0}]
+	var with_real: Dictionary = Bots.fill("classic", real, 1, 100, 40000, {}, 3000, [previous])
+	_check(_unique_names(with_real["entries"]), "restored bot identity cannot duplicate a real player name")
+
+func _test_local_player_placement() -> void:
+	var board: Dictionary = Bots.fill("classic", [], 0, 100, 50000, {}, 3000)
+	var bots: Array = board["entries"]
+	var top_score := int(bots[0].get("score", 0))
+	var player := {"account_id": "local:self", "nickname": "本机玩家", "avatar": 0, "score": top_score + 1, "completed": 0}
+	var placed: Dictionary = Bots.place_player("classic", bots, player, 100)
+	_check(placed["entries"].size() == 100, "local placement keeps the visible board at 100")
+	_check(int(placed["me"].get("rank", 0)) == 1, "a local player above every bot gets rank one")
+	_check(_contains_account(placed["entries"], "local:self"), "a ranked local player appears in the visible board")
+	_check(not _contains_account(placed["entries"], str(bots[bots.size() - 1]["account_id"])), "a ranked local player displaces the weakest bot")
+	var low := {"account_id": "local:self", "nickname": "本机玩家", "avatar": 0, "score": 0, "completed": 0}
+	var unranked: Dictionary = Bots.place_player("classic", bots, low, 100)
+	_check(unranked["entries"].size() == 100, "a low local player does not shrink the visible board")
+	_check(int(unranked["me"].get("rank", 0)) == 101, "a low local player still gets a truthful rank below the board")
+	_check(not _contains_account(unranked["entries"], "local:self"), "a low local player is not forced into the top 100")
+	var adventure_bots: Array = Bots.fill("adventure", [], 0, 100, 50000, {}, 3000)["entries"]
+	var adventure_player := {"account_id": "local:self", "nickname": "本机玩家", "avatar": 0, "score": 900, "completed": 1}
+	var adventure: Dictionary = Bots.place_player("adventure", adventure_bots, adventure_player, 100)
+	_check(int(adventure["me"].get("rank", 0)) > 0, "adventure local placement uses completion then score")
+	_check(_sorted_with_player(adventure["entries"], adventure_player, "adventure"), "local placement preserves adventure ordering")
+
+func _unique_names(entries: Array) -> bool:
+	var names := {}
+	for entry: Dictionary in entries:
+		var nickname := str(entry.get("nickname", ""))
+		if names.has(nickname):
+			return false
+		names[nickname] = true
+	return true
+
+func _sorted_with_player(entries: Array, player: Dictionary, mode: String) -> bool:
+	var seen_player := false
+	for index in range(1, entries.size()):
+		var previous: Dictionary = entries[index - 1]
+		var current: Dictionary = entries[index]
+		if str(current.get("account_id", "")) == str(player.get("account_id", "")):
+			seen_player = true
+		if Bots._compare(previous, current, mode) < 0:
+			return false
+	return seen_player
 
 func _count_bots(entries: Array) -> int:
 	var count := 0

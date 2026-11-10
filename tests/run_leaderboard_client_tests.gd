@@ -49,6 +49,8 @@ func _run() -> void:
 	_test_stale_acknowledgements()
 	_test_result_modes()
 	_test_corrupt_persistence()
+	_test_local_board()
+	_test_invalid_refresh_fallback()
 	_test_open_board_migration_race()
 	_test_profile_write_failure()
 	_test_refresh_encoding()
@@ -81,7 +83,7 @@ func _test_client() -> void:
 	client.open_board("classic")
 	_check(wire.requests.is_empty(), "unconfigured client never sends network requests")
 	var offline_view: Dictionary = client.view()
-	_check(offline_view["status"] == "unconfigured" and offline_view["entries"].size() == 100, "unconfigured client shows the local filler board")
+	_check(offline_view["status"] == "local" and offline_view["entries"].size() == 100, "unconfigured client shows the local filler board")
 	_check(offline_view["entries"][0].get("is_bot", false) and offline_view["me"].is_empty(), "offline filler never fabricates the player's rank")
 	client.begin_run("classic", 0, 42, 0)
 	client.record_move(0, Vector2i(1, 2), 3, 20, false)
@@ -117,6 +119,60 @@ func _test_client() -> void:
 	client.queue_free()
 	await process_frame
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(STORE_PATH))
+
+func _test_local_board() -> void:
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(STORE_PATH))
+	var source := SaveRepository.defaults()
+	source["classic_high_score"] = 20000
+	source["adventure_highest_completed"] = 2
+	source["adventure_best_scores"] = {"1": 30, "2": 50}
+	source["high_score"] = 40
+	var client: Node = load("res://scripts/persistence/leaderboard_client.gd").new()
+	root.add_child(client)
+	var wire := TestTransport.new()
+	client.configure(STORE_PATH, source, wire)
+	client.set_process(false)
+	client.open_board("classic")
+	var view: Dictionary = client.view()
+	_check(view["status"] == "local", "client-only board has a neutral local status")
+	_check(wire.requests.is_empty(), "client-only board never attempts network")
+	_check(view["me"].get("score") == 20000 and int(view["me"].get("rank", 0)) > 0, "local best score receives a visible personal rank")
+	_check(_contains_account(view["entries"], "local:self"), "local player is merged into the visible rows")
+	_check(view["pending"].is_empty(), "client-only board never shows a sync queue")
+	_check(int(view["updated_at"]) > 0, "client-only board exposes its daily refresh time")
+	var result: Dictionary = client.result_view("classic")
+	_check(result.get("client_only", false) and result["rank"] == view["me"]["rank"] and not result["pending"] and not result["local_only"], "result screen uses the local rank without device-only warnings")
+	client.load_neighbors()
+	var neighbors: Dictionary = client.view()
+	_check(neighbors["neighbors"].size() >= 3, "client-only board can show ranks near mine")
+	var neighbor_ids: Array = []
+	for entry: Dictionary in neighbors["neighbors"]:
+		neighbor_ids.append(entry.get("account_id", ""))
+	_check(neighbor_ids.has("local:self"), "nearby ranks include the local player")
+	client.update_profile("新昵称", 3)
+	_check(client.view()["me"].get("nickname") == "新昵称", "profile edits update the local personal row")
+	client.open_board("adventure")
+	var adventure_view: Dictionary = client.view()
+	_check(adventure_view["me"].get("completed") == 2 and adventure_view["me"].get("score") == 80, "adventure local rank uses completed levels and summed best scores")
+	client.open_board("free")
+	var free_view: Dictionary = client.view()
+	_check(free_view["me"].get("score") == 40 and free_view["me"].get("rank") == 101, "free local rank uses the separate free best score")
+	_check(not _contains_account(free_view["entries"], "local:self"), "a below-board local player is not forced into the top 100")
+	client.load_neighbors()
+	var free_neighbors: Dictionary = client.view()
+	_check(free_neighbors["neighbors"].size() == 5 and str(free_neighbors["neighbors"][-1].get("account_id", "")) == "local:self", "below-board nearby ranks end with the local player")
+	_dispose(client)
+
+func _test_invalid_refresh_fallback() -> void:
+	var client := _new_client(false)
+	var wire: TestTransport = client._transport
+	client.store.data["session"] = {"refresh_token": "revoked"}
+	client.connect_service()
+	_check(wire.requests.size() == 1 and wire.requests[0]["url"].contains("securetoken"), "expired session redeems its refresh token")
+	wire.completed.emit(1, 400, {}, "")
+	_check(client.store.data["session"].is_empty(), "revoked refresh token is discarded")
+	_check(wire.requests.size() == 2 and wire.requests[1]["url"].contains("accounts:signUp"), "revoked refresh token falls back to a fresh anonymous session")
+	_dispose(client)
 
 func _test_open_board_migration_race() -> void:
 	var client := _new_client(false)
@@ -624,6 +680,12 @@ func _test_transport() -> void:
 	await process_frame
 	_check(received == [[id, 0, {}, "invalid_endpoint"]], "transport rejects non-HTTPS without network")
 	transport.free()
+
+func _contains_account(entries: Array, account_id: String) -> bool:
+	for entry: Dictionary in entries:
+		if str(entry.get("account_id", "")) == account_id:
+			return true
+	return false
 
 func _check(condition: bool, message: String) -> void:
 	if not condition:

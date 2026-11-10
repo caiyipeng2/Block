@@ -4,7 +4,7 @@ extends RefCounted
 ## Bots are deliberately low/mid progression: a real player must beat a bot's
 ## actual ranking metric before that bot leaves the visible top 100.
 const TARGET_COUNT := 100
-const MODEL_VERSION := 2
+const MODEL_VERSION := 3
 const DAILY_REFRESH_SECONDS := 86400
 const WEEKLY_REFRESH_SECONDS := 604800
 const DAILY_REFRESH_HOUR_UTC := 4
@@ -33,6 +33,10 @@ static func current_epoch(now: int = -1) -> int:
 
 static func current_week_epoch(now: int = -1) -> int:
 	return week_epoch(now)
+
+static func epoch_start(epoch: int = -1) -> int:
+	var day := current_epoch() if epoch < 0 else epoch
+	return day * refresh_seconds() + DAILY_REFRESH_HOUR_UTC * 3600
 
 static func week_epoch(now: int = -1) -> int:
 	var timestamp := now if now >= 0 else int(Time.get_unix_time_from_system())
@@ -81,7 +85,6 @@ static func fill(mode: String, entries: Array, real_player_count: int, target_co
 	for slot in range(bot_seed_count):
 		var bot := _make_bot(mode, slot, day, week, known_real_count, previous_by_id, used_names)
 		merged.append(bot)
-		used_names[str(bot["nickname"])] = true
 	_sort_entries(merged, mode)
 	_assign_ranks(merged, mode)
 	var visible: Array = merged.slice(0, target)
@@ -98,10 +101,24 @@ static func _make_bot(mode: String, slot: int, day: int, week: int, real_player_
 	var account_id := _account_id(slot, week)
 	var profile_rng := RandomNumberGenerator.new()
 	profile_rng.seed = _seed("profile", slot, week)
+	var previous: Dictionary = previous_by_id.get(account_id, {})
+	var keep_previous := not previous.is_empty() and int(previous.get("bot_model_version", 0)) == MODEL_VERSION
+	var nickname := ""
+	if keep_previous:
+		var previous_name := str(previous.get("nickname", ""))
+		# A restored identity must not duplicate a real player or another bot.
+		if not previous_name.is_empty() and not used_names.has(previous_name):
+			nickname = previous_name
+	if nickname.is_empty():
+		nickname = _nickname(slot, week, account_id, used_names)
+	used_names[nickname] = true
+	var avatar := int(previous.get("avatar", -1)) if keep_previous else -1
+	if avatar < 0 or avatar > 5:
+		avatar = _avatar(slot, week, account_id)
 	var bot := {
 		"account_id": account_id,
-		"nickname": _nickname(slot, week, account_id, used_names),
-		"avatar": _avatar(slot, week, account_id),
+		"nickname": nickname,
+		"avatar": avatar,
 		"score": 0,
 		"completed": 0,
 		"is_bot": true,
@@ -114,13 +131,45 @@ static func _make_bot(mode: String, slot: int, day: int, week: int, real_player_
 		bot["score"] = _adventure_score(slot, int(bot["completed"]), day, week, profile_rng)
 	else:
 		bot["score"] = _score_for_mode(mode, slot, day, week, profile_rng)
-	var previous: Dictionary = previous_by_id.get(account_id, {})
-	if not previous.is_empty() and int(previous.get("bot_model_version", 0)) == MODEL_VERSION:
+	if keep_previous:
 		bot["score"] = maxi(int(bot["score"]), int(previous.get("score", 0)))
 		bot["completed"] = maxi(int(bot["completed"]), int(previous.get("completed", 0)))
-		bot["nickname"] = str(previous.get("nickname", bot["nickname"]))
-		bot["avatar"] = int(previous.get("avatar", bot["avatar"]))
 	return bot
+
+static func place_player(mode: String, entries: Array, player: Dictionary, target_count: int = TARGET_COUNT) -> Dictionary:
+	## Merge the local player into an already-filled board without regenerating
+	## bots, so the visible rows stay stable while the personal row updates.
+	var target := clampi(target_count, 1, TARGET_COUNT)
+	var merged: Array[Dictionary] = []
+	var seen := {}
+	for raw: Variant in entries:
+		if not raw is Dictionary:
+			continue
+		var entry: Dictionary = raw
+		var account_id := str(entry.get("account_id", ""))
+		if account_id.is_empty() or seen.has(account_id):
+			continue
+		merged.append(entry.duplicate(true))
+		seen[account_id] = true
+	var player_id := ""
+	if not player.is_empty():
+		var copy: Dictionary = player.duplicate(true)
+		player_id = str(copy.get("account_id", ""))
+		if player_id.is_empty():
+			player_id = "local:self"
+			copy["account_id"] = player_id
+		if not seen.has(player_id):
+			merged.append(copy)
+			seen[player_id] = true
+	_sort_entries(merged, mode)
+	_assign_ranks(merged, mode)
+	var me: Dictionary = {}
+	if not player_id.is_empty():
+		for entry: Dictionary in merged:
+			if str(entry.get("account_id", "")) == player_id:
+				me = entry.duplicate(true)
+				break
+	return {"entries": merged.slice(0, target), "me": me}
 
 static func _adventure_completed(slot: int, week: int, real_player_count: int, rng: RandomNumberGenerator) -> int:
 	var cap := _adventure_cap(real_player_count)
@@ -215,7 +264,20 @@ static func _nickname(slot: int, week: int, account_id: String, used_names: Dict
 	return unique
 
 static func _avatar(slot: int, week: int, account_id: String) -> int:
-	return posmod(_seed("avatar:%s" % account_id, slot, week), 6)
+	# Default avatars should be more common than the last slots, like real
+	# accounts that never picked one.
+	var roll := posmod(_seed("avatar:%s" % account_id, slot, week), 20)
+	if roll < 6:
+		return 0
+	if roll < 10:
+		return 1
+	if roll < 14:
+		return 2
+	if roll < 17:
+		return 3
+	if roll < 19:
+		return 4
+	return 5
 
 static func _sort_entries(entries: Array[Dictionary], mode: String) -> void:
 	entries.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:

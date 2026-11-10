@@ -6,8 +6,9 @@ const Leaderboard := preload("res://scripts/ui/leaderboard_panel.gd")
 const Profile := preload("res://scripts/ui/player_profile_dialog.gd")
 const Settings := preload("res://scripts/ui/settings_panel.gd")
 const Avatar := preload("res://scripts/ui/leaderboard_avatar.gd")
-const RESULT_KEYS := ["查看排行榜", "上次全球排名：%d", "仅保存于本机", "成绩待同步", "尚未上榜",
-	"成绩暂时无法保存到同步队列", "这次成绩未计入排行榜", "昵称为2–12个字符，不含控制字符或标记"]
+const RESULT_KEYS := ["查看排行榜", "上次全球排名：%d", "当前排名：%d", "仅保存于本机", "成绩待同步", "尚未上榜",
+	"成绩暂时无法保存到同步队列", "这次成绩未计入排行榜", "昵称为2–12个字符，不含控制字符或标记",
+	"榜单更新：%s"]
 const STATUS_KEYS := {
 	"unconfigured": "排行榜服务尚未开放", "loading": "加载中…",
 	"empty": "还没有玩家上榜，来创造第一条纪录吧", "offline": "暂时无法连接排行榜",
@@ -55,6 +56,8 @@ func _run() -> void:
 			_check(catalog.has(source), "required result/notice key: " + source)
 		_equal(L10n.t("上次全球排名：%d") % 1234,
 			{"en": "Last global rank: 1234", "fr": "Dernier rang mondial : 1234", "zh_CN": "上次全球排名：1234"}[code], "formatted global rank")
+		_equal(L10n.t("当前排名：%d") % 1234,
+			{"en": "Current rank: 1234", "fr": "Rang actuel : 1234", "zh_CN": "当前排名：1234"}[code], "formatted current rank")
 		_equal(board.get("_title").text, L10n.t("排行榜"), "live leaderboard title")
 		_equal(board.get("_rules").text, L10n.t(Leaderboard.RULES), "live leaderboard rules")
 		_equal(board.get_action_button("AdventureTab").text, L10n.t("闯关模式"), "live Adventure tab")
@@ -83,6 +86,7 @@ func _run() -> void:
 		_equal(settings.get_action_button("ProfileButton").text, L10n.t("编辑资料"), "settings profile action refreshes")
 		for status: String in STATUS_KEYS:
 			_equal(board.call("_status_text", status, false), L10n.t(STATUS_KEYS[status]), "localized status: " + status)
+		_equal(board.call("_status_text", "local", true), "", "client-only board has no service status")
 		for status: String in ["offline", "error"]:
 			_equal(board.call("_status_text", status, true), L10n.t("离线 · 显示上次排名"), "localized cached status")
 	for code: String in L10n.SUPPORTED_CODES:
@@ -95,6 +99,13 @@ func _run() -> void:
 		settings.apply_account({"save_failed": true, "bound": true})
 		_equal(settings.get("_account_labels")["AccountSaveStatus"].text, L10n.t("本机存档保存失败，请重试"), "account save failure")
 		_equal(settings.get_action_button("GoogleBindingButton").text, L10n.t("管理绑定"), "linked account action")
+	for code: String in ["en", "fr", "zh_CN"]:
+		L10n.set_language(code)
+		await process_frame
+		board.apply_view({"mode": "classic", "status": "local", "entries": [entry], "me": entry,
+			"updated_at": 1793000000, "profile": {"nickname": "设置", "avatar": 2}})
+		_check(board.get("_updated").text.begins_with(L10n.t("榜单更新：%s").split("%s")[0]) and not board.get("_updated").text.contains("UTC"),
+			"localized client-only update time: " + code)
 	_equal(Array(L10n.missing_keys()), [], "no runtime missing keys")
 	await process_frame
 	for surface: SubViewport in surfaces:

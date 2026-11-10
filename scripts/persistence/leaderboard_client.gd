@@ -39,12 +39,17 @@ func configure(path: String, local_save: Dictionary, transport: Node = null, bas
 		_states[mode] = "offline" if store.data["cache"].has(_cache_key(mode)) else "unconfigured"
 		_generations[mode] = 0
 	_seed_offline_bot_caches()
+	if not available():
+		for mode: String in Store.MODES:
+			if store.data["cache"].has(_cache_key(mode)):
+				_states[mode] = "local"
 
 func available() -> bool:
 	return _base_url.begins_with("https://") and not _api_key.is_empty() and not store.read_failed
 
 func _process(_delta: float) -> void:
 	if _refresh_bot_cache(selected_mode):
+		_neighbors.clear()
 		changed.emit()
 	if available() and _retry_at > 0 and Time.get_ticks_msec() >= _retry_at:
 		_retry_at = 0
@@ -80,7 +85,7 @@ func open_board(mode: String = "", force: bool = false) -> void:
 	_neighbors.clear()
 	_refresh_bot_cache(selected_mode)
 	if not available():
-		_states[selected_mode] = "unconfigured"
+		_states[selected_mode] = "local"
 		changed.emit()
 		return
 	var cached: Dictionary = store.data["cache"].get(_cache_key(selected_mode), {})
@@ -107,16 +112,65 @@ func load_more() -> void:
 	_fetch_board(selected_mode, current["next_cursor"])
 
 func load_neighbors() -> void:
-	if not available() or not _has_session() or _has_pending("neighbors", selected_mode):
+	if not available():
+		_neighbors = _local_neighbors()
+		changed.emit()
+		return
+	if not _has_session() or _has_pending("neighbors", selected_mode):
 		return
 	_send("neighbors", _base_url + "/v1/leaderboards/" + selected_mode + "/me?ruleset_id=" + _ruleset.uri_encode(), HTTPClient.METHOD_GET, {}, {"mode": selected_mode, "generation": _generations[selected_mode]})
 
 func view() -> Dictionary:
-	_refresh_bot_cache(selected_mode)
+	if _refresh_bot_cache(selected_mode):
+		_neighbors.clear()
 	var cached: Dictionary = store.data["cache"].get(_cache_key(selected_mode), {})
+	var entries: Array = cached.get("entries", []).duplicate(true)
 	var mine: Dictionary = cached.get("me", {})
-	var pending := _local_pending(selected_mode)
-	return {"mode": selected_mode, "status": _states[selected_mode], "has_cache": not cached.is_empty(), "entries": cached.get("entries", []).duplicate(true), "me": mine.duplicate(true), "updated_at": int(cached.get("updated_at", 0)), "pending": pending, "next_cursor": cached.get("next_cursor", ""), "profile": store.data["profile"].duplicate(), "highest_completed": store.data["local_records"]["adventure"]["completed"], "neighbors": _neighbors.duplicate(true), "notice": _notice}
+	var pending := {}
+	if not available():
+		var placed: Dictionary = Bots.place_player(selected_mode, entries, _local_entry(selected_mode), BOARD_LIMIT)
+		entries = placed["entries"]
+		mine = placed["me"]
+	else:
+		pending = _local_pending(selected_mode)
+	return {"mode": selected_mode, "status": _states[selected_mode], "has_cache": not cached.is_empty(), "entries": entries, "me": mine.duplicate(true), "updated_at": int(cached.get("updated_at", 0)), "pending": pending, "next_cursor": cached.get("next_cursor", ""), "profile": store.data["profile"].duplicate(), "highest_completed": store.data["local_records"]["adventure"]["completed"], "neighbors": _neighbors.duplicate(true), "notice": _notice}
+
+func _local_entry(mode: String) -> Dictionary:
+	var local: Dictionary = store.data["local_records"].get(mode, {})
+	var score := int(local.get("score", 0))
+	var completed := int(local.get("completed", 0))
+	var eligible := completed >= 1 if mode == "adventure" else score > 0
+	if not eligible:
+		return {}
+	var profile: Dictionary = store.data["profile"]
+	return {"account_id": "local:self", "nickname": str(profile.get("nickname", "")), "avatar": int(profile.get("avatar", 0)), "score": score, "completed": completed, "rank": 0}
+
+func _local_neighbors() -> Array:
+	var data := view()
+	var me: Dictionary = data["me"]
+	if me.is_empty():
+		return []
+	var entries: Array = data["entries"]
+	var me_id := str(me.get("account_id", ""))
+	var index := -1
+	for position in range(entries.size()):
+		if str(entries[position].get("account_id", "")) == me_id:
+			index = position
+			break
+	var result: Array = []
+	if index >= 0:
+		var start := maxi(0, index - 2)
+		var finish := mini(entries.size() - 1, index + 2)
+		for position in range(start, finish + 1):
+			result.append(entries[position])
+		while result.size() < 5 and finish + 1 < entries.size():
+			finish += 1
+			result.append(entries[finish])
+	else:
+		for position in range(maxi(0, entries.size() - 4), entries.size()):
+			result.append(entries[position])
+		result.append(me)
+	return result
 
 func _local_pending(mode: String) -> Dictionary:
 	var mine: Dictionary = store.data["cache"].get(_cache_key(mode), {}).get("me", {})
@@ -150,6 +204,11 @@ func _adventure_eligible(local: Dictionary) -> bool:
 	return total >= int(local["score"])
 
 func result_view(mode: String) -> Dictionary:
+	if not available():
+		_refresh_bot_cache(mode)
+		var cached: Dictionary = store.data["cache"].get(_cache_key(mode), {})
+		var placed: Dictionary = Bots.place_player(mode, cached.get("entries", []), _local_entry(mode), BOARD_LIMIT)
+		return {"rank": int(placed["me"].get("rank", 0)), "available": false, "pending": false, "local_only": false, "client_only": true}
 	var cache: Dictionary = store.data["cache"].get(_cache_key(mode), {})
 	var legacy: Dictionary = Store.records(store.data["legacy_snapshot"])[mode]
 	var pending: bool = not store.data["legacy_done"] and (int(legacy["score"]) > 0 or int(legacy["completed"]) > 0)
@@ -157,7 +216,7 @@ func result_view(mode: String) -> Dictionary:
 		if queued["mode"] == mode:
 			pending = true
 	var local := _local_pending(mode)
-	return {"rank": int(cache.get("me", {}).get("rank", 0)), "available": available(), "pending": pending, "local_only": not local.is_empty() and not local["eligible"]}
+	return {"rank": int(cache.get("me", {}).get("rank", 0)), "available": true, "pending": pending, "local_only": not local.is_empty() and not local["eligible"]}
 
 func account_view() -> Dictionary:
 	var result: Dictionary = store.data["profile"].duplicate()
@@ -166,11 +225,13 @@ func account_view() -> Dictionary:
 
 func update_records(local_save: Dictionary) -> void:
 	store.update_records(local_save)
+	_neighbors.clear()
 	changed.emit()
 
 func update_profile(nickname: String, avatar: int) -> bool:
 	if not store.update_profile(nickname, avatar):
 		return false
+	_neighbors.clear()
 	_sync_next()
 	changed.emit()
 	return true
@@ -300,6 +361,15 @@ func _on_response(id: int, status: int, body: Dictionary, error: String) -> void
 		if status == 401 and kind not in ["auth", "auth_refresh"]:
 			store.data["session"]["expires_at"] = 0
 			store.persist()
+		if kind == "auth_refresh" and status in [400, 401, 403]:
+			# A revoked refresh token would otherwise retry forever and never
+			# create a fresh anonymous session.
+			store.data["session"] = {}
+			store.persist()
+			_retry_delay = 5
+			connect_service()
+			changed.emit()
+			return
 		if kind == "checkpoint" and status == 422:
 			store.acknowledge(context["run_id"], context["sequence"])
 			_notice = "这次成绩未计入排行榜"
@@ -442,6 +512,8 @@ func _refresh_bot_cache(mode: String) -> bool:
 	cache["bot_week_epoch"] = filled["bot_week_epoch"]
 	cache["bot_model_version"] = filled["bot_model_version"]
 	cache["real_player_count"] = filled["real_player_count"]
+	if not available():
+		cache["updated_at"] = Bots.epoch_start(epoch)
 	store.persist()
 	return true
 
@@ -459,7 +531,7 @@ func _seed_offline_bot_caches() -> void:
 		var filled: Dictionary = Bots.fill(mode, [], 0, Bots.target_count(), Bots.current_epoch(), {}, Bots.current_week_epoch())
 		store.data["cache"][key] = {
 			"entries": filled["entries"], "me": {}, "real_player_count": 0,
-			"bot_epoch": filled["bot_epoch"], "bot_week_epoch": filled["bot_week_epoch"], "bot_model_version": filled["bot_model_version"], "next_cursor": "", "updated_at": 0,
+			"bot_epoch": filled["bot_epoch"], "bot_week_epoch": filled["bot_week_epoch"], "bot_model_version": filled["bot_model_version"], "next_cursor": "", "updated_at": Bots.epoch_start(filled["bot_epoch"]),
 			"fetched_at": 0,
 		}
 		changed_local = true

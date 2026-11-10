@@ -79,6 +79,9 @@ def run_suite(godot: Path, name: str) -> bool:
 
 
 def main() -> int:
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser()
     parser.add_argument("--godot", type=Path, default=DEFAULT_GODOT)
     parser.add_argument("--suite", choices=[*SUITES, "all"], default="all")

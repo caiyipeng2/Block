@@ -1350,13 +1350,14 @@ func _apply_state(mode_changed: bool) -> void:
 
 func set_leaderboard_status(data: Dictionary) -> void:
 	var rank := int(data.get("rank", 0))
+	var client_only := bool(data.get("client_only", false))
 	if rank > 0:
-		_leaderboard_status.text = L10n.t("上次全球排名：%d") % rank
+		_leaderboard_status.text = L10n.t("当前排名：%d" if client_only else "上次全球排名：%d") % rank
 	else:
 		_leaderboard_status.text = L10n.t("尚未上榜")
-	if not bool(data.get("available", false)) or bool(data.get("local_only", false)):
+	if not client_only and (not bool(data.get("available", false)) or bool(data.get("local_only", false))):
 		_leaderboard_status.text = L10n.t("仅保存于本机") if rank == 0 else _leaderboard_status.text + " · " + L10n.t("仅保存于本机")
-	elif bool(data.get("pending", false)):
+	elif not client_only and bool(data.get("pending", false)):
 		_leaderboard_status.text += " · " + L10n.t("成绩待同步")
 
 func _configure_overlay_actions() -> void:

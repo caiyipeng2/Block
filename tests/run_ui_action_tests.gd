@@ -131,6 +131,9 @@ func _run_tests() -> void:
 	_check(result_menu != null and not result_menu.disabled, "通关面板释放返回选关按钮")
 	_check_no_focus_outline(next_level, "通关下一关按钮")
 	_check_no_focus_outline(result_menu, "通关返回选关按钮")
+	# The collect win gates its primary action until the short victory sequence
+	# finishes; this test asserts navigation, not that animation timing.
+	main.gameplay_ui.call("_stop_victory_animation")
 	next_level.pressed.emit()
 	_equal(main.screen, "levels", "下一关先进入选关页展示新关解锁")
 	_equal(main.game, null, "进入选关页清理上一关游戏")
@@ -152,7 +155,12 @@ func _run_tests() -> void:
 	reloaded._set_setting("reduced_motion", false)
 	reloaded._show_settings()
 	_equal(reloaded.settings_controls.modulate.a, 0.0, "普通模式启动界面淡入")
-	await create_timer(0.2).timeout
+	# Headless frames can lag the wall clock; wait for the tween result instead
+	# of assuming 0.2s always covers a 0.15s fade.
+	for _frame in range(40):
+		if is_equal_approx(reloaded.settings_controls.modulate.a, 1.0):
+			break
+		await create_timer(0.05).timeout
 	_equal(reloaded.settings_controls.modulate.a, 1.0, "界面淡入完成")
 	reloaded._show_settings()
 	reloaded.save_path = ProjectSettings.globalize_path("res://work/verification/no-parent/settings.json")
