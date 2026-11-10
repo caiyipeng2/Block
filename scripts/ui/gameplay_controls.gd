@@ -123,6 +123,7 @@ var _victory_particles: Array[Dictionary] = []
 var _victory_ambient_running := false
 var _victory_ambient_time := 0.0
 var _victory_button_ready := true
+var _skip_result_entrance := false
 var _progress_banner: ProgressBanner
 var _progress_banner_paused := false
 
@@ -1343,10 +1344,18 @@ func _apply_state(mode_changed: bool) -> void:
 			_grab_first_focus()
 		_focus_pending = false
 	if mode_changed and _overlay_root.visible:
-		_animate_overlay_entrance()
-		if _mode == MODE_LEVEL_COMPLETE and _is_collect_objective():
-			_start_victory_animation()
+		if _skip_result_entrance:
+			_skip_result_entrance = false
+			_stop_overlay_animation()
+			_stop_victory_animation()
+		else:
+			_animate_overlay_entrance()
+			if _mode == MODE_LEVEL_COMPLETE and _is_collect_objective():
+				_start_victory_animation()
 	queue_redraw()
+
+func skip_next_result_entrance() -> void:
+	_skip_result_entrance = true
 
 func set_leaderboard_status(data: Dictionary) -> void:
 	var rank := int(data.get("rank", 0))

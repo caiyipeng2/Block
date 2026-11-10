@@ -23,6 +23,11 @@ SUITES = {
     "player-profile": ("run_player_profile_tests.gd", "Player profile:"),
     "leaderboard-localization": ("run_leaderboard_localization_tests.gd", "LEADERBOARD LOCALIZATION TESTS:"),
     "leaderboard-bots": ("run_leaderboard_bot_tests.gd", "LEADERBOARD BOT TESTS PASSED"),
+    "clear-color": ("run_clear_color_tests.gd", "CLEAR COLOR TESTS PASSED"),
+    "localization": ("run_localization_tests.gd", "LOCALIZATION TESTS:"),
+    "mode-catalog": ("run_mode_catalog_tests.gd", "MODE CATALOG TESTS PASSED"),
+    "mode-state": ("run_mode_state_tests.gd", "MODE STATE TESTS PASSED"),
+    "round-difficulty": ("run_round_difficulty_tests.gd", "ROUND DIFFICULTY TESTS:"),
 }
 
 

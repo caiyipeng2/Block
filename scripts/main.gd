@@ -1113,6 +1113,8 @@ func _close_leaderboard() -> void:
 	if screen != "leaderboard":
 		return
 	leaderboard_client.close_board()
+	if _leaderboard_origin in ["game_over", "level_complete"] and is_instance_valid(gameplay_ui):
+		gameplay_ui.skip_next_result_entrance()
 	screen = _leaderboard_origin
 	_refresh_controls()
 	if is_instance_valid(_leaderboard_return_focus) and _leaderboard_return_focus.is_visible_in_tree():

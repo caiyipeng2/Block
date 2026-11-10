@@ -131,6 +131,11 @@ func _run_tests() -> void:
 	_check(result_menu != null and not result_menu.disabled, "通关面板释放返回选关按钮")
 	_check_no_focus_outline(next_level, "通关下一关按钮")
 	_check_no_focus_outline(result_menu, "通关返回选关按钮")
+	main._open_leaderboard("adventure")
+	_check(main.screen == "leaderboard", "通关页可打开排行榜")
+	main._close_leaderboard()
+	_equal(main.screen, "level_complete", "排行榜返回恢复通关页")
+	_check(main.gameplay_ui.get("_victory_tween") == null, "返回通关页不重播胜利入场")
 	# The collect win gates its primary action until the short victory sequence
 	# finishes; this test asserts navigation, not that animation timing.
 	main.gameplay_ui.call("_stop_victory_animation")

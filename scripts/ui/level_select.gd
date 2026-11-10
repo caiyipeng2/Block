@@ -201,6 +201,7 @@ func _refresh_text() -> void:
 	if not is_instance_valid(_start):
 		return
 	_back.tooltip_text = L10n.t("返回主菜单")
+	_leaderboard.tooltip_text = L10n.t("排行榜")
 	_title.text = L10n.t("闯关模式")
 	_progress.text = L10n.t("已通关 %d / %d") % [highest_completed, total_levels]
 	_map_caption.text = L10n.t("逐关挑战，点亮你的方块地图")

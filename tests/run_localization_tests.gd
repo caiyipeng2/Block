@@ -528,7 +528,10 @@ func _collect_visible_text(node: Node, code: String, surface: String, items: Arr
 				item["height"] = node.size.y
 				item["font_size"] = node.get_theme_font_size("font_size")
 			items.append(item)
-			_assert_translated(value, code, "%s %s text" % [surface, node.get_path()])
+			# Player content (nicknames) opts out of automatic translation and must
+			# keep its original script in every UI language.
+			if node.auto_translate_mode != Node.AUTO_TRANSLATE_MODE_DISABLED:
+				_assert_translated(value, code, "%s %s text" % [surface, node.get_path()])
 			_assert_translated(tooltip, code, "%s %s tooltip" % [surface, node.get_path()])
 	for child: Node in node.get_children():
 		_collect_visible_text(child, code, surface, items)

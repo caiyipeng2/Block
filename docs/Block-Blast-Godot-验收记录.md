@@ -1,6 +1,6 @@
 # Block Blast Godot MVP 验收记录
 
-首次验证：2026-10-10；最近更新：2026-10-31
+首次验证：2026-10-10；最近更新：2026-11-10
 引擎：Godot 4.7.2 stable  
 平台目标：Windows 桌面，鼠标输入
 
@@ -13,12 +13,27 @@
 本轮只做定向无头验证，不启动 GUI、不控制桌面、不执行完整自动验收：
 
 - 本轮 11 份变更 GDScript 的 Godot 4.7.2 `--check-only` 全部退出 0，无脚本/解析/编译错误。
-- 完整无头套件 `python tests/run_checks.py --suite all` 全部 PASS：`ui` 573 checks、`leaderboard-panel` 419 checks / 0 failures、`leaderboard-localization` 1707 checks / 0 failures，`leaderboard-bots`、`leaderboard-client`、`leaderboard-navigation`、`player-profile`、`rules`、`save`、`audio`、`exit`、`terminal` 均通过。
+- 完整无头套件 `python tests/run_checks.py --suite all` 全部 PASS：共 17 套，`ui` 576 checks、`leaderboard-panel` 419 checks / 0 failures、`leaderboard-localization` 1707 checks / 0 failures、`localization` 5858 checks / 0 failures（202 UI snapshots），`leaderboard-bots`、`leaderboard-client`、`leaderboard-navigation`、`player-profile`、`rules`、`save`、`audio`、`exit`、`terminal`、`clear-color`、`mode-catalog`、`mode-state`、`round-difficulty` 均通过。
+- 标准测试清单已补入此前遗漏的 `clear-color`、`localization`、`mode-catalog`、`mode-state`、`round-difficulty`；其中 localization 套件实际抓到并通过回归修复了选关页排行榜按钮 tooltip 不随语言刷新。
+- 96 关生产路径模拟（每关 1 次 greedy，共 96 次）无配置拒绝、无未认证开局、无空补盘/卡盘；结果只用于启动与供给健康检查，不代表真实难度或通过率验收。
 - 导航覆盖来源返回、原对局/关卡保留、资料取消/保存失败重试、返回键优先级和反复刷新后的结算按钮顺序；机器人覆盖低/中进度分布、本机成绩并入与 100 名外个人名次、每日单调变化、每周部分换人、恢复身份不重名；面板覆盖规则二级弹窗、Escape 关闭弹窗、中/英/法实时切换、昵称不自动翻译、数字格式和手机尺寸控件约束。网络测试只替换传输边界，不访问真实服务。
 - 原 UI action 的“下一关进入选关页”4 项等待式断言和“界面淡入完成”1 项时序断言改为等待真实状态/动画结束，完整套件已全部通过；主场景仍有既有的非等值锚点尺寸提示，不影响断言。
 - 项目本地化检查器通过：271 个词条、542 条翻译、262 个必需源文本、46 份脚本。导出预设均已包含词典；本轮未重新导出验证安装包。
 
 尚未做真实网络、Google OAuth、服务端回放校验或跨设备云存档联调；Android INTERNET 权限保持现状，后端启用时再配置。未生成新 APK/AAB、未改变版本号。界面与最终例图的视觉一致性、字体、声音、触控和真机布局需用户 F5/设备验收，不能以无头检查代替。
+
+## 其他功能审阅（2026-11-10，待用户验收）
+
+本轮只做代码、静态检查和必要的无头回归，未启动 GUI。除排行榜外，重点复核了规则、供块、关卡配置、存档、设置、本地化、导航和结算恢复：
+
+- 修复选关页排行榜按钮 tooltip 只在布局时设置、切换中/英/法后仍显示中文的问题；现在随翻译通知同步刷新。
+- 修复从通关/结束页进入排行榜再返回时，结果面板重新播放胜利/入场动画的问题；返回时直接恢复结果页，下一次真实结算仍正常播放入场。
+- 标准测试清单补入 5 个此前只在维护、未纳入 `--suite all` 的套件；并将 localization 测试对玩家昵称等 `auto_translate_mode=DISABLED` 的用户内容从“中文残留”误报中排除。
+- 96 关模拟与现有测试表明核心规则、关卡配置、生成器、存档、音频和导航无新阻断问题；未验证真实手感、不同设备触控、字体观感、声音或导出包。
+
+- [ ] 用户按 F5 确认选关页底部奖杯 tooltip 在切换英/法后为对应语言。
+- [ ] 用户按 F5 确认通关/失败页进入排行榜再返回时，结果页和下一关按钮不再重播入场动画。
+- [ ] 用户回归三模式完整游玩、暂停/重开/返回、设置与音量、语言切换、手机安全区和结算面板。
 
 ## 消除提示底板灰块修复（2026-10-22；0.9.5，待用户验收）
 
