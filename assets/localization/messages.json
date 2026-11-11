@@ -1047,6 +1047,22 @@
     "en": "Link an account to upload saves and restore them on a new device",
     "fr": "Associez un compte pour envoyer vos sauvegardes et les restaurer sur un nouvel appareil"
   },
+  "广告隐私设置": {
+    "en": "Ad privacy settings",
+    "fr": "Paramètres de confidentialité des annonces"
+  },
+  "隐私政策": {
+    "en": "Privacy policy",
+    "fr": "Politique de confidentialité"
+  },
+  "广告加载中…": {
+    "en": "Loading ad…",
+    "fr": "Chargement de l'annonce…"
+  },
+  "复活成功，继续挑战": {
+    "en": "Revived! Keep going.",
+    "fr": "Ressuscité ! Continuez."
+  },
   "管理绑定": {
     "en": "Manage linked account",
     "fr": "Gérer le compte associé"

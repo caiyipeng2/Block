@@ -14,6 +14,7 @@ func _initialize() -> void:
 	_test_collection_progress()
 	_test_crossing_collection()
 	_test_streamed_collection()
+	_test_revive_after_failure()
 	_test_marker_budget()
 	_test_retry_supply()
 	_test_opening_scope_and_threshold()
@@ -272,6 +273,45 @@ func _test_streamed_collection() -> void:
 	_check(float(hard_supplied["diagnostics"]["difficulty_ratio"]) == 1.0 and not bool(hard_supplied["diagnostics"]["whole_level_certified"]), "后期供块记录难度且不宣称整关唯一解")
 	for piece: PieceData in hard_supplied["pieces"]:
 		_check(piece.is_valid_for_config(supplier_rules), "后期难度权重不改变合法形状约束")
+
+func _test_revive_after_failure() -> void:
+	var config := GameRulesConfig.new()
+	var line := PieceData.new(Vector2i.ZERO, [Vector2i.ZERO, Vector2i(1, 0), Vector2i(2, 0)])
+	var free_state := GameState.new(501, 8, config, {"mode": "free"})
+	free_state.board.fill_all(1)
+	for y in range(2):
+		for x in range(4):
+			free_state.board.set_cell(x, y, -1)
+	free_state.remaining_pieces = [line]
+	free_state.status = GameState.Status.GAME_OVER
+	var occupied_before := _occupied_cells(free_state.board)
+	var score_before := free_state.scoring.score
+	_check(free_state.can_revive() and free_state.revive_after_failure(8), "首次失败可以复活")
+	_check(not free_state.is_game_over() and free_state.revive_used and free_state.can_revive() == false, "复活恢复游玩且每局只允许一次")
+	_check(_occupied_cells(free_state.board) <= occupied_before - 8 and free_state.scoring.score == score_before, "复活最多清八个非目标格且不改分数")
+	_check(free_state.has_legal_move_for_any_remaining_piece(), "复活后当前托盘至少有一个合法落点")
+	_check(not free_state.revive_after_failure(8), "第二次复活请求被拒绝")
+
+	var collect := GameState.new(502, 8, config, _collection_setup())
+	collect.status = GameState.Status.GAME_OVER
+	var target_cells := collect.target_cells.duplicate()
+	var target_total := collect.target_total
+	var target_counts := collect.target_counts.duplicate(true)
+	_check(collect.revive_after_failure(8), "收集关首次失败可以复活")
+	var markers_preserved := true
+	for cell: Vector2i in target_cells:
+		markers_preserved = markers_preserved and collect.board.get_cell(cell.x, cell.y) >= 0
+	_check(markers_preserved, "复活不会清除目标标记")
+	_check(collect.target_total == target_total and collect.target_counts == target_counts and collect.target_cells == target_cells, "复活保留目标总量、分类配额和物理标记")
+	_check(collect.remaining_pieces.size() == collect.rules_config.tray_count and collect.has_legal_move_for_any_remaining_piece(), "收集关复活后重新获得完整可放托盘")
+
+func _occupied_cells(board: BoardRules) -> int:
+	var count := 0
+	for y in range(board.size):
+		for x in range(board.size):
+			if board.get_cell(x, y) >= 0:
+				count += 1
+	return count
 
 func _test_marker_budget() -> void:
 	var rules: GameRulesConfig = ModeCatalog.collection_rules(GameRulesConfig.new())

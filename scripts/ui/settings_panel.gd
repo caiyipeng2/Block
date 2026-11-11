@@ -10,6 +10,8 @@ signal menu_requested
 signal quit_requested
 signal profile_requested
 signal google_binding_requested
+signal ad_privacy_requested
+signal privacy_policy_requested
 
 const Avatar := preload("res://scripts/ui/leaderboard_avatar.gd")
 const Art := preload("res://scripts/ui/casual_panel_art.gd")
@@ -108,7 +110,7 @@ func apply_state(settings: Dictionary, in_game: bool, return_to_levels: bool, sa
 	_buttons["RestartButton"].visible = in_game
 	_buttons["MenuButton"].visible = in_game
 	_buttons["MenuButton"].text = L10n.t("返回关卡" if return_to_levels else "返回菜单")
-	for action_name: String in ["RestartButton", "PreviewSoundButton", "QuitButton"]:
+	for action_name: String in ["RestartButton", "PreviewSoundButton", "QuitButton", "AdPrivacyButton", "PrivacyPolicyButton"]:
 		_buttons[action_name].text = L10n.t(str(_buttons[action_name].get_meta("label_source")))
 	_buttons["PreviewSoundButton"].disabled = not bool(settings.get("sound_enabled", true))
 	_buttons["PreviewSoundButton"].tooltip_text = L10n.t("试听一次消除音效" if bool(settings.get("sound_enabled", true)) else "开启音效后可以试听")
@@ -143,7 +145,7 @@ func _focus_candidates() -> Array[Button]:
 		var toggle: Button = toggles.get(key)
 		if is_instance_valid(toggle):
 			candidates.append(toggle)
-	for action_name: String in ["ProfileButton", "GoogleBindingButton", "BackButton", "RestartButton", "MenuButton", "PreviewSoundButton", "QuitButton", "CloseButton"]:
+	for action_name: String in ["ProfileButton", "GoogleBindingButton", "AdPrivacyButton", "PrivacyPolicyButton", "BackButton", "RestartButton", "MenuButton", "PreviewSoundButton", "QuitButton", "CloseButton"]:
 		var button: Button = _buttons.get(action_name)
 		if is_instance_valid(button):
 			candidates.append(button)
@@ -298,6 +300,7 @@ func _build_controls() -> void:
 	_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_hint.add_theme_font_override("font", _font)
 	_content.add_child(_hint)
+	apply_ad_privacy(false, false)
 	apply_account(_account)
 	apply_state(_settings, _in_game, _return_to_levels, _save_warning)
 
@@ -358,6 +361,10 @@ func _build_account_card() -> void:
 	_buttons["ProfileButton"].reparent(_account_content)
 	_add_action("GoogleBindingButton", "绑定 Google 账号", "", _request_google_binding, "secondary")
 	_buttons["GoogleBindingButton"].reparent(_account_content)
+	_add_action("AdPrivacyButton", "广告隐私设置", "", func(): ad_privacy_requested.emit(), "secondary")
+	_buttons["AdPrivacyButton"].reparent(_account_content)
+	_add_action("PrivacyPolicyButton", "隐私政策", "", func(): privacy_policy_requested.emit(), "secondary")
+	_buttons["PrivacyPolicyButton"].reparent(_account_content)
 	_account_label("AccountBindingHint", _account_content)
 
 
@@ -377,6 +384,17 @@ func _account_label(node_name: String, parent: Node) -> Label:
 func _request_google_binding() -> void:
 	if bool(_account.get("available", false)):
 		google_binding_requested.emit()
+
+func apply_ad_privacy(ad_privacy_available: bool, policy_available: bool) -> void:
+	var ad_button: Button = _buttons.get("AdPrivacyButton")
+	var policy_button: Button = _buttons.get("PrivacyPolicyButton")
+	if is_instance_valid(ad_button):
+		ad_button.visible = ad_privacy_available
+	if is_instance_valid(policy_button):
+		policy_button.visible = policy_available
+	if is_instance_valid(_outer) and is_instance_valid(_hint):
+		_layout_controls()
+		_refresh_focus_chain(true)
 
 
 func _new_toggle(key: String) -> CheckButton:

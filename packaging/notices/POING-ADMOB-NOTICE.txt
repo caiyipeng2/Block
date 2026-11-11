@@ -1,0 +1,21 @@
+Poing Studios Godot AdMob Plugin
+=================================
+
+Vendored plugin version: 5.1.0
+Source: https://github.com/Poing-Studios/godot-admob-editor/releases/tag/v5.1.0
+Release archive: poing-godot-admob-v5.1.0.zip
+Archive SHA256: 8c53ff52719edf6a81cc7d32a9cdaad2d9e11693c85faca25008a1c19355726f
+Android native template: android-template-v4.7.2.zip
+Template SHA256: f7fdf644d50c0e231d8f02ae044057e489d0bcafcf50e908a4858477e7ee05ee
+License: MIT (see addons/admob/LICENSE)
+
+The Android template bundles Poing host modules and declares the Maven
+dependency com.google.android.libraries.ads.mobile.sdk:ads-mobile-sdk:1.4.0
+(Google Mobile Ads Next-Gen SDK). Google Mobile Ads and User Messaging
+Platform are proprietary Google SDKs distributed through Google's Maven
+repository under Google's applicable terms:
+https://developers.google.com/admob/android/terms
+https://developers.google.com/admob/android/privacy
+
+Do not modify the vendored plugin or native binaries without recording a new
+version, source URL and SHA256 here.

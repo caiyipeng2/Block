@@ -1,6 +1,8 @@
 # Block
 
-Godot 4.7 的方块消除游戏：拖动方块、填满行或列并消除，无时间限制。当前源码为 `0.9.5`，提供自由、经典和闯关三种模式，采用蓝色背景、凹槽棋盘和立体斜面方块，支持Windows与Android。
+Godot 4.7 的方块消除游戏：拖动方块、填满行或列并消除，无时间限制。当前源码为 `0.9.6`，提供自由、经典和闯关三种模式，采用蓝色背景、凹槽棋盘和立体斜面方块，支持Windows与Android。
+
+`0.9.6` 接入 Google AdMob（Next-Gen SDK + UMP）并准备 Google Play 发布：Android 每局首次失败会自动尝试一次插屏广告，成功展示并关闭后清除最多 8 个非目标格复活；120 秒冷却、无填充、广告失败或同意未完成时进入正常失败页。默认使用 Google 测试广告，正式 App ID/插屏 ID 需由开发者填写；构建与 Play 清单见[Google Play 发布与广告接入](docs/Block-Blast-Godot-GooglePlay发布与广告接入.md)。
 
 2026-10-26 源码修复：桌面关闭窗口与 Alt+F4 接入退出确认，取消保留棋盘和暂停状态；收集关失败面板等待棋盘动画与全部目标飞行结束。定向无界面检查通过，尚待用户 F5 验收，未重新导出安装包。详见[需求补记](docs/Block-Blast-Godot-需求文档.md#55-系统关窗确认与失败收集结算2026-10-26)和[剩余验收项](docs/Block-Blast-Godot-剩余逻辑开发.md)。
 
@@ -124,7 +126,7 @@ python tools/export_windows.py --godot "E:\Tools\Godot\Godot_v4.7.2-stable_win64
 
 加 `--check` 仅预检、不导出；`--configuration debug` 生成调试包。版本号来自 `project.godot`，当前源码为 `0.8.3`，后续发布输出遵循 `dist/Block-<版本>-windows-x86_64-release.zip`。CSV 已设置为保留原文导入，并由导出包含规则带入 `.pck`；源码改表后需重新导出才能更新玩家包。须完整解压后按 `START-HERE.txt` 运行，保留 `.pck` 和所有随附文件；若导出生成 DLL 或 `x86_64` 子目录，也须完整保留。包内 `build-info.json` 含文件 SHA256，ZIP 旁 `.sha256` 用于核对压缩包。
 
-历史Windows `0.1.0` ZIP和解包目录已按两版保留策略清理，导出步骤与历史证据保留；当前尚未生成Windows新包。Android仅保留 `0.8.9` 与 `0.8.8` 的APK/AAB和对应校验记录。本机模板 `work/release-templates/4.7.2.stable` 继续保留，重新打包Windows时追加 `--templates-dir "work/release-templates/4.7.2.stable"`。模板与后续打包方法见 [Windows 发布说明](docs/Block-Blast-Godot-Windows发布.md)。
+历史Windows `0.1.0` ZIP和解包目录已按两版保留策略清理，导出步骤与历史证据保留；当前尚未生成Windows新包。Android正式包仍保留 `0.8.9` 与 `0.8.8` 的APK/AAB和对应校验记录；`0.9.6` 广告测试 APK 仅保存在本机 `work/verification/ads-test/`，不进入 `dist`，也不作为正式发布包。本机模板 `work/release-templates/4.7.2.stable` 继续保留，重新打包Windows时追加 `--templates-dir "work/release-templates/4.7.2.stable"`。模板与后续打包方法见 [Windows 发布说明](docs/Block-Blast-Godot-Windows发布.md)。
 
 ## 当前开发状态（2026-10-19）
 
@@ -165,5 +167,7 @@ Godot AI 已恢复并升级至正式 `4.3.0`，签名与全部 313 个发布文�
 - [三种模式说明](docs/Block-Blast-Godot-三种模式.md)：模式规则、关卡目标、解锁与保存、难度边界及验收步骤。
 - [关卡配表说明](docs/Block-Blast-Godot-关卡配表说明.md)：CSV 字段、目标数量、难度、模板与种子的配置方法和报错处理。
 - [Windows 发布说明](docs/Block-Blast-Godot-Windows发布.md)：模板、release/debug 导出、打包及无编辑器运行验收。
+- [Google Play 发布与广告接入](docs/Block-Blast-Godot-GooglePlay发布与广告接入.md)：AdMob、UMP、正式/测试 ID、AAB 构建、Data safety 与 Play Console 清单。
+- [隐私政策模板](docs/privacy-policy-template.md) 与 [app-ads.txt 模板](docs/app-ads.txt)：发布前替换占位内容并由你托管。
 
 下一步优先验收首次开屏、跳过不误开模式、返回不重播，以及三个模式/设置/退出入口、键盘焦点和窄窗口比例。再回归配表、失败重试辅助、解锁动画与游戏内反馈；源码验收后再导出新包。连胜/地图奖励不在本轮；触控、硬件震动、旋转/翻转、断点续局和线上功能仍属后续范围。

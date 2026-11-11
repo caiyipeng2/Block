@@ -1,8 +1,22 @@
 # Block Blast Godot MVP 验收记录
 
-首次验证：2026-10-10；最近更新：2026-11-10
+首次验证：2026-10-10；最近更新：2026-11-11
 引擎：Godot 4.7.2 stable  
 平台目标：Windows 桌面，鼠标输入
+
+## Google Play 发布与 AdMob 自动复活（2026-11-11；源码 0.9.6，待用户验收）
+
+按用户确认接入 Poing Studios AdMob v5.1.0（MIT，GMA Next-Gen SDK 1.4.0 + UMP 3.1.0）并准备 Google Play。每局首次失败自动尝试一次插屏；广告展示并关闭后复活，最多清除 8 个非目标格，保留目标、分数和进度；两次广告至少间隔 120 秒。冷却中、无填充、加载/展示失败、UMP 未完成时正常失败，不赠送复活；第二次失败不再弹广告。目标受众 13+、不面向儿童，广告内容上限 G；设置提供广告隐私设置和隐私政策入口。
+
+- 规则层复活、广告冷却/ID 选择/桌面空实现、首次失败自动复活和广告失败保持失败页均有新增无头测试；测试广告防误发预检会在正式 AAB 使用测试 ID 或空正式 ID 时拒绝导出。
+- `python tests/run_checks.py --suite all` 全部 PASS：共 19 套，新增 `ad-service`、`ad-revive`；`ui` 576 checks、`localization` 5858 checks、`leaderboard-localization` 1727 checks、`leaderboard-panel` 419 checks 等均通过。
+- 本地化检查器通过：275 词条、550 条翻译、266 个必需源文本、48 份脚本。
+- 插件、Android 4.7.2 原生模板、MIT Notice 和测试广告配置已固定；正式 App ID/插屏 ID、UMP 消息、隐私政策/app-ads.txt 托管和 Play 后台操作仍需用户完成。真实广告、UMP 表单、真机、Play 审核与收入未验证。
+- 测试 APK 与测试 AAB 均已实际构建成功并校验：包名/版本 0.9.6(9)、min24/target36、arm64、测试 App ID、Poing 原生插件、INTERNET/AD_ID 等权限、16KB 对齐；APK v2 签名通过，AAB `jarsigner` 与 bundletool 校验通过。APK 86MB/SHA256 `e6357e8598b48f8a3436a3f7cad4102f1427ed5ed1936989a5b1b15495176cb7`，AAB 40MB/SHA256 `e7d90dde05163661a4cfcf37830bb595e07da9fb5104ba212dccdb200629e746`，均在 `work/verification/ads-test/`。两包仅测试广告，不用于 Play 发布；真实广告 AAB/Play 上传仍待完成。
+
+- [ ] 用户安装测试 APK，验收首次失败自动广告、复活、120 秒冷却、第二次失败不弹广告、无填充/离线不复活。
+- [ ] 用户验收 EEA UMP 同意/拒绝、设置→广告隐私设置、广告期间游戏/音乐暂停。
+- [ ] 用户替换真实 AdMob ID，完成隐私政策/app-ads.txt/Play Console 申报和 12 人×14 天封闭测试后上传正式 AAB。
 
 ## 三模式排行榜客户端（2026-10-28；2026-11-10 客户端机器人榜更新；源码 0.9.5，待用户验收）
 

@@ -14,6 +14,8 @@ var music_player: AudioStreamPlayer
 var sound_enabled := true
 var music_enabled := false
 var _settings_applied := false
+var _ad_paused := false
+var _resume_music_after_ad := false
 
 func _ready() -> void:
 	if _sound_streams.is_empty():
@@ -51,8 +53,20 @@ func play_clear_reward(combo: int, line_count: int) -> void:
 	var semitones := minf(float(maxi(combo - 1, 0)) * 0.45 + float(maxi(line_count - 1, 0)) * 0.70, 4.0)
 	_play_sound("clear", pow(2.0, semitones / 12.0))
 
+func set_ad_pause(paused: bool) -> void:
+	if paused == _ad_paused or music_player == null or sound_player == null:
+		return
+	_ad_paused = paused
+	if paused:
+		_resume_music_after_ad = music_player.playing
+		music_player.stop()
+		sound_player.stop()
+	elif _resume_music_after_ad and music_enabled:
+		music_player.play()
+		_resume_music_after_ad = false
+
 func _play_sound(kind: String, pitch: float) -> void:
-	if not sound_enabled or sound_player == null:
+	if _ad_paused or not sound_enabled or sound_player == null:
 		return
 	sound_player.pitch_scale = pitch
 	sound_player.stream = _sound_streams.get(kind, _sound_streams["click"])
@@ -61,6 +75,8 @@ func _play_sound(kind: String, pitch: float) -> void:
 func _apply_playback_settings() -> void:
 	if not sound_enabled:
 		sound_player.stop()
+	if _ad_paused:
+		return
 	if music_enabled:
 		if not music_player.playing:
 			music_player.play()

@@ -16,6 +16,7 @@ const ActionConfirmationScript := preload("res://scripts/ui/action_confirmation.
 const LeaderboardClient := preload("res://scripts/persistence/leaderboard_client.gd")
 const LeaderboardPanel := preload("res://scripts/ui/leaderboard_panel.gd")
 const PlayerProfileDialog := preload("res://scripts/ui/player_profile_dialog.gd")
+const AdServiceScript := preload("res://scripts/ads/ad_service.gd")
 const L10n := preload("res://scripts/localization/game_locale.gd")
 const SETUP_REASON_SOURCES := {
 	"invalid_level_configuration": "关卡配置不可用",
@@ -94,6 +95,10 @@ var leaderboard_panel: Control
 var player_profile_dialog: Control
 var _leaderboard_origin := "menu"
 var _leaderboard_return_focus: Control
+var ad_service: Node
+var _auto_revive_attempted := false
+var _ad_wait_overlay: Control
+var _ad_wait_label: Label
 
 func _ready() -> void:
 	get_tree().auto_accept_quit = false
@@ -137,6 +142,7 @@ func _ready() -> void:
 	_create_menu_controls()
 	_create_confirmation_dialog()
 	_create_leaderboard_controls()
+	_create_ad_service()
 	resized.connect(_layout_controls)
 	get_window().focus_exited.connect(_on_window_focus_lost)
 	_layout_controls()
@@ -165,6 +171,8 @@ func _process(delta: float) -> void:
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_TRANSLATION_CHANGED and is_node_ready() and is_instance_valid(settings_controls):
+		if is_instance_valid(_ad_wait_label):
+			_ad_wait_label.text = L10n.t("广告加载中…")
 		_refresh_confirmation_texts()
 		_refresh_controls()
 		_refresh_level_config_dialog()
@@ -178,6 +186,9 @@ func _notification(what: int) -> void:
 
 func _input(event: InputEvent) -> void:
 	if exiting:
+		return
+	if is_instance_valid(_ad_wait_overlay) and _ad_wait_overlay.visible:
+		get_viewport().set_input_as_handled()
 		return
 	if screen == "menu" and menu_controls.consume_opening_input(event):
 		get_viewport().set_input_as_handled()
@@ -434,6 +445,10 @@ func _start_game(mode: String = "", level_id: int = 0) -> void:
 	progress_milestones_shown.clear()
 	level_completion_recorded = false
 	level_failure_recorded = false
+	_auto_revive_attempted = false
+	_hide_ad_wait()
+	if feedback_audio != null:
+		feedback_audio.set_ad_pause(false)
 	board_placement_orders.clear()
 	var initial_cells: Array = setup.get("initial_cells", [])
 	for index in range(initial_cells.size()):
@@ -506,6 +521,7 @@ func _try_show_game_over() -> void:
 	paused = false
 	_refresh_controls()
 	queue_redraw()
+	call_deferred("_try_auto_revive")
 
 func _try_show_level_complete() -> void:
 	if exiting or game == null or screen != "game" or not game.is_level_complete() or _result_feedback_pending():
@@ -819,6 +835,7 @@ func _show_settings() -> void:
 	screen = "settings"
 	_play_feedback("click")
 	_refresh_controls()
+	_refresh_ad_privacy_controls()
 	settings_controls.focus_primary()
 	_fade_controls(settings_controls)
 	queue_redraw()
@@ -834,6 +851,7 @@ func _request_game_settings() -> void:
 	move_feedback.set_paused(true)
 	screen = "settings"
 	_refresh_controls()
+	_refresh_ad_privacy_controls()
 	settings_controls.focus_primary()
 	_fade_controls(settings_controls)
 	queue_redraw()
@@ -1096,6 +1114,126 @@ func _create_leaderboard_controls() -> void:
 	leaderboard_client.changed.connect(_refresh_leaderboard)
 	get_window().focus_entered.connect(_refresh_online_on_foreground)
 	leaderboard_client.connect_service()
+
+func _create_ad_service() -> void:
+	_build_ad_wait_overlay()
+	ad_service = AdServiceScript.new()
+	ad_service.name = "AdService"
+	add_child(ad_service)
+	ad_service.ad_started.connect(_on_ad_started)
+	ad_service.ad_ended.connect(_on_ad_ended)
+	ad_service.state_changed.connect(_on_ad_state_changed)
+	settings_controls.ad_privacy_requested.connect(_open_ad_privacy)
+	settings_controls.privacy_policy_requested.connect(_open_privacy_policy)
+	ad_service.configure()
+	_refresh_ad_privacy_controls()
+
+func _build_ad_wait_overlay() -> void:
+	_ad_wait_overlay = Control.new()
+	_ad_wait_overlay.name = "AdWaitOverlay"
+	_ad_wait_overlay.z_index = 150
+	_ad_wait_overlay.process_mode = Node.PROCESS_MODE_ALWAYS
+	_ad_wait_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	_ad_wait_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_ad_wait_overlay.hide()
+	add_child(_ad_wait_overlay)
+	var scrim := ColorRect.new()
+	scrim.color = Color(0.02, 0.04, 0.12, 0.76)
+	scrim.mouse_filter = Control.MOUSE_FILTER_STOP
+	scrim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_ad_wait_overlay.add_child(scrim)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ad_wait_overlay.add_child(center)
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", Art.panel_style(Color("#1e60d5"), 16, Color("#71b0ff")))
+	panel.custom_minimum_size = Vector2(300, 104)
+	center.add_child(panel)
+	var margin := MarginContainer.new()
+	for edge in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + edge, 20)
+	panel.add_child(margin)
+	_ad_wait_label = Label.new()
+	_ad_wait_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_ad_wait_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_ad_wait_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_ad_wait_label.add_theme_font_size_override("font_size", 20)
+	margin.add_child(_ad_wait_label)
+
+func _show_ad_wait() -> void:
+	if not is_instance_valid(_ad_wait_overlay):
+		return
+	_ad_wait_label.text = L10n.t("广告加载中…")
+	_ad_wait_overlay.show()
+	get_viewport().gui_release_focus()
+
+func _hide_ad_wait() -> void:
+	if is_instance_valid(_ad_wait_overlay):
+		_ad_wait_overlay.hide()
+
+func _on_ad_started() -> void:
+	_hide_ad_wait()
+	paused = true
+	move_feedback.set_paused(true)
+	if feedback_audio != null:
+		feedback_audio.set_ad_pause(true)
+	_refresh_controls()
+
+func _on_ad_ended(_shown: bool) -> void:
+	if feedback_audio != null:
+		feedback_audio.set_ad_pause(false)
+	if screen == "game_over":
+		paused = false
+		move_feedback.set_paused(false)
+		_refresh_controls()
+
+func _on_ad_state_changed() -> void:
+	_refresh_ad_privacy_controls()
+
+func _refresh_ad_privacy_controls() -> void:
+	if is_instance_valid(settings_controls):
+		settings_controls.apply_ad_privacy(
+			ad_service != null and ad_service.privacy_options_required(),
+			str(ProjectSettings.get_setting("ads/privacy_policy_url", "")).strip_edges() != ""
+		)
+
+func _open_ad_privacy() -> void:
+	if is_instance_valid(ad_service) and ad_service.privacy_options_required():
+		ad_service.show_privacy_options()
+
+func _open_privacy_policy() -> void:
+	var url := str(ProjectSettings.get_setting("ads/privacy_policy_url", "")).strip_edges()
+	if not url.is_empty():
+		OS.shell_open(url)
+
+func _try_auto_revive() -> void:
+	if _auto_revive_attempted or not is_instance_valid(ad_service):
+		return
+	if screen != "game_over" or game == null or not game.can_revive():
+		return
+	_auto_revive_attempted = true
+	if not ad_service.can_attempt_revive():
+		return
+	_show_ad_wait()
+	ad_service.request_revive_interstitial(_on_revive_ad_result)
+
+func _on_revive_ad_result(shown: bool) -> void:
+	_hide_ad_wait()
+	if shown and game != null and game.status == GameState.Status.GAME_OVER and game.can_revive() and game.revive_after_failure():
+		screen = "game"
+		paused = false
+		input_locked = false
+		_reset_visual_feedback()
+		_sync_piece_colors()
+		_refresh_controls()
+		gameplay_ui.show_notice(L10n.t("复活成功，继续挑战"), "info", _reduced_motion())
+		queue_redraw()
+		return
+	if screen == "game_over":
+		paused = false
+		_refresh_controls()
+		queue_redraw()
 
 func _open_leaderboard(mode: String = "") -> void:
 	if screen not in ["menu", "levels", "game_over", "level_complete"] or not confirmation_action.is_empty():

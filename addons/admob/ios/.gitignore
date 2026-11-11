@@ -1,0 +1,2 @@
+# Android-only project: the version marker is committed so the editor plugin
+# never attempts a headless iOS binary download during Android exports.

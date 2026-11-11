@@ -1,0 +1,6 @@
+# AdMob app-ads.txt 模板
+# 1) 将 pub- 后面的 16 位数字替换为 AdMob App ID 中 ca-app-pub-<16位> 的 16 位发布商 ID。
+# 2) 将本文件原样托管在开发者网站的根目录，例如 https://example.com/app-ads.txt
+# 3) 在 Google Play 商店资料中填写同一开发者网站，等待 AdMob 爬取（通常最多 24 小时）。
+
+google.com, pub-0000000000000000, DIRECT, f08c47fec0942fa0

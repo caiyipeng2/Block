@@ -39,6 +39,7 @@ var target_collected_counts: Dictionary = {}
 var target_remaining_counts: Dictionary = {}
 var difficulty_label := ""
 var retry_assist_strength := 0.0
+var revive_used := false
 var _tutorial_builder: TutorialTrayBuilder
 var _collection_targets_valid := true
 var _collection_supplier: CollectionTraySupplier
@@ -132,6 +133,56 @@ func has_legal_move_for_any_remaining_piece() -> bool:
 		if not board.get_legal_origins(piece).is_empty():
 			return true
 	return false
+
+func can_revive() -> bool:
+	if status != Status.GAME_OVER or revive_used:
+		return false
+	for y in range(board.size):
+		for x in range(board.size):
+			if board.get_cell(x, y) >= 0 and not target_cells.has(Vector2i(x, y)):
+				return true
+	return false
+
+## One presentation-driven rescue per run: clear up to max_clear occupied cells
+## that are not collection markers, then keep or recertify the current tray.
+func revive_after_failure(max_clear: int = 8) -> bool:
+	if not can_revive():
+		return false
+	var candidates: Array[Vector2i] = []
+	for y in range(board.size):
+		for x in range(board.size):
+			var cell := Vector2i(x, y)
+			if board.get_cell(x, y) >= 0 and not target_cells.has(cell):
+				candidates.append(cell)
+	if candidates.is_empty():
+		return false
+	var rng := RandomNumberGenerator.new()
+	rng.seed = absi(generator.seed ^ (total_moves * 7919) ^ (round_index * 104729) ^ 0x5EED)
+	for index in range(candidates.size() - 1, 0, -1):
+		var other := rng.randi_range(0, index)
+		var saved := candidates[index]
+		candidates[index] = candidates[other]
+		candidates[other] = saved
+	var original_board := board
+	var original_pieces := remaining_pieces.duplicate()
+	var trial := board.duplicate_board()
+	for index in range(mini(maxi(0, max_clear), candidates.size())):
+		trial.set_cell(candidates[index].x, candidates[index].y, -1)
+	board = trial
+	if remaining_pieces.is_empty() or not has_legal_move_for_any_remaining_piece():
+		if _uses_tutorial_supplier():
+			_fill_tutorial_tray(rules_config.tray_count)
+		elif objective_type == "collect":
+			_fill_collection_tray()
+		else:
+			_fill_regular_tray()
+	if remaining_pieces.is_empty() or not has_legal_move_for_any_remaining_piece():
+		board = original_board
+		remaining_pieces = original_pieces
+		return false
+	revive_used = true
+	status = Status.PLAYING
+	return true
 
 func place_piece(piece_index: int, origin: Vector2i, color_id: int = 0) -> Dictionary:
 	if status != Status.PLAYING or piece_index < 0 or piece_index >= remaining_pieces.size():

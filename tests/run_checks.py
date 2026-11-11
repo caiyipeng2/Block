@@ -28,6 +28,8 @@ SUITES = {
     "mode-catalog": ("run_mode_catalog_tests.gd", "MODE CATALOG TESTS PASSED"),
     "mode-state": ("run_mode_state_tests.gd", "MODE STATE TESTS PASSED"),
     "round-difficulty": ("run_round_difficulty_tests.gd", "ROUND DIFFICULTY TESTS:"),
+    "ad-service": ("run_ad_service_tests.gd", "AD SERVICE TESTS:"),
+    "ad-revive": ("run_ad_revive_tests.gd", "AD REVIVE TESTS PASSED"),
 }
 
 
