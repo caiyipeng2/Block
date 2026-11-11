@@ -25,13 +25,23 @@ import zipfile
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = "com.funblockstudio.block"
 PRESETS = {"apk": "Android APK", "aab": "Android AAB"}
+TEST_APP_ID = "ca-app-pub-3940256099942544~3347511713"
+APP_ID_PATTERN = re.compile(r"^ca-app-pub-[0-9]{16}~[0-9]{10}$")
+INTERSTITIAL_ID_PATTERN = re.compile(r"^ca-app-pub-[0-9]{16}/[0-9]{10}$")
+AD_PLUGIN_FILES = (
+    "addons/admob/plugin.cfg",
+    "addons/admob/android/bin/package.gd",
+    "addons/admob/android/bin/ads/poing_godot_admob_ads.gd",
+    "addons/admob/android/bin/ads/libs/poing-godot-admob-ads-release.aar",
+    "addons/admob/android/bin/ads/libs/poing-godot-admob-core-release.aar",
+)
 ERROR_MARKERS = ("SCRIPT ERROR:", "ERROR:", "Parse Error:", "Compile Error:")
 SOURCE_ROOTS = ("assets", "config", "scenes", "scripts", "addons")
 SOURCE_FILES = ("project.godot", "export_presets.cfg", "icon.svg", "icon.svg.import")
 RUNTIME_DATA = ("config/adventure_levels.csv", "assets/localization/messages.json")
 EXCLUDED_NAMES = {
-    ".git", ".godot", ".codegraph", ".agents", ".codex", "work", "build",
-    "dist", "docs", "tools", "tests", "packaging", "__pycache__",
+    ".git", ".godot", ".codegraph", ".agents", ".codex", ".godot_ai_update",
+    "work", "build", "dist", "docs", "tools", "tests", "packaging", "__pycache__",
     "godot_ai", "godot-ai", "godotai", "export_credentials.cfg", "godot-ai-license.txt",
 }
 EXCLUDED_PATTERNS = (
@@ -87,6 +97,51 @@ def read_config(path: Path) -> configparser.ConfigParser:
     config = configparser.ConfigParser(interpolation=None, strict=True)
     config.read_string("[metadata]\n" + path.read_text(encoding="utf-8-sig"))
     return config
+
+
+def config_value(config: configparser.ConfigParser, section: str, key: str, default: str = "") -> str:
+    raw = config.get(section, key, fallback=None)
+    if raw is None:
+        return default
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError:
+        return raw
+    return value if isinstance(value, str) else default
+
+
+def config_bool(config: configparser.ConfigParser, section: str, key: str, default: bool) -> bool:
+    try:
+        return config.getboolean(section, key, fallback=default)
+    except ValueError:
+        return default
+
+
+def validate_ads_config(project: configparser.ConfigParser, allow_test_ads: bool) -> None:
+    enabled = config_bool(project, "ads", "enabled", False)
+    if not enabled:
+        return
+    use_test = config_bool(project, "ads", "use_test_ads", True)
+    app_id = config_value(project, "admob", "general/android/app_id", "")
+    if use_test and not app_id:
+        app_id = TEST_APP_ID
+    unit_id = config_value(
+        project, "ads",
+        "test_interstitial_id" if use_test else "real_interstitial_id", "")
+    if not APP_ID_PATTERN.fullmatch(app_id):
+        raise ValueError("AdMob App ID is missing or invalid; set admob/general/android/app_id.")
+    if not INTERSTITIAL_ID_PATTERN.fullmatch(unit_id):
+        raise ValueError("The selected interstitial ad unit ID is missing or invalid.")
+    if use_test:
+        if not allow_test_ads:
+            raise ValueError("Test ads are enabled; pass --allow-test-ads for a test package.")
+        if app_id != TEST_APP_ID:
+            raise ValueError("Test ads require the Google test App ID; clear the real App ID for test builds.")
+    elif app_id == TEST_APP_ID:
+        raise ValueError("Production builds must use a real AdMob App ID.")
+    for relative in AD_PLUGIN_FILES:
+        if not (PROJECT_ROOT / relative).is_file():
+            raise ValueError(f"AdMob plugin/native file is missing: {relative}")
 
 
 def set_section_values(text: str, section: str, values: dict[str, str]) -> str:
@@ -162,8 +217,14 @@ def preflight(args: argparse.Namespace) -> tuple[Path, str, str, Path, str, str,
     if not set(RUNTIME_DATA).issubset(included):
         raise ValueError("Export include_filter must preserve the level CSV and localization catalog.")
     use_gradle = options.get("gradle_build/use_gradle_build") == "true"
-    if use_gradle != (args.format == "aab") or options.get("gradle_build/export_format") != str(int(args.format == "aab")):
-        raise ValueError("APK must use native APK export; AAB must use Gradle AAB export.")
+    expected_format = int(args.format == "aab")
+    if not use_gradle or options.get("gradle_build/export_format") != str(expected_format):
+        raise ValueError("Both Android APK and AAB exports must use Gradle build.")
+    if options.get("permissions/internet") != "true":
+        raise ValueError("Android INTERNET permission must be enabled for AdMob.")
+    if json.loads(options.get("version/name", '""')) != version:
+        raise ValueError("Android preset version/name must match project config/version.")
+    validate_ads_config(project, args.allow_test_ads)
     if options.get("package/signed") != "true":
         raise ValueError("The Android release preset must enable signing.")
     return engine, engine_version, version, templates, section, credentials["alias"], credentials["password"]
@@ -198,7 +259,9 @@ def copy_project(destination: Path, private_files: set[Path]) -> None:
     project_path = destination / "project.godot"
     text = project_path.read_text(encoding="utf-8-sig")
     text = re.sub(r'(?m)^_mcp_game_helper=.*\n?', "", text)
-    text = set_section_values(text, "editor_plugins", {"enabled": "PackedStringArray()"})
+    text = set_section_values(
+        text, "editor_plugins",
+        {"enabled": 'PackedStringArray("res://addons/admob/plugin.cfg")'})
     project_path.write_text(text, encoding="utf-8")
     for resource in RUNTIME_DATA:
         if digest(PROJECT_ROOT / resource) != digest(destination / resource):
@@ -250,7 +313,8 @@ def build(args: argparse.Namespace, engine: Path, engine_version: str, version: 
     staging.mkdir(parents=True, exist_ok=True)
     distribution = PROJECT_ROOT / "dist"
     distribution.mkdir(exist_ok=True)
-    output = distribution / f"Block-{version}-android-release.{args.format}"
+    test_suffix = "-test" if args.allow_test_ads else ""
+    output = distribution / f"Block-{version}-android-release{test_suffix}.{args.format}"
     if output.exists():
         raise ValueError(f"Output already exists; preserve/move the old build before rebuilding: {output}")
     stage = Path(tempfile.mkdtemp(prefix=f"{version}-{args.format}-", dir=staging)) / "project"
@@ -262,11 +326,14 @@ def build(args: argparse.Namespace, engine: Path, engine_version: str, version: 
     text = re.sub(r'(?m)^keystore/(?:debug|release)(?:_user|_password)?=.*$',
                   lambda match: match.group().split("=", 1)[0] + '=""', text)
     overrides = {"custom_template/debug": json.dumps((templates / "android_debug.apk").as_posix()),
-                 "custom_template/release": json.dumps((templates / "android_release.apk").as_posix())}
-    if args.format == "aab":
-        overrides["gradle_build/android_source_template"] = json.dumps(
-            install_gradle_template(templates / "android_source.zip", stage))
-        overrides["gradle_build/gradle_build_directory"] = '"res://android"'
+                 "custom_template/release": json.dumps((templates / "android_release.apk").as_posix()),
+                 "gradle_build/use_gradle_build": "true",
+                 "gradle_build/export_format": str(int(args.format == "aab")),
+                 "gradle_build/min_sdk": '"24"',
+                 "gradle_build/target_sdk": '"36"',
+                 "gradle_build/android_source_template": json.dumps(
+                     install_gradle_template(templates / "android_source.zip", stage)),
+                 "gradle_build/gradle_build_directory": '"res://android"'}
     text = set_section_values(text, section + ".options", overrides)
     preset_path.write_text(text, encoding="utf-8")
     export_engine = isolated_engine(engine, work, args.sdk, args.java)
@@ -310,8 +377,10 @@ def build(args: argparse.Namespace, engine: Path, engine_version: str, version: 
         dirty = bool(command(["git", "--no-optional-locks", "status", "--porcelain"]))
     except (OSError, RuntimeError):
         revision, dirty = "unknown", None
+    ads_test = config_bool(read_config(PROJECT_ROOT / "project.godot"), "ads", "use_test_ads", True)
     info = {"project": "Block", "version": version, "package": PACKAGE,
             "format": args.format, "configuration": "release", "godot": engine_version,
+            "ads_mode": "test" if ads_test else "production",
             "source_commit": revision, "source_dirty": dirty,
             "created_utc": datetime.now(timezone.utc).isoformat(),
             "file": output.name, "bytes": output.stat().st_size, "sha256": digest(output),
@@ -335,6 +404,8 @@ def main() -> int:
     parser.add_argument("--credentials-file", type=Path, required=True, help="Private JSON with alias and password")
     parser.add_argument("--format", choices=tuple(PRESETS), required=True)
     parser.add_argument("--templates-dir", type=Path, help="Matching export-template version directory")
+    parser.add_argument("--allow-test-ads", action="store_true",
+                        help="Allow Google test ads in this package; never use for a Play release")
     parser.add_argument("--check", action="store_true", help="Check dependencies/preset without exporting")
     args = parser.parse_args()
     try:
