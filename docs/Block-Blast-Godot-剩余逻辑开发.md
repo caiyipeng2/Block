@@ -4,7 +4,7 @@
 
 ## Google Play 发布与 AdMob 自动复活（2026-11-11，待用户验收）
 
-源码升至 `0.9.6 / versionCode 9`，接入 Poing AdMob v5.1.0（GMA Next-Gen 1.4.0 + UMP 3.1.0）。每局首次失败自动尝试一次插屏，成功展示并关闭后清最多 8 个非目标格复活；120 秒冷却、无填充、加载/展示失败或 UMP 未完成时不复活，第二次失败不再弹广告。目标受众 13+、不面向儿童；默认测试广告，正式 App ID/插屏 ID 需用户填写。APK/AAB 均改为 Gradle，正式 AAB 若仍用测试广告会拒绝导出。测试 APK 与测试 AAB 均已成功构建并校验（`work/verification/ads-test/`，仅测试广告，未进入 dist）；真实广告、UMP、Play 后台和审核由用户完成。
+源码升至 `0.9.6 / versionCode 9`，接入 Poing AdMob v5.1.0（GMA Next-Gen 1.4.0 + UMP 3.1.0）。每局首次失败自动尝试一次插屏，成功展示并关闭后清最多 8 个非目标格复活；120 秒冷却、无填充、加载/展示失败或 UMP 未完成时不复活，第二次失败不再弹广告。目标受众 13+、不面向儿童；默认测试广告，正式 App ID/插屏 ID 需用户填写。APK/AAB 均改为 Gradle，正式 AAB 若仍用测试广告会拒绝导出。测试 APK 与测试 AAB 均已成功构建并校验（`work/verification/ads-test/`，仅测试广告，未进入 dist）；真实广告、UMP、Play 后台和审核由用户完成。已加入 Next-Gen custom event 测试适配器源码，构建时自动编译；AdMob 后台 waterfall/mediation group 映射和真实第三方 SDK 需用户配置。
 
 - [ ] 安装测试 APK，验收首次失败自动广告与复活、120 秒冷却、第二次失败不弹广告、离线/无填充不复活。
 - [ ] 验收 EEA UMP 表单、广告隐私设置、广告期间游戏和音乐暂停。

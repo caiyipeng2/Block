@@ -4,6 +4,8 @@
 
 源码版本升为 `0.9.6`、`versionCode 9`，接入 Poing AdMob v5.1.0（GMA Next-Gen 1.4.0 + UMP 3.1.0）。APK/AAB 均改为 Gradle 构建；每局首次失败自动插屏并复活，120 秒冷却，广告不可用时不复活。默认使用 Google 测试广告；正式 App ID/插屏 ID、UMP、隐私政策/app-ads.txt、Play Console 和真实设备验收由用户完成。详见[Google Play 发布与广告接入](Block-Blast-Godot-GooglePlay发布与广告接入.md)。
 
+项目还包含可编译的自有 custom event 测试适配器 `com.funblockstudio.block.admob.HouseCustomEventAdapter`（Parameter `house-test`）；AdMob 后台 waterfall mapping 由用户配置，详见发布指南第 9 节。
+
 构建命令（测试 APK 必须带 `--allow-test-ads`；正式 AAB 不带）：
 
 ```powershell
@@ -13,8 +15,8 @@ python tools/export_android.py --godot "<Godot 4.7.2>" --sdk "<Android SDK>" --j
 
 测试 APK/AAB 输出文件名带 `test`，只用于内测。本轮两者均实际构建成功并校验：包名/版本 `0.9.6 (9)`、min24/target36、arm64、测试 App ID、AdMob 原生插件、INTERNET/AD_ID/ACCESS_NETWORK_STATE 等权限、16KB 对齐；APK v2 签名通过，AAB `jarsigner` 验证通过且 bundletool 校验通过。文件已移至 `work/verification/ads-test/`：
 
-- APK：`Block-0.9.6-android-release-test.apk`，86MB，SHA256 `e6357e8598b48f8a3436a3f7cad4102f1427ed5ed1936989a5b1b15495176cb7`。
-- AAB：`Block-0.9.6-android-release-test.aab`，40MB，SHA256 `e7d90dde05163661a4cfcf37830bb595e07da9fb5104ba212dccdb200629e746`。
+- APK：`Block-0.9.6-android-release-test.apk`，86MB，SHA256 `c252be4ef53585d80eefb578e78eb9b1694b9d706425d401253a0ff0566e60c7`。
+- AAB：`Block-0.9.6-android-release-test.aab`，40MB，SHA256 `6ff77fc2db052605ff1eba0ee0120dae1f46edb63674f284ab043c9deda3b7a6`。
 
 两包均为测试广告，正式 AAB 尚未使用真实广告 ID，也未上传 Play。
 

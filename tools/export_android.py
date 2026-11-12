@@ -35,6 +35,11 @@ AD_PLUGIN_FILES = (
     "addons/admob/android/bin/ads/libs/poing-godot-admob-ads-release.aar",
     "addons/admob/android/bin/ads/libs/poing-godot-admob-core-release.aar",
 )
+CUSTOM_EVENT_JAVA_DIR = "android_plugins/admob_custom_event/src/main/java"
+CUSTOM_EVENT_ADAPTER = (
+    "android_plugins/admob_custom_event/src/main/java/com/funblockstudio/block/admob/"
+    "HouseCustomEventAdapter.java"
+)
 ERROR_MARKERS = ("SCRIPT ERROR:", "ERROR:", "Parse Error:", "Compile Error:")
 SOURCE_ROOTS = ("assets", "config", "scenes", "scripts", "addons")
 SOURCE_FILES = ("project.godot", "export_presets.cfg", "icon.svg", "icon.svg.import")
@@ -142,6 +147,8 @@ def validate_ads_config(project: configparser.ConfigParser, allow_test_ads: bool
     for relative in AD_PLUGIN_FILES:
         if not (PROJECT_ROOT / relative).is_file():
             raise ValueError(f"AdMob plugin/native file is missing: {relative}")
+    if not (PROJECT_ROOT / CUSTOM_EVENT_ADAPTER).is_file():
+        raise ValueError(f"AdMob custom event source is missing: {CUSTOM_EVENT_ADAPTER}")
 
 
 def set_section_values(text: str, section: str, values: dict[str, str]) -> str:
@@ -287,6 +294,12 @@ def isolated_engine(engine: Path, work: Path, sdk: Path, java: Path) -> Path:
     return private_engine
 
 
+def install_custom_event_source(destination: Path) -> None:
+    source = PROJECT_ROOT / CUSTOM_EVENT_JAVA_DIR
+    target = destination / "android/build/src/main/java"
+    shutil.copytree(source, target, dirs_exist_ok=True)
+
+
 def install_gradle_template(source_zip: Path, destination: Path) -> str:
     build_dir = destination / "android/build"
     build_dir.mkdir(parents=True)
@@ -336,6 +349,8 @@ def build(args: argparse.Namespace, engine: Path, engine_version: str, version: 
                  "gradle_build/gradle_build_directory": '"res://android"'}
     text = set_section_values(text, section + ".options", overrides)
     preset_path.write_text(text, encoding="utf-8")
+    if config_bool(read_config(PROJECT_ROOT / "project.godot"), "ads", "enabled", False):
+        install_custom_event_source(stage)
     export_engine = isolated_engine(engine, work, args.sdk, args.java)
     environment = {**os.environ, "GIT_OPTIONAL_LOCKS": "0",
                    "JAVA_HOME": str(args.java), "ANDROID_HOME": str(args.sdk),

@@ -15,6 +15,7 @@
 - 复活规则：最多清 8 个非目标格；保留目标标记、分数和进度；必要时重新生成可解托盘。
 - 设置中的“广告隐私设置”（UMP）和“隐私政策”（配置 URL 后显示）。
 - Gradle APK/AAB 导出、测试广告防误发预检、Data safety/隐私政策/app-ads.txt/商店文案模板。
+- 按 AdMob Next-Gen 文档提供自有测试 custom event 插屏适配器：`com.funblockstudio.block.admob.HouseCustomEventAdapter`，Parameter `house-test`；用于验证 waterfall 链路，不接真实第三方 SDK。
 
 ## 2. 文件与配置
 
@@ -29,6 +30,7 @@
 | 隐私政策模板 | `docs/privacy-policy-template.md` |
 | app-ads.txt 模板 | `docs/app-ads.txt` |
 | 商店文案 | `docs/store-listing.md` |
+| 自定义事件测试适配器 | `android_plugins/admob_custom_event/` |
 
 ### 2.1 测试广告（默认）
 
@@ -96,7 +98,7 @@ real_interstitial_id="ca-app-pub-你的16位/你的10位"
 python tools/export_android.py --godot "<Godot 4.7.2 路径>" --sdk "<Android SDK>" --java "<JDK17+>" --keystore "work/android-signing/block-upload.jks" --credentials-file "work/android-signing/credentials.json" --format apk --allow-test-ads
 ```
 
-输出：`dist/Block-0.9.6-android-release-test.apk`。仅用于内部测试，文件名带 `test`，不要上传 Play。本轮已验证 APK 86MB/SHA256 `e6357e8598b48f8a3436a3f7cad4102f1427ed5ed1936989a5b1b15495176cb7` 和测试 AAB 40MB/SHA256 `e7d90dde05163661a4cfcf37830bb595e07da9fb5104ba212dccdb200629e746`；两者均只含测试广告，实际文件在 `work/verification/ads-test/`。
+输出：`dist/Block-0.9.6-android-release-test.apk`。仅用于内部测试，文件名带 `test`，不要上传 Play。本轮已验证 APK 86MB/SHA256 `c252be4ef53585d80eefb578e78eb9b1694b9d706425d401253a0ff0566e60c7` 和测试 AAB 40MB/SHA256 `6ff77fc2db052605ff1eba0ee0120dae1f46edb63674f284ab043c9deda3b7a6`；两者均只含测试广告，实际文件在 `work/verification/ads-test/`。
 
 ### 5.2 正式 AAB
 
@@ -172,7 +174,27 @@ Data safety 和广告 ID 申报必须按 AdMob 官方数据披露与 Play Consol
 - [ ] 桌面版无广告请求、无 AdMob 错误；无头测试全通过。
 - [ ] 真机检查 Android 返回、后台切换、竖屏安全区、声音和存档。
 
-## 9. 你无法交给代码完成的事项
+## 9. AdMob 自定义事件测试适配器
+
+项目已按 AdMob Next-Gen 自定义事件文档加入自有测试适配器：
+
+- 类名：`com.funblockstudio.block.admob.HouseCustomEventAdapter`
+- Parameter：`house-test`
+- 格式：插屏
+- 源码：`android_plugins/admob_custom_event/`
+- 构建时自动复制到 Godot Android 工程的 `src/main/java`，随 APK/AAB 编译；不需要额外 AAR。测试 APK/AAB 的 base dex 已确认包含该类。
+
+AdMob 后台按下面顺序配置（自定义事件只在 **Mediation waterfall** 中使用，普通单元/Google 测试单元不会走它）：
+
+1. **Mediation → Waterfall sources → Set up ad source → Add custom event**。
+2. **Add mapping**：Mapping name `Block House Test`，Class name `com.funblockstudio.block.admob.HouseCustomEventAdapter`，Parameter `house-test`。
+3. 打开目标 **Mediation group** → **Add custom event**：填写 Label、测试 eCPM、选择上面的 mapping，保存。
+4. 确认 App 实际请求的插屏广告单元在该 mediation group 中。
+5. 用测试设备请求该真实广告单元；应出现“自定义事件测试广告”弹窗，关闭后自动复活流程继续。
+
+适配器当前只显示自有测试插屏，不产生真实广告收入；确定第三方网络后，在该类的 `HouseInterstitialAd` 中替换加载/展示和回调即可。详细步骤见 `android_plugins/admob_custom_event/README.md`。
+
+## 10. 你无法交给代码完成的事项
 
 - 注册 Play/AdMob 账号、身份验证、付款资料。
 - 创建真实广告单元、UMP 消息、测试设备。
