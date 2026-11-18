@@ -168,6 +168,6 @@ Godot AI 已恢复并升级至正式 `4.3.0`，签名与全部 313 个发布文�
 - [关卡配表说明](docs/Block-Blast-Godot-关卡配表说明.md)：CSV 字段、目标数量、难度、模板与种子的配置方法和报错处理。
 - [Windows 发布说明](docs/Block-Blast-Godot-Windows发布.md)：模板、release/debug 导出、打包及无编辑器运行验收。
 - [Google Play 发布与广告接入](docs/Block-Blast-Godot-GooglePlay发布与广告接入.md)：AdMob、UMP、正式/测试 ID、AAB 构建、Data safety 与 Play Console 清单。
-- [隐私政策模板](docs/privacy-policy-template.md) 与 [app-ads.txt](docs/app-ads.txt)：隐私政策仍需替换占位内容；app-ads.txt 已填发布商 ID，需托管到 Play 商店资料中的开发者网站根目录。
+- [隐私政策模板](docs/privacy-policy-template.md) 与 [app-ads.txt](docs/app-ads.txt)：隐私政策仍需替换占位内容；app-ads.txt 已发布到 GitHub Pages：<https://caiyipeng2.github.io/app-ads.txt>。
 
 下一步优先验收首次开屏、跳过不误开模式、返回不重播，以及三个模式/设置/退出入口、键盘焦点和窄窗口比例。再回归配表、失败重试辅助、解锁动画与游戏内反馈；源码验收后再导出新包。连胜/地图奖励不在本轮；触控、硬件震动、旋转/翻转、断点续局和线上功能仍属后续范围。

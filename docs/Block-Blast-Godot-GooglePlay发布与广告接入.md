@@ -80,8 +80,9 @@ google.com, pub-5698775967366596, DIRECT, f08c47fec0942fa0
 
 1. 复制 `docs/privacy-policy-template.md`，替换开发者名称、邮箱、网站和生效日期。
 2. 由你或法律顾问确认后托管到公开 HTTPS 页面。
-3. 把上面的内容保存为开发者网站根目录的 `app-ads.txt`，例如 `https://你的域名/app-ads.txt`；不要放在子目录或需要登录的页面。
-4. 在 Google Play 商店资料的“开发者网站”填写该域名；AdMob 通常最多 24 小时完成爬取。域名必须与 Play 商店资料一致，且 `app-ads.txt` 返回 HTTP 200、纯文本、无跳转。
+3. 当前 GitHub Pages 开发者站点为 `https://caiyipeng2.github.io`，`app-ads.txt` 已发布并验证为 HTTP 200、`text/plain`：
+   `https://caiyipeng2.github.io/app-ads.txt`
+4. 在 Google Play 商店资料的“开发者网站”填写 `https://caiyipeng2.github.io`（不要填项目路径 `/Block`）；AdMob 通常最多 24 小时完成爬取。域名必须与 Play 商店资料一致。
 5. 在 AdMob 的“应用 → app-ads.txt”标签页核对抓取状态；如果显示未找到，先确认根目录 URL 可直接打开，再等待重新抓取。
 6. 把隐私政策 URL 填入 Play Console，并写入 `project.godot` 的 `ads/privacy_policy_url`，游戏设置才会显示入口。
 
