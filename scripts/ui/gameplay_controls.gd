@@ -1341,6 +1341,8 @@ func _apply_state(mode_changed: bool) -> void:
 	_goal_score_label.visible = false
 	_stats_label.add_theme_color_override("font_color", Color("#efffff") if _is_adventure() else AQUA)
 	_layout_controls()
+	if is_instance_valid(_card_viewport):
+		_card_viewport.scroll_vertical = 0
 	if _focus_pending:
 		if _mode == MODE_HIDDEN:
 			for button: Button in [_settings_button, _pause_button, _playing_restart_button, _playing_menu_button, _resume_button, _overlay_restart_button, _overlay_menu_button, _next_level_button, _overlay_settings_button, _leaderboard_button, _collect_back_button, _collect_settings_button]:
@@ -1915,12 +1917,16 @@ func _layout_notice() -> void:
 	_notice.position = Vector2(field.get_center().x - width * 0.5, field.end.y + 28.0)
 
 func _layout_overlay() -> void:
+	# Do not let the previous viewport-sized minimum feed back into the next
+	# content measurement.
+	_card.custom_minimum_size = Vector2.ZERO
 	if MobileLayout.is_mobile():
 		_layout_mobile_overlay()
 		return
 	var collect_victory := _is_collect_objective() and _mode == MODE_LEVEL_COMPLETE
 	var terminal := _mode in [MODE_GAME_OVER, MODE_LEVEL_COMPLETE]
 	_overlay_box.add_theme_constant_override("separation", 7 if terminal else 10)
+	_overlay_stats.size_flags_vertical = Control.SIZE_FILL if terminal else Control.SIZE_EXPAND_FILL
 	_overlay_objective_badge.custom_minimum_size = Vector2(minf(VICTORY_HERO_SIZE.x, maxf(size.x - 80.0, 96.0)) if collect_victory else (192.0 if _is_collect_objective() else (48.0 if terminal else 56.0)), (180.0 if terminal else VICTORY_HERO_SIZE.y) if collect_victory else (48.0 if terminal else 56.0))
 	_overlay_title.custom_minimum_size = Vector2(0.0, (48.0 if terminal else 64.0) if collect_victory else (48.0 if terminal else 56.0))
 	if collect_victory:
@@ -1985,6 +1991,7 @@ func _layout_overlay() -> void:
 	_card_viewport.position = Vector2((size.x - card_width) * 0.5, maxf((size.y - viewport_height) * 0.5, 12.0))
 	_card.custom_minimum_size = Vector2(0.0, maxf(viewport_height, content_height))
 	_card_viewport.queue_sort()
+	_card_viewport.scroll_vertical = 0
 	_card.pivot_offset = _card.size * 0.5
 	# PanelContainer owns Content and its margins; do not preset child anchors.
 
@@ -1997,6 +2004,7 @@ func _layout_mobile_overlay() -> void:
 	var padding := MobileLayout.dp(self, 12.0 if terminal else 18.0)
 	var inner_width := maxf(card_width - padding * 2.0, 1.0)
 	var separation := int(MobileLayout.dp(self, 6.0 if terminal else 8.0))
+	_overlay_stats.size_flags_vertical = Control.SIZE_FILL if terminal else Control.SIZE_EXPAND_FILL
 	_overlay_box.add_theme_constant_override("separation", separation)
 	for row: HBoxContainer in [_overlay_buttons, _overlay_secondary_buttons]:
 		row.add_theme_constant_override("separation", separation)
@@ -2059,6 +2067,7 @@ func _layout_mobile_overlay() -> void:
 	_card_viewport.position = content.position + (content.size - _card_viewport.size) * 0.5
 	_card.custom_minimum_size = Vector2(0.0, maxf(viewport_height, content_height))
 	_card_viewport.queue_sort()
+	_card_viewport.scroll_vertical = 0
 	_card.pivot_offset = _card.size * 0.5
 
 func _grab_first_focus() -> void:

@@ -143,6 +143,8 @@ func _run_tests() -> void:
 	var card_viewport: ScrollContainer = main.gameplay_ui.get("_card_viewport")
 	var result_card: Control = main.gameplay_ui.get("_card")
 	_equal(card_viewport.vertical_scroll_mode, ScrollContainer.SCROLL_MODE_DISABLED, "结算卡不支持纵向拖动")
+	_equal(card_viewport.scroll_vertical, 0, "结算卡始终从顶部显示")
+	_equal(main.gameplay_ui.get("_overlay_stats").size_flags_vertical, Control.SIZE_FILL, "结算统计不拉伸破坏卡片节奏")
 	_check(result_card.get_combined_minimum_size().y <= card_viewport.size.y + 1.0, "结算卡内容适配可视高度")
 	var next_level: Button = main.gameplay_ui.get("_next_level_button")
 	var result_menu: Button = main.gameplay_ui.get("_overlay_menu_button")
