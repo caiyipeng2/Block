@@ -16,7 +16,7 @@
 - 设置中的“广告隐私设置”（UMP）和“隐私政策”（配置 URL 后显示）。
 - Gradle APK/AAB 导出、测试广告防误发预检、Data safety/隐私政策/app-ads.txt/商店文案模板。
 - 按 AdMob Next-Gen 文档提供自有测试 custom event 插屏适配器：`com.funblockstudio.block.admob.HouseCustomEventAdapter`，Parameter `house-test`；用于验证 waterfall 链路，不接真实第三方 SDK。
-- 当前已填入真实 App ID/插屏 ID 并关闭测试广告；测试设备、UMP 消息、隐私政策/app-ads.txt 和 Play 后台仍待完成。
+- 当前已填入真实 App ID/插屏 ID 并关闭测试广告；`docs/app-ads.txt` 已填真实发布商 ID，仍待托管到开发者网站。测试设备、UMP 消息、隐私政策、Play 商店关联/审核和 App readiness 仍待完成。
 
 ## 2. 文件与配置
 
@@ -29,7 +29,7 @@
 | 插件 Notice | `packaging/notices/POING-ADMOB-NOTICE.txt` |
 | 测试 | `tests/run_ad_service_tests.gd`、`tests/run_ad_revive_tests.gd` |
 | 隐私政策模板 | `docs/privacy-policy-template.md` |
-| app-ads.txt 模板 | `docs/app-ads.txt` |
+| app-ads.txt（已填发布商 ID） | `docs/app-ads.txt` |
 | 商店文案 | `docs/store-listing.md` |
 | 自定义事件测试适配器 | `android_plugins/admob_custom_event/` |
 
@@ -72,12 +72,29 @@ privacy_policy_url=""
 
 ## 4. 隐私政策、app-ads.txt 与商店网站
 
+`docs/app-ads.txt` 已填入当前发布商 ID，内容必须原样托管：
+
+```text
+google.com, pub-5698775967366596, DIRECT, f08c47fec0942fa0
+```
+
 1. 复制 `docs/privacy-policy-template.md`，替换开发者名称、邮箱、网站和生效日期。
 2. 由你或法律顾问确认后托管到公开 HTTPS 页面。
-3. 将 `docs/app-ads.txt` 中的 `pub-` 数字替换为 AdMob 发布商 ID，并放到开发者网站根目录：
-   `https://你的域名/app-ads.txt`
-4. 在 Google Play 商店资料的“开发者网站”填写同一域名；AdMob 通常最多 24 小时完成爬取。
-5. 把隐私政策 URL 填入 Play Console，并写入 `project.godot` 的 `ads/privacy_policy_url`，游戏设置才会显示入口。
+3. 把上面的内容保存为开发者网站根目录的 `app-ads.txt`，例如 `https://你的域名/app-ads.txt`；不要放在子目录或需要登录的页面。
+4. 在 Google Play 商店资料的“开发者网站”填写该域名；AdMob 通常最多 24 小时完成爬取。域名必须与 Play 商店资料一致，且 `app-ads.txt` 返回 HTTP 200、纯文本、无跳转。
+5. 在 AdMob 的“应用 → app-ads.txt”标签页核对抓取状态；如果显示未找到，先确认根目录 URL 可直接打开，再等待重新抓取。
+6. 把隐私政策 URL 填入 Play Console，并写入 `project.godot` 的 `ads/privacy_policy_url`，游戏设置才会显示入口。
+
+### 4.1 AdMob 显示“需要审核 / 广告投放受限”
+
+这是应用没有完成商店关联和审核，不是客户端广告代码错误：
+
+1. 先让应用在受支持的商店真正上线（至少有一个可公开访问的 Play 商店页；开发期可继续用测试广告）。
+2. 在 AdMob 应用列表或应用设置点击“添加商店”，关联同一个包名的 Play 商店页。
+3. 完成 AdMob 账户的付款资料/身份验证；新账户审核通常最多 24 小时，少数情况可达 2 周。
+4. 等待应用 readiness 审核，通常 2–3 天；审核通过后“广告投放受限”才解除。
+5. “0 个有效广告单元”通常也是应用未 ready 的表现；确认插屏单元确实创建在 `Block House` 下且未停用。应用审核通过后仍为 0 时，再检查广告单元是否属于另一个应用或被删除。
+6. 审核期间不要用真实广告位自点测试；在 AdMob 添加测试设备，或使用 Google 测试广告。
 
 ## 5. 构建
 
