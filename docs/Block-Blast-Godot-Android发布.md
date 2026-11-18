@@ -18,7 +18,7 @@ python tools/export_android.py --godot "<Godot 4.7.2>" --sdk "<Android SDK>" --j
 - APK：`Block-0.9.6-android-release-test.apk`，86MB，SHA256 `c252be4ef53585d80eefb578e78eb9b1694b9d706425d401253a0ff0566e60c7`。
 - AAB：`Block-0.9.6-android-release-test.aab`，40MB，SHA256 `6ff77fc2db052605ff1eba0ee0120dae1f46edb63674f284ab043c9deda3b7a6`。
 
-两包均为测试广告，正式 AAB 尚未使用真实广告 ID，也未上传 Play。
+两包均为测试广告，正式 AAB 尚未上传 Play。另有真实 App ID/插屏单元构建的测试 APK：`work/verification/ads-real/Block-0.9.6-real-ids.apk`，86MB，SHA256 `f8fdcf54256f7c6f815a3219c630c4522d095502bff68755e2cfd4d10b1738b4`；Manifest App ID 和自定义事件类已核验，运行广告/复活需先添加测试设备。
 
 仅保留当前正式0.8.9和上一个正式0.8.8的APK/AAB、校验值与构建记录；更早包体、候选副本和导出中间产物已清理。
 

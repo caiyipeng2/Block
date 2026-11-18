@@ -9,7 +9,8 @@
 按用户确认接入 Poing Studios AdMob v5.1.0（MIT，GMA Next-Gen SDK 1.4.0 + UMP 3.1.0）并准备 Google Play。每局首次失败自动尝试一次插屏；广告展示并关闭后复活，最多清除 8 个非目标格，保留目标、分数和进度；两次广告至少间隔 120 秒。冷却中、无填充、加载/展示失败、UMP 未完成时正常失败，不赠送复活；第二次失败不再弹广告。目标受众 13+、不面向儿童，广告内容上限 G；设置提供广告隐私设置和隐私政策入口。
 
 - 规则层复活、广告冷却/ID 选择/桌面空实现、首次失败自动复活和广告失败保持失败页均有新增无头测试；测试广告防误发预检会在正式 AAB 使用测试 ID 或空正式 ID 时拒绝导出。
-- 已按官网文档加入 Next-Gen AdMob 自有测试 custom event 插屏适配器（`com.funblockstudio.block.admob.HouseCustomEventAdapter`，参数 `house-test`），构建脚本将其 Java 源码自动加入 Android 工程；测试 APK/AAB 的 base dex 已确认包含该类。AdMob 后台 waterfall/mediation group 映射、真实广告单元和真实第三方 SDK 仍需用户完成。
+- 已按官网文档加入 Next-Gen AdMob 自有测试 custom event 插屏适配器（`com.funblockstudio.block.admob.HouseCustomEventAdapter`，参数 `house-test`），构建脚本将其 Java 源码自动加入 Android 工程；测试 APK/AAB 的 base dex 已确认包含该类。AdMob 后台 waterfall/mediation group 映射和真实第三方 SDK 仍需用户完成。
+- 用户已提供真实 App ID `ca-app-pub-5698775967366596~5990614614` 与插屏单元 `ca-app-pub-5698775967366596/9327224396`，项目已改为 `use_test_ads=false`。真实 ID 测试 APK 构建成功：`work/verification/ads-real/Block-0.9.6-real-ids.apk`，86MB，SHA256 `f8fdcf54256f7c6f815a3219c630c4522d095502bff68755e2cfd4d10b1738b4`；Manifest 真实 App ID、v2 签名、自定义事件类已核验。测试设备、中介组和真实广告/复活运行验收仍待用户完成。
 - `python tests/run_checks.py --suite all` 全部 PASS：共 19 套，新增 `ad-service`、`ad-revive`；`ui` 576 checks、`localization` 5858 checks、`leaderboard-localization` 1727 checks、`leaderboard-panel` 419 checks 等均通过。
 - 本地化检查器通过：275 词条、550 条翻译、266 个必需源文本、48 份脚本。
 - 插件、Android 4.7.2 原生模板、MIT Notice 和测试广告配置已固定；正式 App ID/插屏 ID、UMP 消息、隐私政策/app-ads.txt 托管和 Play 后台操作仍需用户完成。真实广告、UMP 表单、真机、Play 审核与收入未验证。

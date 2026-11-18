@@ -11,12 +11,17 @@ config_version=5
 [ads]
 
 enabled=true
-use_test_ads=true
+use_test_ads=false
 test_interstitial_id="ca-app-pub-3940256099942544/1033173712"
-real_interstitial_id=""
+real_interstitial_id="ca-app-pub-5698775967366596/9327224396"
 cooldown_seconds=120
 debug_consent_geography="EEA"
 privacy_policy_url=""
+
+[admob]
+
+general/android/enabled=true
+general/android/app_id="ca-app-pub-5698775967366596~5990614614"
 
 [application]
 

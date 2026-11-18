@@ -16,6 +16,7 @@
 - 设置中的“广告隐私设置”（UMP）和“隐私政策”（配置 URL 后显示）。
 - Gradle APK/AAB 导出、测试广告防误发预检、Data safety/隐私政策/app-ads.txt/商店文案模板。
 - 按 AdMob Next-Gen 文档提供自有测试 custom event 插屏适配器：`com.funblockstudio.block.admob.HouseCustomEventAdapter`，Parameter `house-test`；用于验证 waterfall 链路，不接真实第三方 SDK。
+- 当前已填入真实 App ID/插屏 ID 并关闭测试广告；测试设备、UMP 消息、隐私政策/app-ads.txt 和 Play 后台仍待完成。
 
 ## 2. 文件与配置
 
@@ -32,44 +33,32 @@
 | 商店文案 | `docs/store-listing.md` |
 | 自定义事件测试适配器 | `android_plugins/admob_custom_event/` |
 
-### 2.1 测试广告（默认）
+### 2.1 当前广告 ID 配置
 
-项目默认使用 Google 官方测试 App ID 与测试插屏单元：
-
-- App ID：`ca-app-pub-3940256099942544~3347511713`
-- 插屏：`ca-app-pub-3940256099942544/1033173712`
-
-`project.godot`：
+`project.godot` 已填入当前真实配置（这些 ID 是公开标识，不是密钥）：
 
 ```ini
+[admob]
+general/android/enabled=true
+general/android/app_id="ca-app-pub-5698775967366596~5990614614"
+
 [ads]
 enabled=true
-use_test_ads=true
+use_test_ads=false
 test_interstitial_id="ca-app-pub-3940256099942544/1033173712"
-real_interstitial_id=""
+real_interstitial_id="ca-app-pub-5698775967366596/9327224396"
 cooldown_seconds=120
 debug_consent_geography="EEA"
 privacy_policy_url=""
 ```
 
-测试 APK 必须显式加 `--allow-test-ads`；正式 AAB 不带该参数，脚本会拒绝测试广告或空正式 ID。
+测试 Google 测试广告时，需要临时把 `use_test_ads=true`，把 `[admob] app_id` 设为或回退到测试 App ID，并用 `--allow-test-ads` 构建；不要在真实 ID 下反复自点广告。
 
-### 2.2 替换正式广告 ID（必须由你完成）
+### 2.2 更新正式广告 ID（后续换号时）
 
-1. 在 AdMob 后台创建应用，包名填 `com.funblockstudio.block`。
+1. 在 AdMob 后台创建/选择应用，包名填 `com.funblockstudio.block`。
 2. 创建 **插屏广告单元**，记下 App ID（带 `~`）和插屏 Unit ID（带 `/`）。
-3. 修改 `project.godot`：
-
-```ini
-[admob]
-general/android/enabled=true
-general/android/app_id="ca-app-pub-你的16位~你的10位"
-
-[ads]
-enabled=true
-use_test_ads=false
-real_interstitial_id="ca-app-pub-你的16位/你的10位"
-```
+3. 修改 `project.godot` 的 `[admob] general/android/app_id` 和 `[ads] real_interstitial_id`，保持 `use_test_ads=false`。
 
 `admob` 设置是 Android Manifest 的 App ID；`real_interstitial_id` 是运行时广告位。不要把测试 ID 和正式 App ID 混用。
 
@@ -99,6 +88,8 @@ python tools/export_android.py --godot "<Godot 4.7.2 路径>" --sdk "<Android SD
 ```
 
 输出：`dist/Block-0.9.6-android-release-test.apk`。仅用于内部测试，文件名带 `test`，不要上传 Play。本轮已验证 APK 86MB/SHA256 `c252be4ef53585d80eefb578e78eb9b1694b9d706425d401253a0ff0566e60c7` 和测试 AAB 40MB/SHA256 `6ff77fc2db052605ff1eba0ee0120dae1f46edb63674f284ab043c9deda3b7a6`；两者均只含测试广告，实际文件在 `work/verification/ads-test/`。
+
+当前真实 ID 的测试 APK 也已构建：`work/verification/ads-real/Block-0.9.6-real-ids.apk`，86MB，SHA256 `f8fdcf54256f7c6f815a3219c630c4522d095502bff68755e2cfd4d10b1738b4`；Manifest 使用真实 App ID，dex 包含自定义事件类。请先在 AdMob 添加测试设备再请求广告。
 
 ### 5.2 正式 AAB
 

@@ -142,6 +142,8 @@ def validate_ads_config(project: configparser.ConfigParser, allow_test_ads: bool
             raise ValueError("Test ads are enabled; pass --allow-test-ads for a test package.")
         if app_id != TEST_APP_ID:
             raise ValueError("Test ads require the Google test App ID; clear the real App ID for test builds.")
+    elif allow_test_ads:
+        raise ValueError("--allow-test-ads requires ads/use_test_ads=true.")
     elif app_id == TEST_APP_ID:
         raise ValueError("Production builds must use a real AdMob App ID.")
     for relative in AD_PLUGIN_FILES:
