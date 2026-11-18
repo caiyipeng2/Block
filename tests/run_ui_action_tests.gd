@@ -79,10 +79,25 @@ func _run_tests() -> void:
 	main.menu_controls.finish_opening()
 	main.get_node("MenuControls/StartButton").pressed.emit()
 	_equal(main.screen, "game", "主菜单开始按钮进入游戏")
+	var paused_before_ad_guard: bool = main.paused
+	main._on_ad_started()
+	_check(bool(main.call("_ad_input_guard_active")), "广告展示期间拦截游戏输入")
+	main._on_ad_ended(true)
+	_check(bool(main.call("_ad_input_guard_active")), "广告关闭后短暂拦截穿透输入")
+	main.paused = paused_before_ad_guard
+	main.move_feedback.set_paused(false)
+	main.feedback_audio.set_ad_pause(false)
+	for _frame in range(30):
+		await create_timer(0.05).timeout
+		if not bool(main.call("_ad_input_guard_active")):
+			break
+	_check(not bool(main.call("_ad_input_guard_active")), "广告输入保护到期解除")
 	var hud_settings: Button = main.get_node("GameplayControls/PlayingHUD/Actions/SettingsButton")
 	var hud_pause: Button = main.get_node("GameplayControls/PlayingHUD/Actions/PauseButton")
 	_check_no_focus_outline(hud_settings, "游戏设置齿轮")
 	_check_no_focus_outline(hud_pause, "游戏暂停按钮")
+	for button: Button in [hud_settings, hud_pause, main.gameplay_ui.get("_collect_back_button"), main.gameplay_ui.get("_collect_settings_button")]:
+		_check(button.get("dim_when_disabled") == false, "拖动动画期间顶部导航不闪烁")
 	_check_no_focus_outline(main.gameplay_ui.get("_resume_button"), "暂停继续按钮")
 	main.game.board.set_cell(0, 0, 2)
 	main.get_node("GameplayControls/PlayingHUD/Actions/RestartButton").pressed.emit()
@@ -125,6 +140,10 @@ func _run_tests() -> void:
 	_equal(SaveRepository.level_failure_count(main.save_data, 3), 0, "通关记录清除本关此前失败辅助")
 	main.screen = "level_complete"
 	main._refresh_controls()
+	var card_viewport: ScrollContainer = main.gameplay_ui.get("_card_viewport")
+	var result_card: Control = main.gameplay_ui.get("_card")
+	_equal(card_viewport.vertical_scroll_mode, ScrollContainer.SCROLL_MODE_DISABLED, "结算卡不支持纵向拖动")
+	_check(result_card.get_combined_minimum_size().y <= card_viewport.size.y + 1.0, "结算卡内容适配可视高度")
 	var next_level: Button = main.gameplay_ui.get("_next_level_button")
 	var result_menu: Button = main.gameplay_ui.get("_overlay_menu_button")
 	_check(next_level != null and not next_level.disabled, "通关面板释放下一关按钮")

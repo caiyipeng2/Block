@@ -18,6 +18,7 @@ const LeaderboardPanel := preload("res://scripts/ui/leaderboard_panel.gd")
 const PlayerProfileDialog := preload("res://scripts/ui/player_profile_dialog.gd")
 const AdServiceScript := preload("res://scripts/ads/ad_service.gd")
 const L10n := preload("res://scripts/localization/game_locale.gd")
+const AD_INPUT_GUARD_MSEC := 500
 const SETUP_REASON_SOURCES := {
 	"invalid_level_configuration": "关卡配置不可用",
 	"unknown_collection_template": "未知收集模板",
@@ -99,6 +100,8 @@ var ad_service: Node
 var _auto_revive_attempted := false
 var _ad_wait_overlay: Control
 var _ad_wait_label: Label
+var _ad_open := false
+var _ad_input_guard_until_msec := 0
 
 func _ready() -> void:
 	get_tree().auto_accept_quit = false
@@ -188,6 +191,12 @@ func _input(event: InputEvent) -> void:
 	if exiting:
 		return
 	if is_instance_valid(_ad_wait_overlay) and _ad_wait_overlay.visible:
+		get_viewport().set_input_as_handled()
+		return
+	if _ad_open:
+		get_viewport().set_input_as_handled()
+		return
+	if _ad_input_guard_active() and _is_pointer_event(event):
 		get_viewport().set_input_as_handled()
 		return
 	if screen == "menu" and menu_controls.consume_opening_input(event):
@@ -1174,6 +1183,8 @@ func _hide_ad_wait() -> void:
 
 func _on_ad_started() -> void:
 	_hide_ad_wait()
+	_ad_open = true
+	_ad_input_guard_until_msec = 0
 	paused = true
 	move_feedback.set_paused(true)
 	if feedback_audio != null:
@@ -1181,12 +1192,20 @@ func _on_ad_started() -> void:
 	_refresh_controls()
 
 func _on_ad_ended(_shown: bool) -> void:
+	_ad_open = false
+	_ad_input_guard_until_msec = Time.get_ticks_msec() + AD_INPUT_GUARD_MSEC
 	if feedback_audio != null:
 		feedback_audio.set_ad_pause(false)
 	if screen == "game_over":
 		paused = false
 		move_feedback.set_paused(false)
 		_refresh_controls()
+
+func _ad_input_guard_active() -> bool:
+	return _ad_open or Time.get_ticks_msec() < _ad_input_guard_until_msec
+
+func _is_pointer_event(event: InputEvent) -> bool:
+	return event is InputEventMouseButton or event is InputEventMouseMotion or event is InputEventScreenTouch or event is InputEventScreenDrag
 
 func _on_ad_state_changed() -> void:
 	_refresh_ad_privacy_controls()

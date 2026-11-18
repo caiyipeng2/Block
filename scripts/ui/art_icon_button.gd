@@ -27,6 +27,13 @@ const Art := preload("res://scripts/ui/block_art.gd")
 	set(value):
 		icon_scale = clampf(value, 0.2, 1.0)
 		queue_redraw()
+@export var dim_when_disabled: bool = true:
+	set(value):
+		dim_when_disabled = value
+		if is_inside_tree():
+			_apply_theme()
+		else:
+			queue_redraw()
 
 func _ready() -> void:
 	custom_minimum_size = custom_minimum_size.max(Vector2(48.0, 48.0))
@@ -43,9 +50,9 @@ func _ready() -> void:
 
 func _draw() -> void:
 	var color := icon_color
-	if disabled:
+	if disabled and dim_when_disabled:
 		color.a *= 0.38
-	elif is_hovered():
+	elif is_hovered() and not disabled:
 		color = color.lightened(0.12)
 	var side := minf(size.x, size.y) * icon_scale
 	var offset := Vector2(0.0, 1.5) if is_pressed() else Vector2.ZERO
@@ -60,7 +67,7 @@ func _apply_theme() -> void:
 	add_theme_stylebox_override("normal", Art.button_style(fill_color))
 	add_theme_stylebox_override("hover", Art.button_style(fill_color.lightened(0.10)))
 	add_theme_stylebox_override("pressed", Art.button_style(fill_color, true))
-	add_theme_stylebox_override("disabled", Art.button_style(Color(fill_color.r, fill_color.g, fill_color.b, 0.55), true))
+	add_theme_stylebox_override("disabled", Art.button_style(fill_color) if not dim_when_disabled else Art.button_style(Color(fill_color.r, fill_color.g, fill_color.b, 0.55), true))
 	# Keyboard focus remains native; the icon button itself never shows a ring.
 	add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 	queue_redraw()

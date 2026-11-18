@@ -794,8 +794,10 @@ func _build_controls() -> void:
 	_card_viewport = ScrollContainer.new()
 	_card_viewport.name = "CardViewport"
 	_card_viewport.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	_card_viewport.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
-	_card_viewport.follow_focus = true
+	# Result and pause cards are laid out to fit the viewport; never let a
+	# touch drag scroll the settlement panel itself.
+	_card_viewport.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_card_viewport.follow_focus = false
 	_card_viewport.mouse_filter = Control.MOUSE_FILTER_STOP
 	_card_viewport.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
 	_overlay_root.add_child(_card_viewport)
@@ -1157,6 +1159,9 @@ func _new_icon_button(node_name: String, kind: String, hint: String) -> Button:
 	button.icon_kind = kind
 	button.icon_color = _text
 	button.fill_color = Color("#264576")
+	# Board animations temporarily disable navigation actions. Keep the icon
+	# appearance stable so top HUD buttons do not flash on every placement.
+	button.dim_when_disabled = false
 	button.tooltip_text = L10n.t(hint)
 	button.focus_mode = Control.FOCUS_ALL
 	button.custom_minimum_size = Vector2(48.0, 48.0)
@@ -1914,20 +1919,22 @@ func _layout_overlay() -> void:
 		_layout_mobile_overlay()
 		return
 	var collect_victory := _is_collect_objective() and _mode == MODE_LEVEL_COMPLETE
-	_overlay_objective_badge.custom_minimum_size = Vector2(minf(VICTORY_HERO_SIZE.x, maxf(size.x - 80.0, 96.0)) if collect_victory else (192.0 if _is_collect_objective() else 56.0), VICTORY_HERO_SIZE.y if collect_victory else 56.0)
-	_overlay_title.custom_minimum_size = Vector2(0.0, 64.0 if collect_victory else 56.0)
+	var terminal := _mode in [MODE_GAME_OVER, MODE_LEVEL_COMPLETE]
+	_overlay_box.add_theme_constant_override("separation", 7 if terminal else 10)
+	_overlay_objective_badge.custom_minimum_size = Vector2(minf(VICTORY_HERO_SIZE.x, maxf(size.x - 80.0, 96.0)) if collect_victory else (192.0 if _is_collect_objective() else (48.0 if terminal else 56.0)), (180.0 if terminal else VICTORY_HERO_SIZE.y) if collect_victory else (48.0 if terminal else 56.0))
+	_overlay_title.custom_minimum_size = Vector2(0.0, (48.0 if terminal else 64.0) if collect_victory else (48.0 if terminal else 56.0))
 	if collect_victory:
-		_overlay_title.add_theme_font_size_override("font_size", 32 if size.x < 420.0 else 46)
+		_overlay_title.add_theme_font_size_override("font_size", 32 if size.x < 420.0 else (38 if terminal else 46))
 	_overlay_title.pivot_offset = _overlay_title.size * 0.5
-	_overlay_score.custom_minimum_size = Vector2(0.0, 78.0)
-	_overlay_best.custom_minimum_size = Vector2(0.0, 20.0 if collect_victory else 28.0)
+	_overlay_score.custom_minimum_size = Vector2(0.0, 60.0 if terminal else 78.0)
+	_overlay_best.custom_minimum_size = Vector2(0.0, 20.0 if collect_victory else (44.0 if terminal and _is_collect_objective() else (24.0 if terminal else 28.0)))
 	_overlay_best.add_theme_font_size_override("font_size", 14 if collect_victory else 18)
 	_overlay_best.add_theme_color_override("font_color", MUTED if collect_victory else GOLD)
-	_overlay_stats.custom_minimum_size = Vector2(0.0, 32.0 if collect_victory else 80.0)
+	_overlay_stats.custom_minimum_size = Vector2(0.0, 24.0 if collect_victory else (62.0 if terminal else 80.0))
 	_overlay_stats.max_lines_visible = 2 if collect_victory else 4
 	_overlay_stats.add_theme_font_size_override("font_size", 12 if collect_victory else 16)
 	var save_warning := collect_victory and bool(_stats.get("save_failed", false))
-	_new_record_label.custom_minimum_size = Vector2(0.0, (48.0 if size.x < 420.0 else 26.0) if save_warning else (22.0 if collect_victory else 24.0))
+	_new_record_label.custom_minimum_size = Vector2(0.0, (40.0 if terminal else (48.0 if size.x < 420.0 else 26.0)) if save_warning else (22.0 if collect_victory else (22.0 if terminal else 24.0)))
 	_new_record_label.add_theme_font_size_override("font_size", 16 if save_warning else (14 if collect_victory else 18))
 	_new_record_label.add_theme_color_override("font_color", Color("#ffc586") if save_warning else (MUTED if collect_victory else GOLD))
 	_new_record_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -1935,10 +1942,12 @@ func _layout_overlay() -> void:
 	_overlay_buttons.custom_minimum_size = Vector2(0.0, MIN_BUTTON_HEIGHT)
 	_overlay_secondary_buttons.custom_minimum_size = Vector2(0.0, 40.0 if collect_victory else MIN_BUTTON_HEIGHT)
 	var card_width := minf(VICTORY_CARD_WIDTH if collect_victory else (540.0 if _mode == MODE_LEVEL_COMPLETE else 480.0), maxf(size.x - 32.0, 240.0))
-	var card_height := (438.0 if _is_collect_objective() else 376.0) if _mode == MODE_PAUSED else (VICTORY_CARD_HEIGHT if collect_victory else (492.0 if _mode == MODE_LEVEL_COMPLETE else 428.0))
-	if _mode in [MODE_GAME_OVER, MODE_LEVEL_COMPLETE]:
+	if terminal:
+		card_width = minf(card_width, 540.0 if collect_victory else (500.0 if _mode == MODE_LEVEL_COMPLETE else 460.0))
+	var card_height := (438.0 if _is_collect_objective() else 376.0) if _mode == MODE_PAUSED else ((560.0 if terminal else VICTORY_CARD_HEIGHT) if collect_victory else ((452.0 if terminal else 492.0) if _mode == MODE_LEVEL_COMPLETE else 428.0))
+	if terminal:
 		card_height += 80.0
-	_leaderboard_status.custom_minimum_size.y = 24.0
+	_leaderboard_status.custom_minimum_size.y = 20.0 if terminal else 24.0
 	var short_labels := card_width < 420.0
 	_resume_button.text = L10n.t("继续" if short_labels else "继续游戏")
 	_next_level_button.text = L10n.t("下一关" if bool(_stats.get("has_next_level", false)) else "全部通关")
@@ -1948,12 +1957,20 @@ func _layout_overlay() -> void:
 	_overlay_restart_button.tooltip_text = L10n.t("重玩本关" if _is_adventure() else "重新开始")
 	_overlay_menu_button.tooltip_text = L10n.t("返回选关" if _is_adventure() else "返回菜单")
 	var panel := _card.get_theme_stylebox("panel")
+	if terminal and panel != null:
+		var compact_panel := panel.duplicate()
+		compact_panel.content_margin_left = 20.0
+		compact_panel.content_margin_right = 20.0
+		compact_panel.content_margin_top = 14.0
+		compact_panel.content_margin_bottom = 14.0
+		_card.add_theme_stylebox_override("panel", compact_panel)
+		panel = compact_panel
 	var inner_width := maxf(card_width - panel.get_content_margin(SIDE_LEFT) - panel.get_content_margin(SIDE_RIGHT), 1.0)
-	_fit_label(_overlay_title, inner_width, (32 if size.x < 420.0 else 46) if collect_victory else 24, 16, 1 if collect_victory else 2)
+	_fit_label(_overlay_title, inner_width, (32 if size.x < 420.0 else (40 if terminal else 46)) if collect_victory else 24, 16, 1 if collect_victory else 2)
 	_overlay_best.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_overlay_best.max_lines_visible = 3 if _is_collect_objective() and not collect_victory else 2
 	if _is_collect_objective() and not collect_victory:
-		_overlay_best.custom_minimum_size.y = 54.0
+		_overlay_best.custom_minimum_size.y = 44.0 if terminal else 54.0
 	_fit_label(_overlay_best, inner_width, 14 if collect_victory else 18, 11, _overlay_best.max_lines_visible)
 	_fit_label(_overlay_stats, inner_width, 12 if collect_victory else 16, 11, _overlay_stats.max_lines_visible)
 	_fit_label(_new_record_label, inner_width, 16 if save_warning else (14 if collect_victory else 18), 11, _new_record_label.max_lines_visible)
@@ -1961,10 +1978,12 @@ func _layout_overlay() -> void:
 		label.custom_minimum_size.y = maxf(label.custom_minimum_size.y, _multiline_label_height(label, inner_width))
 	for button: Button in [_resume_button, _next_level_button, _overlay_restart_button, _overlay_menu_button, _overlay_settings_button, _leaderboard_button]:
 		_fit_action_button(button)
-	var viewport_height := minf(card_height, maxf(size.y - 24.0, 1.0))
+	var available_height := maxf(size.y - 24.0, 1.0)
+	var content_height := _card.get_combined_minimum_size().y
+	var viewport_height := minf(content_height if terminal else maxf(card_height, content_height), available_height)
 	_card_viewport.size = Vector2(card_width, viewport_height)
 	_card_viewport.position = Vector2((size.x - card_width) * 0.5, maxf((size.y - viewport_height) * 0.5, 12.0))
-	_card.custom_minimum_size = Vector2(0.0, card_height)
+	_card.custom_minimum_size = Vector2(0.0, maxf(viewport_height, content_height))
 	_card_viewport.queue_sort()
 	_card.pivot_offset = _card.size * 0.5
 	# PanelContainer owns Content and its margins; do not preset child anchors.
@@ -1972,11 +1991,12 @@ func _layout_overlay() -> void:
 func _layout_mobile_overlay() -> void:
 	var content := MobileLayout.safe_content_rect(self)
 	var collect_victory := _is_collect_objective() and _mode == MODE_LEVEL_COMPLETE
-	var card_width := minf(content.size.x * 0.92, MobileLayout.dp(self, 420.0))
+	var terminal := _mode in [MODE_GAME_OVER, MODE_LEVEL_COMPLETE]
+	var card_width := minf(content.size.x * (0.90 if terminal else 0.92), MobileLayout.dp(self, 380.0 if terminal else 420.0))
 	var touch := MobileLayout.touch_target(self)
-	var padding := MobileLayout.dp(self, 18.0)
+	var padding := MobileLayout.dp(self, 12.0 if terminal else 18.0)
 	var inner_width := maxf(card_width - padding * 2.0, 1.0)
-	var separation := int(MobileLayout.dp(self, 8.0))
+	var separation := int(MobileLayout.dp(self, 6.0 if terminal else 8.0))
 	_overlay_box.add_theme_constant_override("separation", separation)
 	for row: HBoxContainer in [_overlay_buttons, _overlay_secondary_buttons]:
 		row.add_theme_constant_override("separation", separation)
@@ -1994,21 +2014,21 @@ func _layout_mobile_overlay() -> void:
 		button.custom_minimum_size = Vector2(touch, touch)
 		button.add_theme_font_size_override("font_size", int(MobileLayout.dp(self, 14.0)))
 		_fit_action_button(button)
-	_overlay_title.custom_minimum_size = Vector2(0.0, MobileLayout.dp(self, 42.0 if collect_victory else 56.0))
+	_overlay_title.custom_minimum_size = Vector2(0.0, MobileLayout.dp(self, 34.0 if collect_victory else (46.0 if terminal else 56.0)))
 	_fit_label(_overlay_title, inner_width, int(MobileLayout.dp(self, 30.0 if collect_victory else 24.0)), int(MobileLayout.dp(self, 16.0)), 1 if collect_victory else 2)
 	_overlay_title.pivot_offset = _overlay_title.size * 0.5
-	_overlay_score.custom_minimum_size = Vector2(0.0, MobileLayout.dp(self, 72.0))
-	_overlay_score.add_theme_font_size_override("font_size", int(MobileLayout.dp(self, 52.0)))
-	_overlay_best.custom_minimum_size = Vector2(0.0, MobileLayout.dp(self, 28.0 if collect_victory else (54.0 if _is_collect_objective() else 28.0)))
+	_overlay_score.custom_minimum_size = Vector2(0.0, MobileLayout.dp(self, 56.0 if terminal else 72.0))
+	_overlay_score.add_theme_font_size_override("font_size", int(MobileLayout.dp(self, 44.0 if terminal else 52.0)))
+	_overlay_best.custom_minimum_size = Vector2(0.0, MobileLayout.dp(self, 24.0 if collect_victory else (44.0 if terminal and _is_collect_objective() else (24.0 if terminal else 28.0))))
 	_fit_label(_overlay_best, inner_width, int(MobileLayout.dp(self, 16.0)), int(MobileLayout.dp(self, 11.0)), 3)
 	_overlay_best.add_theme_color_override("font_color", MUTED if collect_victory else GOLD)
 	_overlay_best.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_overlay_best.max_lines_visible = 3
-	_overlay_stats.custom_minimum_size = Vector2(0.0, MobileLayout.dp(self, 66.0 if collect_victory else 80.0))
+	_overlay_stats.custom_minimum_size = Vector2(0.0, MobileLayout.dp(self, 46.0 if collect_victory else (62.0 if terminal else 80.0)))
 	_overlay_stats.max_lines_visible = 2 if collect_victory else 4
 	_fit_label(_overlay_stats, inner_width, int(MobileLayout.dp(self, 14.0)), int(MobileLayout.dp(self, 10.0)), _overlay_stats.max_lines_visible)
 	var save_warning := collect_victory and bool(_stats.get("save_failed", false))
-	_new_record_label.custom_minimum_size = Vector2(0.0, MobileLayout.dp(self, 42.0 if save_warning else 26.0))
+	_new_record_label.custom_minimum_size = Vector2(0.0, MobileLayout.dp(self, 40.0 if save_warning else (20.0 if terminal else 26.0)))
 	_fit_label(_new_record_label, inner_width, int(MobileLayout.dp(self, 14.0)), int(MobileLayout.dp(self, 10.0)), 3 if save_warning else 2)
 	_new_record_label.add_theme_color_override("font_color", Color("#ffc586") if save_warning else (MUTED if collect_victory else GOLD))
 	_new_record_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -2016,24 +2036,28 @@ func _layout_mobile_overlay() -> void:
 	for label: Label in [_overlay_best, _overlay_stats, _new_record_label]:
 		label.custom_minimum_size.y = maxf(label.custom_minimum_size.y, _multiline_label_height(label, inner_width))
 	if collect_victory:
-		_overlay_objective_badge.custom_minimum_size = Vector2(minf(inner_width, MobileLayout.dp(self, 260.0)), MobileLayout.dp(self, 160.0))
+		_overlay_objective_badge.custom_minimum_size = Vector2(minf(inner_width, MobileLayout.dp(self, 200.0 if terminal else 260.0)), MobileLayout.dp(self, 116.0 if terminal else 160.0))
 		var clear_panel := StyleBoxEmpty.new()
 		clear_panel.set_content_margin_all(padding)
 		_card.add_theme_stylebox_override("panel", clear_panel)
 	else:
-		_overlay_objective_badge.custom_minimum_size = Vector2(minf(inner_width, MobileLayout.dp(self, 240.0)) if _is_collect_objective() else MobileLayout.dp(self, 56.0), MobileLayout.dp(self, 56.0))
+		_overlay_objective_badge.custom_minimum_size = Vector2(minf(inner_width, MobileLayout.dp(self, 200.0 if terminal else 240.0)) if _is_collect_objective() else MobileLayout.dp(self, 48.0 if terminal else 56.0), MobileLayout.dp(self, 48.0 if terminal else 56.0))
 		var panel := _card_box()
 		panel.set_content_margin_all(padding)
 		_card.add_theme_stylebox_override("panel", panel)
-	var card_height := MobileLayout.dp(self, 510.0 if collect_victory else (444.0 if _is_collect_objective() else 404.0))
-	if _mode in [MODE_GAME_OVER, MODE_LEVEL_COMPLETE]:
-		card_height += MobileLayout.dp(self, 80.0)
-	_leaderboard_status.custom_minimum_size.y = MobileLayout.dp(self, 24.0)
+	_leaderboard_status.custom_minimum_size.y = MobileLayout.dp(self, 20.0 if terminal else 24.0)
 	_fit_label(_leaderboard_status, inner_width, int(MobileLayout.dp(self, 13.0)), int(MobileLayout.dp(self, 10.0)), 2)
-	var viewport_height := minf(card_height, content.size.y - MobileLayout.dp(self, 12.0))
+	var card_height := MobileLayout.dp(self, 510.0 if collect_victory else (444.0 if _is_collect_objective() else 404.0))
+	if terminal:
+		card_height += MobileLayout.dp(self, 80.0)
+	var available_height := content.size.y - MobileLayout.dp(self, 12.0)
+	# Use the real content height so the panel cannot become a draggable
+	# scroll area just because a fixed card height was a few pixels short.
+	var content_height := _card.get_combined_minimum_size().y
+	var viewport_height := minf(content_height if terminal else maxf(card_height, content_height), available_height)
 	_card_viewport.size = Vector2(card_width, maxf(viewport_height, 1.0))
 	_card_viewport.position = content.position + (content.size - _card_viewport.size) * 0.5
-	_card.custom_minimum_size = Vector2(0.0, card_height)
+	_card.custom_minimum_size = Vector2(0.0, maxf(viewport_height, content_height))
 	_card_viewport.queue_sort()
 	_card.pivot_offset = _card.size * 0.5
 

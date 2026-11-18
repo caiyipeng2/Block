@@ -99,7 +99,7 @@ func _test_epoch_changes() -> void:
 	var first_entry: Dictionary = first["entries"][0]
 	var second_entry: Dictionary = second["entries"][0]
 	_check(first_entry["is_bot"] and second_entry["is_bot"], "bot entries carry internal bot metadata")
-	_check(first_entry["nickname"] != second_entry["nickname"] or first_entry["score"] != second_entry["score"], "bot names or scores change between refresh epochs")
+	_check(_count_changed_scores(first["entries"], second["entries"]) > 0, "some bot scores change between refresh epochs")
 
 func _test_real_player_cutover() -> void:
 	var real: Array = []
