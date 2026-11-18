@@ -168,6 +168,18 @@ func _weighted_kind(active: Array[String], weights: Dictionary) -> String:
 
 func _ranked_placements(board: BoardRules, used: Dictionary, board_targets: Dictionary = {}, remaining_counts: Dictionary = {}) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
+	var board_size := board.size
+	var base_rows: Array[int] = []
+	var base_columns: Array[int] = []
+	base_rows.resize(board_size)
+	base_columns.resize(board_size)
+	base_rows.fill(0)
+	base_columns.fill(0)
+	for y in range(board_size):
+		for x in range(board_size):
+			if board.get_cell(x, y) >= 0:
+				base_rows[y] += 1
+				base_columns[x] += 1
 	for piece in _pool:
 		var legal_origins := board.get_legal_origins(piece)
 		var freedom_weight := lerpf(2.0, -4.0, _difficulty)
@@ -177,30 +189,59 @@ func _ranked_placements(board: BoardRules, used: Dictionary, board_targets: Dict
 		var profile_bonus := _profile_bonus(piece)
 		var jitter := 90.0 * _randomness / 50.0
 		for origin in legal_origins:
-			var next := board.duplicate_board()
-			next.place(piece, origin, 0)
-			var cleared := next.clear_full_lines()
-			var occupied := 0
-			var pressure := 0
-			for coordinate in range(next.size):
-				var row := 0
-				var column := 0
-				for other in range(next.size):
-					row += int(next.get_cell(other, coordinate) >= 0)
-					column += int(next.get_cell(coordinate, other) >= 0)
-				occupied += row
-				pressure += row * row + column * column
+			var outcome := _evaluate_placement(base_rows, base_columns, piece, origin, _assist_strength > 0.0)
+			var occupied: int = int(outcome["occupied"])
+			var pressure: int = int(outcome["pressure"])
 			# Broad shape variety matters: a pure "most empty cells" score would
 			# continually choose dominoes and never expose the expanded puzzle set.
-			var rank := float(cleared["cells"].size()) * 100000.0 - float(occupied) * occupied_weight + float(pressure) * pressure_weight + float(piece.cell_count()) * cell_weight + float(legal_origins.size()) * freedom_weight + (0.0 if used.has(piece.shape_id) else 180.0) + profile_bonus + _rng.randf() * jitter
+			var rank := float(outcome["cleared_count"]) * 100000.0 - float(occupied) * occupied_weight + float(pressure) * pressure_weight + float(piece.cell_count()) * cell_weight + float(legal_origins.size()) * freedom_weight + (0.0 if used.has(piece.shape_id) else 180.0) + profile_bonus + _rng.randf() * jitter
 			if _assist_strength > 0.0:
-				var target_progress := _needed_target_count(cleared["cells"], board_targets, remaining_counts)
+				var target_progress := _needed_target_count(outcome["cleared_cells"], board_targets, remaining_counts)
 				# This objective-aware bonus remains useful even when the configured
 				# geometric difficulty is already zero. All origins remain legal.
 				rank += _assist_strength * (float(target_progress) * 2000000.0 + float(5 - piece.cell_count()) * 520.0 + float(legal_origins.size()) * 14.0 - float(occupied) * 28.0 - float(pressure) * 0.6)
 			result.append({"piece": piece, "origin": origin, "rank": rank})
 	result.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["rank"] > b["rank"])
 	return result
+
+## Evaluate a hypothetical placement from row/column occupancy counts. This
+## keeps the collection supplier's per-origin ranking out of full board copies.
+func _evaluate_placement(base_rows: Array[int], base_columns: Array[int], piece: PieceData, origin: Vector2i, include_cleared_cells: bool) -> Dictionary:
+	var board_size := base_rows.size()
+	var rows := base_rows.duplicate()
+	var columns := base_columns.duplicate()
+	for local_cell in piece.cells:
+		var cell := origin + local_cell
+		if cell.x < 0 or cell.y < 0 or cell.x >= board_size or cell.y >= board_size:
+			return {"cleared_count": 0, "occupied": 0, "pressure": 0, "cleared_cells": []}
+		rows[cell.y] += 1
+		columns[cell.x] += 1
+	var full_rows: Array[int] = []
+	var full_columns: Array[int] = []
+	for index in range(board_size):
+		if rows[index] >= board_size:
+			full_rows.append(index)
+		if columns[index] >= board_size:
+			full_columns.append(index)
+	var cleared_cells: Array[Vector2i] = []
+	if include_cleared_cells:
+		var seen: Dictionary = {}
+		for y in full_rows:
+			for x in range(board_size):
+				seen[Vector2i(x, y)] = true
+		for x in full_columns:
+			for y in range(board_size):
+				seen[Vector2i(x, y)] = true
+		cleared_cells.assign(seen.keys())
+	var cleared_count := full_rows.size() * board_size + full_columns.size() * board_size - full_rows.size() * full_columns.size()
+	var occupied := 0
+	var pressure := 0
+	for index in range(board_size):
+		var row_count: int = 0 if index in full_rows else rows[index] - full_columns.size()
+		var column_count: int = 0 if index in full_columns else columns[index] - full_rows.size()
+		occupied += row_count
+		pressure += row_count * row_count + column_count * column_count
+	return {"cleared_count": cleared_count, "occupied": occupied, "pressure": pressure, "cleared_cells": cleared_cells}
 
 func _profile_bonus(piece: PieceData) -> float:
 	if _profile == "mixed" or piece.cells.is_empty():

@@ -43,6 +43,8 @@ func _run_tests() -> void:
 	settings_button.pressed.emit()
 	_equal(main.screen, "settings", "点击原生设置按钮进入设置面板")
 	_equal(main.game, null, "设置界面不会创建游戏局面")
+	main._open_ad_privacy()
+	_check(str(main.settings_controls.get("_hint").text) != "设置自动保存", "广告隐私设置点击有可见反馈")
 	var preview_button: Button = main.settings_controls.get_action_button("PreviewSoundButton")
 	_check(preview_button != null and preview_button.visible, "设置提供可见试听音效按钮")
 	if preview_button != null:

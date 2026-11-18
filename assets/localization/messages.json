@@ -1051,6 +1051,18 @@
     "en": "Ad privacy settings",
     "fr": "Paramètres de confidentialité des annonces"
   },
+  "正在打开广告隐私设置…": {
+    "en": "Opening ad privacy settings…",
+    "fr": "Ouverture des paramètres de confidentialité des annonces…"
+  },
+  "广告隐私设置暂不可用": {
+    "en": "Ad privacy settings are not available yet.",
+    "fr": "Les paramètres de confidentialité des annonces ne sont pas encore disponibles."
+  },
+  "广告隐私设置已关闭": {
+    "en": "Ad privacy settings closed.",
+    "fr": "Paramètres de confidentialité des annonces fermés."
+  },
   "隐私政策": {
     "en": "Privacy policy",
     "fr": "Politique de confidentialité"

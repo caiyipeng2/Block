@@ -64,6 +64,9 @@ var piece_colors: Dictionary = {}
 var pending_move: Dictionary = {}
 var pending_tray: Array[PieceData] = []
 var rebound_piece_id := -1
+var _preview_drag_index := -1
+var _preview_drag_origin := Vector2i(-99, -99)
+var _preview_drag_valid := false
 var new_record := false
 var settings_origin := "menu"
 var settings_was_paused := false
@@ -286,6 +289,7 @@ func _handle_press(position: Vector2) -> void:
 		var index := _tray_hit(position)
 		if index >= 0:
 			dragging_index = index
+			_preview_drag_index = -1
 			drag_mouse = position
 			var piece: PieceData = game.remaining_pieces[index]
 			if touch_drag_active:
@@ -773,6 +777,9 @@ func _cancel_drag() -> void:
 	drag_origin = Vector2i(-99, -99)
 	drag_grab_offset = Vector2.ZERO
 	touch_drag_active = false
+	_preview_drag_index = -1
+	_preview_drag_origin = Vector2i(-99, -99)
+	_preview_drag_valid = false
 	preview_clear_colors.clear()
 	clear_preview.reset()
 	queue_redraw()
@@ -1218,8 +1225,19 @@ func _refresh_ad_privacy_controls() -> void:
 		)
 
 func _open_ad_privacy() -> void:
-	if is_instance_valid(ad_service) and ad_service.privacy_options_required():
-		ad_service.show_privacy_options()
+	if not is_instance_valid(settings_controls):
+		return
+	if not is_instance_valid(ad_service) or not ad_service.privacy_options_required():
+		settings_controls.show_ad_privacy_feedback(L10n.t("广告隐私设置暂不可用"))
+		return
+	settings_controls.show_ad_privacy_feedback(L10n.t("正在打开广告隐私设置…"))
+	ad_service.show_privacy_options(func() -> void:
+		if screen == "settings" and is_instance_valid(settings_controls) and settings_controls.visible:
+			settings_controls.show_ad_privacy_feedback(L10n.t("广告隐私设置已关闭")))
+	var fallback := get_tree().create_timer(1.0)
+	fallback.timeout.connect(func() -> void:
+		if screen == "settings" and is_instance_valid(settings_controls) and settings_controls.visible:
+			settings_controls.show_ad_privacy_feedback(L10n.t("广告隐私设置暂不可用")))
 
 func _open_privacy_policy() -> void:
 	var url := str(ProjectSettings.get_setting("ads/privacy_policy_url", "")).strip_edges()
@@ -1643,8 +1661,18 @@ func _update_drag_preview() -> void:
 		_cancel_drag()
 		return
 	var piece: PieceData = game.remaining_pieces[dragging_index]
-	drag_origin = _board_origin_from_mouse(drag_mouse, piece)
-	drag_valid = _board_rect().has_point(_drag_anchor(drag_mouse)) and game.board.can_place(piece, drag_origin)
+	var next_origin := _board_origin_from_mouse(drag_mouse, piece)
+	var next_valid := _board_rect().has_point(_drag_anchor(drag_mouse)) and game.board.can_place(piece, next_origin)
+	if dragging_index == _preview_drag_index and next_origin == _preview_drag_origin and next_valid == _preview_drag_valid:
+		drag_origin = next_origin
+		drag_valid = next_valid
+		queue_redraw()
+		return
+	_preview_drag_index = dragging_index
+	_preview_drag_origin = next_origin
+	_preview_drag_valid = next_valid
+	drag_origin = next_origin
+	drag_valid = next_valid
 	preview_clear_colors.clear()
 	if drag_valid:
 		var preview_board := game.board.duplicate_board()

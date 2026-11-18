@@ -397,6 +397,14 @@ func apply_ad_privacy(ad_privacy_available: bool, policy_available: bool) -> voi
 		_refresh_focus_chain(true)
 
 
+func show_ad_privacy_feedback(text: String) -> void:
+	if not is_instance_valid(_hint):
+		return
+	_hint.text = text
+	_hint.add_theme_color_override("font_color", Color("#ffe2a8"))
+	_layout_controls()
+
+
 func _new_toggle(key: String) -> CheckButton:
 	var toggle := CheckButton.new()
 	toggle.name = key
